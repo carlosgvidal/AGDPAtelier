@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>A GROSS DOMESTIC PRODUCT.® — Objects generated. Never repeated.</title>
+<meta name="description" content="A GROSS DOMESTIC PRODUCT. Sterling silver .925 objects, generated and never repeated. Configure and produce a singular piece."/>
+
+<!-- Import map for the Configurator's 3D engine (manifold-3d, three.js).
+     Declared in <head> because import maps must exist before any module
+     script executes, even though the widget itself is injected further
+     down the page by configurator.js. -->
+<script type="importmap">
+{
+  "imports": {
+    "manifold-3d": "https://unpkg.com/manifold-3d@3.5.1/manifold.js",
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+:root{
+  --agdp-cream:#FAF6F1;
+  --agdp-peach:#FAD9B6;
+  --agdp-dark:#4F3A27;
+  --agdp-taupe:#8D7B6A;
+  --agdp-ink:#000000;
+  --font-sans:'Helvetica Neue',Helvetica,Arial,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:var(--font-sans);
+  color:var(--agdp-ink);
+  background:var(--agdp-cream);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none;}
+img{display:block;max-width:100%;}
+
+/* ============ SITE NAV ============ */
+.site-nav{
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 40px;
+  background:rgba(250,246,241,.92);
+  backdrop-filter:blur(6px);
+  border-bottom:1px solid rgba(0,0,0,.06);
+}
+.site-nav .brand{
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+}
+.site-nav .brand img{height:24px;width:auto;}
+.site-nav .brand-text{white-space:nowrap;}
+.nav-links{display:flex;align-items:center;gap:34px;}
+.nav-item{position:relative;}
+.nav-item>a, .nav-item>button{
+  font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  background:none;border:none;cursor:pointer;font-family:inherit;color:inherit;
+  padding:6px 0;display:flex;align-items:center;gap:5px;
+}
+.nav-item>a:hover, .nav-item>button:hover{color:var(--agdp-taupe);}
+.caret{font-size:9px;opacity:.6;transform:translateY(1px);}
+.dropdown{
+  position:absolute;top:calc(100% + 14px);left:50%;transform:translateX(-50%);
+  background:#fff;border:1px solid rgba(0,0,0,.08);
+  min-width:180px;padding:10px 0;
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .15s ease;
+}
+.nav-item:hover .dropdown{opacity:1;visibility:visible;pointer-events:auto;}
+.dropdown a{
+  display:block;padding:9px 18px;font-size:12px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--agdp-dark);
+}
+.dropdown a:hover{background:var(--agdp-cream);}
+.nav-cta{
+  font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  border:1px solid var(--agdp-ink);padding:9px 18px;
+}
+.nav-cta:hover{background:var(--agdp-ink);color:var(--agdp-cream);}
+.nav-toggle{display:none;background:none;border:none;font-size:22px;cursor:pointer;}
+
+/* ============ HERO ============ */
+.hero{
+  position:relative;min-height:92vh;display:grid;grid-template-columns:1fr;
+  overflow:hidden;
+}
+.hero-bg{
+  position:absolute;inset:0;z-index:0;
+  background:url('assets/AGDPHome.jpeg') center 55% / cover no-repeat;
+  background-color:#c9c2b8;
+}
+.hero-bg::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg, rgba(250,246,241,.94) 0%, rgba(250,246,241,.62) 30%, rgba(250,246,241,.08) 52%, rgba(0,0,0,0) 60%);
+}
+.hero-inner{
+  position:relative;z-index:1;
+  padding:min(14vh,150px) 40px 90px;
+  max-width:640px;
+  display:flex;flex-direction:column;gap:26px;
+}
+.hero-title{
+  font-size:clamp(40px,6vw,68px);
+  line-height:1.04;font-weight:400;
+  color:var(--agdp-ink);
+  letter-spacing:-.01em;
+}
+.hero-rule{width:52px;height:1px;background:var(--agdp-ink);opacity:.55;}
+.hero-sub{
+  font-size:17px;line-height:1.5;color:var(--agdp-dark);max-width:340px;
+}
+.hero-cta{
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  border-bottom:1px solid var(--agdp-ink);padding-bottom:6px;width:fit-content;
+  background:none;cursor:pointer;
+  font-family:inherit;color:inherit;
+}
+.hero-cta .arrow{transition:transform .18s ease;}
+.hero-cta:hover .arrow{transform:translateY(3px);}
+
+/* ============ HERO FOOTER STRIP ============ */
+.hero-strip{
+  border-top:1px solid rgba(0,0,0,.08);
+  background:var(--agdp-cream);
+  display:grid;grid-template-columns:repeat(4,1fr);
+}
+.hero-strip .col{
+  padding:26px 40px;font-size:13px;line-height:1.6;color:var(--agdp-dark);
+}
+.hero-strip .col:not(:last-child){border-right:1px solid rgba(0,0,0,.08);}
+.hero-strip .col.legal{
+  display:flex;align-items:center;justify-content:flex-end;text-align:right;
+  color:var(--agdp-taupe);font-size:12px;
+}
+.color-strip{display:grid;grid-template-columns:repeat(5,1fr);height:14px;}
+.color-strip span:nth-child(1){background:var(--agdp-cream);}
+.color-strip span:nth-child(2){background:var(--agdp-peach);}
+.color-strip span:nth-child(3){background:var(--agdp-dark);}
+.color-strip span:nth-child(4){background:var(--agdp-taupe);}
+.color-strip span:nth-child(5){background:var(--agdp-ink);}
+
+/* ============ CONFIGURATOR SECTION ============ */
+.configurator-section{
+  border-top:1px solid rgba(0,0,0,.08);
+  background:var(--agdp-cream);
+  padding:70px 40px 0;
+}
+.configurator-head{
+  max-width:640px;margin:0 auto 44px;text-align:left;
+}
+.configurator-eyebrow{
+  font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--agdp-taupe);margin-bottom:14px;
+}
+.configurator-head h2{
+  font-size:clamp(28px,4vw,42px);font-weight:400;line-height:1.12;
+  color:var(--agdp-ink);margin-bottom:16px;letter-spacing:-.01em;
+}
+.configurator-head p{
+  font-size:15px;line-height:1.6;color:var(--agdp-dark);max-width:480px;
+}
+#agdp-configurator-mount{
+  width:100%;
+  max-width:1280px;
+  margin:0 auto;
+  height:min(85vh,860px);
+  min-height:560px;
+  border:1px solid rgba(79,58,39,.14);
+  background:#fff;
+  position:relative;
+  overflow:hidden;
+}
+
+/* ============ SITE FOOTER ============ */
+.site-footer{
+  border-top:1px solid rgba(0,0,0,.08);
+  padding:60px 40px 40px;
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:30px;
+}
+.site-footer .brand-line{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.site-footer .footer-links{display:flex;gap:26px;flex-wrap:wrap;}
+.site-footer a{font-size:12px;letter-spacing:.04em;color:var(--agdp-taupe);}
+.site-footer a:hover{color:var(--agdp-ink);}
+
+@media(max-width:860px){
+  .site-nav{padding:14px 20px;}
+  .nav-links{
+    position:fixed;top:60px;left:0;right:0;bottom:0;
+    background:var(--agdp-cream);
+    flex-direction:column;align-items:flex-start;gap:0;
+    padding:10px 20px 30px;
+    transform:translateX(100%);transition:transform .2s ease;
+    overflow-y:auto;
+  }
+  .nav-links.open{transform:translateX(0);}
+  .nav-item{width:100%;border-bottom:1px solid rgba(0,0,0,.06);}
+  .nav-item>a,.nav-item>button{width:100%;padding:16px 0;justify-content:space-between;}
+  .dropdown{position:static;transform:none;opacity:1;visibility:visible;pointer-events:auto;
+    display:none;border:none;padding:0 0 10px 14px;background:none;}
+  .nav-item.open .dropdown{display:block;}
+  .nav-cta{margin-top:16px;}
+  .nav-toggle{display:block;}
+  .hero-inner{padding:60px 20px 60px;max-width:100%;}
+  .hero-bg::after{background:linear-gradient(180deg, rgba(250,246,241,.55) 0%, rgba(250,246,241,.88) 68%, rgba(250,246,241,.98) 100%);}
+  .hero{min-height:78vh;}
+  .hero-strip{grid-template-columns:1fr 1fr;}
+  .hero-strip .col.legal{justify-content:flex-start;text-align:left;grid-column:1/-1;border-top:1px solid rgba(0,0,0,.08);}
+  .configurator-section{padding:50px 20px 0;}
+  #agdp-configurator-mount{height:78vh;min-height:520px;}
+  .site-footer{padding:40px 20px 30px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="site-nav" aria-label="Primary">
+  <a href="#top" class="brand">
+    <img src="assets/AGDPLogo.png" alt="A Gross Domestic Product"/>
+  </a>
+
+  <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+
+  <div class="nav-links" id="navLinks">
+    <div class="nav-item">
+      <button type="button" data-dropdown>Objects <span class="caret">▾</span></button>
+      <div class="dropdown">
+        <a href="#">(A) Symmetry</a>
+        <a href="#">Link</a>
+        <a href="#">Cyprus</a>
+        <a href="#">Junction</a>
+      </div>
+    </div>
+    <div class="nav-item"><a href="#">Singular Works</a></div>
+    <div class="nav-item"><a href="#configurator">Configurator</a></div>
+    <div class="nav-item">
+      <button type="button" data-dropdown>Index <span class="caret">▾</span></button>
+      <div class="dropdown">
+        <a href="#">Texts</a>
+        <a href="#">Processes</a>
+        <a href="#">Materials</a>
+        <a href="#">Archive</a>
+      </div>
+    </div>
+    <div class="nav-item"><a href="#">About</a></div>
+    <div class="nav-item"><a class="nav-cta" href="#">Contact / Commissions</a></div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="top">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <h1 class="hero-title">Objects generated.<br/>Never repeated.</h1>
+    <div class="hero-rule"></div>
+    <p class="hero-sub">Each object exists only because you decide it should.</p>
+    <a class="hero-cta" href="#configurator">
+      <span>Generate</span><span class="arrow">↓</span>
+    </a>
+  </div>
+</header>
+
+<div class="hero-strip">
+  <div class="col">Each object is uniquely configured<br/>and produced on demand.</div>
+  <div class="col">Precision digital design.<br/>Traditional craftsmanship.</div>
+  <div class="col">Made to order.<br/>Delivered to you.</div>
+  <div class="col legal">© A GROSS DOMESTIC PRODUCT. All rights reserved.</div>
+</div>
+<div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
+
+<!-- ============ CONFIGURATOR ============ -->
+<section class="configurator-section" id="configurator">
+  <div class="configurator-head">
+    <div class="configurator-eyebrow">Configurator</div>
+    <h2>Design your own piece.</h2>
+    <p>Choose a typology, generate a form, and download a print-ready file — sterling silver .925, made to order. No two seeds produce the same object.</p>
+  </div>
+  <div id="agdp-configurator-mount">
+    <!-- AGDP Atelier widget is injected here by configurator.js -->
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
+  <div class="footer-links">
+    <a href="#">Objects</a>
+    <a href="#">Singular Works</a>
+    <a href="#configurator">Configurator</a>
+    <a href="#">Index</a>
+    <a href="#">About</a>
+    <a href="#">Contact</a>
+  </div>
+</footer>
+
+<script>
+// Mobile nav toggle
+const navToggle=document.getElementById('navToggle');
+const navLinks=document.getElementById('navLinks');
+navToggle.addEventListener('click',()=>{
+  const open=navLinks.classList.toggle('open');
+  navToggle.setAttribute('aria-expanded',open?'true':'false');
+});
+// Mobile dropdown accordions (desktop uses hover)
+document.querySelectorAll('[data-dropdown]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    if(window.innerWidth>860)return;
+    btn.closest('.nav-item').classList.toggle('open');
+  });
+});
+</script>
+
+<!-- ============ AGDP ATELIER CONFIGURATOR (scoped mount) ============ -->
+<script src="configurator.js" defer></script>
+</body>
+</html>
