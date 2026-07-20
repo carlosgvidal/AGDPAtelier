@@ -174,7 +174,7 @@
 generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
-      statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'Ajustando la configuración — genera otra variante.', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
+      statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'Ajustando la configuración — genera otra variante.', statusReinitializing:'Reiniciando el motor 3D…', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
       orderConfirmed:'Archivo STL descargado',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
@@ -200,7 +200,7 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
 generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
-      statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Adjusting the configuration — generate another variant.', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
+      statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Adjusting the configuration — generate another variant.', statusReinitializing:'Reinitializing the 3D engine…', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
       orderConfirmed:'STL file downloaded',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
@@ -402,9 +402,39 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
 
   let generationSerial=0;
   const AGDP_MAX_GEOMETRY_ATTEMPTS=16;
+  // Even with careful WASM object disposal, memory in a long-lived tab
+  // still climbs generation over generation (verified: rings settle to a
+  // modest, roughly-stable increment per piece, but heavier typologies
+  // like cufflinks or chokers still add up over many consecutive
+  // generations in the same session). Rather than let that eventually
+  // surface as an unpredictable crash, a periodic clean reload is a
+  // legitimate, common defensive pattern for WASM-heavy single-page
+  // sessions. The user's current typology selection is preserved across
+  // the reload so it reads as routine, not as an error.
+  const AGDP_REFRESH_AFTER_N_GENERATIONS=6;
+  function agdpGenerationCount(){ return Number(sessionStorage.getItem('agdp_gen_count')||'0'); }
+  function agdpBumpGenerationCount(){
+    try{ sessionStorage.setItem('agdp_gen_count', String(agdpGenerationCount()+1)); }catch(e){}
+  }
+  function agdpMaybeRefreshEngine(){
+    if(agdpGenerationCount()<AGDP_REFRESH_AFTER_N_GENERATIONS) return false;
+    try{
+      sessionStorage.setItem('agdp_gen_count','0');
+      if(selectedType) sessionStorage.setItem('agdp_restore_type', selectedType);
+      sessionStorage.setItem('agdp_restore_seed', currentSeed||'');
+    }catch(e){}
+    statusWrap.style.display='flex';
+    statusBadge.textContent=t('statusReinitializing');
+    statusBadge.className='agdp-status-badge thinking';
+    generateBtn.disabled=true;
+    newSeedBtn.disabled=true;
+    setTimeout(()=>{ window.location.reload(); }, 550);
+    return true;
+  }
   async function runGenerate(){
     if(!selectedType)return;
     if(generateBtn.disabled&&generateBtn.dataset.busy==='1')return;
+    if(agdpMaybeRefreshEngine())return;
     const serial=++generationSerial;
     generateBtn.dataset.busy='1';
     generateBtn.disabled=true;
@@ -600,6 +630,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       generateBtn.disabled=false;
       newSeedBtn.disabled=false;
       generateBtn.dataset.busy='0';
+      agdpBumpGenerationCount();
       return;
     }
 
@@ -615,6 +646,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     generateBtn.disabled=false;
     newSeedBtn.disabled=false;
     generateBtn.dataset.busy='0';
+    agdpBumpGenerationCount();
   }
   generateBtn.addEventListener('click',runGenerate);
 
@@ -660,4 +692,24 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
 
   if(legacyCanvas) legacyCanvas.style.display='none';
   applyStaticTexts();
+
+  // If this load followed an automatic engine refresh (see
+  // agdpMaybeRefreshEngine above), restore the user's typology selection
+  // and regenerate with the same seed, so the reload reads as routine
+  // continuity rather than a lost selection.
+  (function agdpRestoreAfterRefresh(){
+    let restoreType=null, restoreSeed=null;
+    try{
+      restoreType=sessionStorage.getItem('agdp_restore_type');
+      restoreSeed=sessionStorage.getItem('agdp_restore_seed');
+      sessionStorage.removeItem('agdp_restore_type');
+      sessionStorage.removeItem('agdp_restore_seed');
+    }catch(e){}
+    if(!restoreType)return;
+    const btn=typeGrid.querySelector('.agdp-type-btn[data-type="'+restoreType+'"]');
+    if(!btn)return;
+    btn.click();
+    if(restoreSeed){ currentSeed=restoreSeed; window.AGDP_currentSeed=currentSeed; }
+    if(!generateBtn.disabled) runGenerate();
+  })();
 })();

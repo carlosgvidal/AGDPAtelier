@@ -51,6 +51,19 @@ function unionAll(wasm, manifolds) {
   }
   return list[0];
 }
+// Same disposal principle as unionAll, for the many direct
+// Manifold.difference(a,b) call sites throughout this file: a and b are
+// always local, single-use temporaries at every call site in this
+// codebase (verified individually), so freeing them immediately after a
+// successful difference is safe. If difference() itself throws, neither
+// a nor b is touched, so the caller's existing try/catch fallback
+// (which several call sites rely on) still sees valid, undeleted objects.
+function safeDifference(wasm, a, b) {
+  const result = wasm.Manifold.difference(a, b);
+  try{ a.delete(); }catch(e){}
+  try{ b.delete(); }catch(e){}
+  return result;
+}
 function cylinderBetween(wasm, p0, p1, radius, segments) {
   const { Manifold } = wasm;
   const dx=p1[0]-p0[0], dy=p1[1]-p0[1], dz=p1[2]-p0[2];
@@ -249,7 +262,7 @@ function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN)
   const { Manifold } = wasm;
   const outer = Manifold.cylinder(thickness, ro, ro, segN || 48, true);
   const inner = Manifold.cylinder(thickness * 1.4, ri, ri, segN || 48, true);
-  let ring = Manifold.difference(outer, inner);
+  let ring = safeDifference(wasm, outer, inner);
   const nx=ez[0],ny=ez[1],nz=ez[2];
   const thetaDeg = Math.acos(clamp(nz,-1,1)) * 180/Math.PI;
   const phiDeg = Math.atan2(ny,nx) * 180/Math.PI;
@@ -890,7 +903,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   }
 
   if(voidCutters.length){
-    try{ bodyManifold=wasm.Manifold.difference(bodyManifold,unionAll(wasm,voidCutters)); }
+    try{ bodyManifold=safeDifference(wasm,bodyManifold,unionAll(wasm,voidCutters)); }
     catch(err){ console.warn('AGDP: operación transversal omitida por seguridad topológica',err); }
   }
 
@@ -914,7 +927,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     try{
       const notchCutter=wasm.Manifold.cube([notchDepth*2.4, notchWidth, notchAxial], true)
         .rotate([0,0,rt*180/Math.PI]).translate([notchCenterR*ct, notchCenterR*st, 0]);
-      bodyManifold=wasm.Manifold.difference(bodyManifold, notchCutter);
+      bodyManifold=safeDifference(wasm,bodyManifold, notchCutter);
     }catch(err){ console.warn('AGDP: ruptura omitida por seguridad topológica',err); }
     // El puente: más ancho que la propia muesca, para garantizar solape
     // real en ambos lados, y proud de la superficie para leerse como una
@@ -955,7 +968,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     try{
       const thinCutter=wasm.Manifold.cube([thinDepth*2.2, thinWidth, bandW*0.7], true)
         .rotate([0,0,oppositeT*180/Math.PI]).translate([(oppSurface-thinDepth*0.5)*oppCt,(oppSurface-thinDepth*0.5)*oppSt,0]);
-      bodyManifold=wasm.Manifold.difference(bodyManifold, thinCutter);
+      bodyManifold=safeDifference(wasm,bodyManifold, thinCutter);
     }catch(err){ console.warn('AGDP: hipertrofia (adelgazamiento) omitida por seguridad topológica',err); }
   }
 
@@ -976,7 +989,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const erAdj=esurf-esr*0.15;
       erosionCutters.push(sphereAt(wasm,[erAdj*ect, erAdj*est, ez], esr, 16));
     }
-    try{ bodyManifold=wasm.Manifold.difference(bodyManifold, unionAll(wasm, erosionCutters)); }
+    try{ bodyManifold=safeDifference(wasm,bodyManifold, unionAll(wasm, erosionCutters)); }
     catch(err){ console.warn('AGDP: erosión omitida por seguridad topológica',err); }
   }
 
@@ -1063,7 +1076,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const voidR=Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.7+0.5*sv));
     try{
       const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 16);
-      bodyManifold=wasm.Manifold.difference(bodyManifold, voidCutter);
+      bodyManifold=safeDifference(wasm,bodyManifold, voidCutter);
     }catch(err){ console.warn('AGDP: inversión omitida por seguridad topológica',err); }
   }
 
@@ -1272,7 +1285,7 @@ function makePiercedSlabPendantFace(wasm,p,outerR,th){
   const voidH=h*(.42+.10*(p.longitudinal||0));
   const xOff=(p.compositionSignature?.polarity||1)*w*(.09+.10*(p.asymmetry||0));
   const voidBox=Manifold.cube([voidW,voidH,d*1.8],true).rotate([0,0,-angle*.7]).translate([xOff,0,0]);
-  slab=Manifold.difference(slab,voidBox);
+  slab=safeDifference(wasm,slab,voidBox);
   const parts=[slab];
   const z=d*.58, r=Math.max(AGDP_MIN_WALL_MM*.8,d*.11);
   parts.push(cylinderBetween(wasm,[-w*.46,-h*.34,z],[w*.42,h*.28,z],r,16));
@@ -1566,7 +1579,7 @@ async function makePendantManifold(wasm, p) {
 
   const tunnelHalf=crownOuterR+Math.max(tunnelWall,bandWidth*.75);
   const passage=cylinderBetween(wasm,[-tunnelHalf,crownCenter[1],0],[tunnelHalf,crownCenter[1],0],passageR,128);
-  manifold=Manifold.difference(manifold,passage);
+  manifold=safeDifference(wasm,manifold,passage);
 
   const finalMesh=manifoldToMesh(manifold);
   const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
@@ -2199,7 +2212,7 @@ function makeCombManifold(wasm,p){
         cutters.push(sphereAt(wasm,mid[idx],vr,14));
       }
       if(cutters.length){
-        try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(wasm.Manifold.difference(merged,unionAll(wasm,cutters))); }
+        try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(safeDifference(wasm,merged,unionAll(wasm,cutters))); }
         catch(err){ console.warn('AGDP: erosión de peineta omitida por seguridad topológica',err); }
       }
     }else if(p.mutation.mode==='proliferation'){
@@ -2274,14 +2287,14 @@ async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
     const b=sphereAt(wasm,[3.6*sx,-1.6*sy,0],6.6*Math.min(sx,sy),26).scale([1.16,.96,.54]);
     const c=sphereAt(wasm,[.6*sx,2.4*sy,faceTh*.07],5.2*Math.min(sx,sy),24).scale([1.02,1.00,.46]);
     const notch=sphereAt(wasm,[polarity*6.2*sx,-2.6*sy,0],3.2*Math.min(sx,sy),22).scale([1.08,.9,.75]);
-    face=Manifold.difference(unionAll(wasm,[a,b,c]),notch);
+    face=safeDifference(wasm,unionAll(wasm,[a,b,c]),notch);
   }else{
     const rot=(p.compositionSignature?.polarity||1)*(5+9*rng());
     let slab=Manifold.cube([faceW*.86,faceH*.79,faceTh],true).rotate([0,0,rot]);
     const lobe1=sphereAt(wasm,[faceW*.26,faceH*.14,0],faceH*.31,24).scale([1.20,.85,.55]);
     const lobe2=sphereAt(wasm,[-faceW*.28,-faceH*.16,0],faceH*.27,22).scale([.98,1.00,.52]);
     const voidCut=Manifold.cube([faceW*.18,faceH*.35,faceTh*1.8],true).rotate([0,0,-17]).translate([-faceW*.07,faceH*.045,0]);
-    face=Manifold.difference(unionAll(wasm,[slab,lobe1,lobe2]),voidCut);
+    face=safeDifference(wasm,unionAll(wasm,[slab,lobe1,lobe2]),voidCut);
   }
   return face.translate([0,0,faceTh*.45]);
 }
