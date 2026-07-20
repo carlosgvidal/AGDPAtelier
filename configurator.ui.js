@@ -582,7 +582,19 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       // console/telemetry only. The one distinction worth keeping public
       // is whether the issue is genuinely actionable by the customer
       // (check connection) versus simply trying another variant.
-      statusBadge.textContent=terminalEngineError?t('statusEngineError'):t('statusFailedAfterRetries');
+      // Exception: when the page is loaded with ?debug=1 in the URL, the
+      // real technical reason is appended on-screen. This is an opt-in
+      // diagnostic path for testing on devices without devtools access —
+      // never shown to a visitor who hasn't deliberately added the
+      // parameter, and easy to remove once no longer needed.
+      const debugMode=/[?&]debug=1\b/.test(window.location.search);
+      const baseMsg=terminalEngineError?t('statusEngineError'):t('statusFailedAfterRetries');
+      if(debugMode){
+        const reason=terminalEngineError?String(terminalEngineError.message||terminalEngineError):(lastFailureReason||'(sin detalle capturado)');
+        statusBadge.textContent=baseMsg+' [DEBUG: '+selectedType+' — '+reason+']';
+      }else{
+        statusBadge.textContent=baseMsg;
+      }
       statusBadge.className='agdp-status-badge';
       orderBtn.disabled=true;
       generateBtn.disabled=false;
