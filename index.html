@@ -57,6 +57,7 @@ img{display:block;max-width:100%;}
 .site-nav .brand-text{white-space:nowrap;}
 .nav-links{display:flex;align-items:center;gap:34px;}
 .nav-item{position:relative;}
+.index-mobile-only{display:none;}
 .nav-item>a, .nav-item>button{
   font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   background:none;border:none;cursor:pointer;font-family:inherit;color:inherit;
@@ -82,7 +83,7 @@ img{display:block;max-width:100%;}
   border:1px solid var(--agdp-ink);padding:9px 18px;
 }
 .nav-cta:hover{background:var(--agdp-ink);color:var(--agdp-cream);}
-.nav-toggle{display:none;background:none;border:none;font-size:22px;cursor:pointer;}
+.nav-toggle{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--agdp-peach);-webkit-appearance:none;appearance:none;}
 
 /* ============ HERO ============ */
 .hero{
@@ -201,6 +202,7 @@ img{display:block;max-width:100%;}
   }
   .nav-links.open{transform:translateX(0);}
   .nav-item{width:100%;border-bottom:1px solid rgba(0,0,0,.06);}
+  .index-mobile-only{display:block;}
   .nav-item>a,.nav-item>button{width:100%;padding:16px 0;justify-content:space-between;}
   .dropdown{position:static;transform:none;opacity:1;visibility:visible;pointer-events:auto;
     display:none;border:none;padding:0 0 10px 14px;background:none;}
@@ -208,7 +210,7 @@ img{display:block;max-width:100%;}
   .nav-cta{margin-top:16px;}
   .nav-toggle{display:block;}
   .hero-inner{padding:60px 20px 60px;max-width:100%;}
-  .hero-bg::after{background:linear-gradient(180deg, rgba(250,246,241,.55) 0%, rgba(250,246,241,.88) 68%, rgba(250,246,241,.98) 100%);}
+  .hero-bg::after{background:linear-gradient(180deg, rgba(250,246,241,.92) 0%, rgba(250,246,241,.60) 32%, rgba(250,246,241,.18) 54%, rgba(0,0,0,0) 70%);}
   .hero{min-height:78vh;}
   .hero-strip{grid-template-columns:1fr 1fr;}
   .hero-strip .col.legal{justify-content:flex-start;text-align:left;grid-column:1/-1;border-top:1px solid rgba(0,0,0,.08);}
@@ -222,25 +224,34 @@ img{display:block;max-width:100%;}
 
 <!-- ============ NAV ============ -->
 <nav class="site-nav" aria-label="Primary">
-  <a href="#top" class="brand">
-    <img src="AGDPLogo.png" alt="A Gross Domestic Product"/>
-  </a>
+  <div class="nav-item brand-item">
+    <a href="#top" class="brand">
+      <img src="AGDPLogo.png" alt="A Gross Domestic Product"/>
+    </a>
+    <div class="dropdown">
+      <a href="#">Texts</a>
+      <a href="#">Processes</a>
+      <a href="#">Materials</a>
+      <a href="#">Archive</a>
+    </div>
+  </div>
 
   <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
 
   <div class="nav-links" id="navLinks">
+    <div class="nav-item"><a href="#configurator">Configurator</a></div>
     <div class="nav-item">
-      <button type="button" data-dropdown>Objects <span class="caret">▾</span></button>
+      <button type="button" data-dropdown>Singular Works <span class="caret">▾</span></button>
       <div class="dropdown">
         <a href="#">(A) Symmetry</a>
         <a href="#">Link</a>
         <a href="#">Cyprus</a>
         <a href="#">Junction</a>
+        <a href="#">Bespoke</a>
       </div>
     </div>
-    <div class="nav-item"><a href="#">Singular Works</a></div>
-    <div class="nav-item"><a href="#configurator">Configurator</a></div>
-    <div class="nav-item">
+    <div class="nav-item"><a href="#">Manifesto</a></div>
+    <div class="nav-item index-mobile-only">
       <button type="button" data-dropdown>Index <span class="caret">▾</span></button>
       <div class="dropdown">
         <a href="#">Texts</a>
@@ -249,8 +260,7 @@ img{display:block;max-width:100%;}
         <a href="#">Archive</a>
       </div>
     </div>
-    <div class="nav-item"><a href="#">Manifesto</a></div>
-    <div class="nav-item"><a class="nav-cta" href="#">Contact / Commissions</a></div>
+    <div class="nav-item"><a class="nav-cta" href="#">Commissions</a></div>
   </div>
 </nav>
 
@@ -293,12 +303,10 @@ img{display:block;max-width:100%;}
 <footer class="site-footer">
   <div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
   <div class="footer-links">
-    <a href="#">Objects</a>
-    <a href="#">Singular Works</a>
     <a href="#configurator">Configurator</a>
-    <a href="#">Index</a>
+    <a href="#">Singular Works</a>
     <a href="#">Manifesto</a>
-    <a href="#">Contact</a>
+    <a href="#">Commissions</a>
   </div>
 </footer>
 
