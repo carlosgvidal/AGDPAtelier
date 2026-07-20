@@ -1732,10 +1732,15 @@ async function makeCufflinksManifold(wasm, p) {
   const unitBounds=bounds(unitMesh.V);
   const minimumClearGapMm=12.0;
   const pairSpacing=Math.max(unitBounds.dim[0]+minimumClearGapMm,r*3.15,th*3.8);
-  const leftUnit=unit.translate([-pairSpacing/2,0,0]);
-  /* Identical translated copy: avoids the negative determinant and reversed
-     winding introduced by scale([-1,1,1]) in v0.195. */
-  const rightUnit=unit.translate([pairSpacing/2,0,0]);
+  /* Each half of the pair is built from its own freshly-reconstructed
+     manifold (via the mesh data already extracted above), rather than
+     calling .translate() twice on the same live `unit` object. Calling a
+     second transform on an object already consumed by an earlier one is
+     what produced the WASM binding crashes seen here — rebuilding from
+     V/F sidesteps the question entirely, since each half's manifold is
+     transformed exactly once. */
+  const leftUnit=meshToManifold(wasm,unitMesh.V,unitMesh.F).translate([-pairSpacing/2,0,0]);
+  const rightUnit=meshToManifold(wasm,unitMesh.V,unitMesh.F).translate([pairSpacing/2,0,0]);
   const manifold=Manifold.union(leftUnit,rightUnit);
 
   const pairMesh=manifoldToMesh(manifold);
