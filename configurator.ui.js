@@ -125,7 +125,7 @@
     };
   }
 
-  let currentLang = 'es';
+  let currentLang = 'en';
   let selectedType=null;
   let selectedSizeIndex=0;
   let selectedChainFit=1;
