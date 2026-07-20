@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>A GROSS DOMESTIC PRODUCT.® — Manifesto</title>
+<meta name="description" content="A GROSS DOMESTIC PRODUCT. Vision, mission, promise and values of a practice that displaces jewelry toward the physical evidence of critical thought."/>
+
+<style>
+:root{
+  --agdp-cream:#FAF6F1;
+  --agdp-peach:#FAD9B6;
+  --agdp-dark:#4F3A27;
+  --agdp-taupe:#8D7B6A;
+  --agdp-ink:#000000;
+  --font-sans:'Helvetica Neue',Helvetica,Arial,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:var(--font-sans);
+  color:var(--agdp-ink);
+  background:var(--agdp-cream);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none;}
+img{display:block;max-width:100%;}
+
+/* ============ SITE NAV (identical to index.html) ============ */
+.site-nav{
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 40px;
+  background:rgba(250,246,241,.92);
+  backdrop-filter:blur(6px);
+  border-bottom:1px solid rgba(0,0,0,.06);
+}
+.site-nav .brand{
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+}
+.site-nav .brand img{height:64px;width:auto;}
+.nav-links{display:flex;align-items:center;gap:34px;}
+.nav-item{position:relative;}
+.index-mobile-only{display:none;}
+.nav-item>a, .nav-item>button{
+  font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  background:none;border:none;cursor:pointer;font-family:inherit;color:inherit;
+  padding:6px 0;display:flex;align-items:center;gap:5px;
+}
+.nav-item>a:hover, .nav-item>button:hover{color:var(--agdp-taupe);}
+.caret{font-size:9px;opacity:.6;transform:translateY(1px);}
+.dropdown{
+  position:absolute;top:calc(100% + 14px);left:50%;transform:translateX(-50%);
+  background:#fff;border:1px solid rgba(0,0,0,.08);
+  min-width:180px;padding:10px 0;
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .15s ease;
+}
+.nav-item:hover .dropdown{opacity:1;visibility:visible;pointer-events:auto;}
+.dropdown a{
+  display:block;padding:9px 18px;font-size:12px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--agdp-dark);
+}
+.dropdown a:hover{background:var(--agdp-cream);}
+.nav-cta{
+  font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  border:1px solid var(--agdp-ink);padding:9px 18px;
+}
+.nav-cta:hover{background:var(--agdp-ink);color:var(--agdp-cream);}
+.nav-toggle{display:none;background:none;border:none;font-size:22px;cursor:pointer;color:var(--agdp-dark);-webkit-appearance:none;appearance:none;}
+
+/* ============ MANIFESTO PAGE ============ */
+.doc-hero{
+  padding:min(12vh,120px) 40px 70px;
+  max-width:900px;
+  border-bottom:1px solid rgba(0,0,0,.08);
+}
+.doc-eyebrow{
+  font-family:var(--font-mono);
+  font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--agdp-taupe);margin-bottom:22px;
+}
+.doc-hero h1{
+  font-size:clamp(34px,5vw,54px);font-weight:400;line-height:1.14;
+  letter-spacing:-.01em;margin-bottom:26px;
+}
+.doc-hero p{
+  font-size:16px;line-height:1.65;color:var(--agdp-dark);max-width:620px;
+}
+
+.doc-section{
+  padding:64px 40px;
+  border-bottom:1px solid rgba(0,0,0,.08);
+  display:grid;grid-template-columns:220px 1fr;gap:40px;
+  max-width:1280px;margin:0 auto;
+}
+.doc-section .index-mark{
+  font-family:var(--font-mono);font-size:13px;letter-spacing:.1em;
+  color:var(--agdp-taupe);padding-top:4px;
+}
+.doc-section h2{
+  font-size:clamp(22px,3vw,30px);font-weight:400;letter-spacing:-.01em;
+  margin-bottom:18px;
+}
+.doc-section p{
+  font-size:15.5px;line-height:1.75;color:var(--agdp-dark);max-width:640px;
+}
+
+/* Values: numbered technical register */
+.values-section{
+  padding:70px 40px 40px;
+  max-width:1280px;margin:0 auto;
+}
+.values-eyebrow{
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--agdp-taupe);margin-bottom:14px;
+}
+.values-section h2{
+  font-size:clamp(26px,3.4vw,36px);font-weight:400;letter-spacing:-.01em;
+  margin-bottom:50px;max-width:640px;
+}
+.value-row{
+  display:grid;grid-template-columns:90px 1fr;gap:30px;
+  padding:34px 0;border-top:1px solid rgba(0,0,0,.08);
+}
+.value-row:last-child{border-bottom:1px solid rgba(0,0,0,.08);}
+.value-num{font-family:var(--font-mono);font-size:14px;color:var(--agdp-taupe);padding-top:3px;}
+.value-title{
+  font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  margin-bottom:12px;
+}
+.value-body{font-size:15px;line-height:1.7;color:var(--agdp-dark);max-width:640px;}
+
+/* Positioning triptych */
+.pillars-section{
+  padding:70px 40px 80px;
+  max-width:1280px;margin:0 auto;
+  border-top:1px solid rgba(0,0,0,.08);
+}
+.pillars-eyebrow{
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--agdp-taupe);margin-bottom:14px;
+}
+.pillars-section h2{
+  font-size:clamp(26px,3.4vw,36px);font-weight:400;letter-spacing:-.01em;
+  margin-bottom:46px;max-width:640px;
+}
+.pillars-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(0,0,0,.08);border:1px solid rgba(0,0,0,.08);}
+.pillar{background:var(--agdp-cream);padding:34px 28px;}
+.pillar-mark{font-family:var(--font-mono);font-size:12px;color:var(--agdp-taupe);margin-bottom:16px;}
+.pillar h3{font-size:16px;font-weight:700;letter-spacing:.02em;margin-bottom:14px;}
+.pillar p{font-size:14px;line-height:1.65;color:var(--agdp-dark);}
+
+/* Lineage / cultural affinities */
+.lineage-section{
+  padding:70px 40px 90px;
+  max-width:1280px;margin:0 auto;
+  border-top:1px solid rgba(0,0,0,.08);
+}
+.lineage-eyebrow{
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--agdp-taupe);margin-bottom:14px;
+}
+.lineage-section h2{
+  font-size:clamp(26px,3.4vw,36px);font-weight:400;letter-spacing:-.01em;
+  margin-bottom:40px;max-width:640px;
+}
+.lineage-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;}
+.lineage-item{border-top:1px solid rgba(0,0,0,.15);padding-top:18px;}
+.lineage-cat{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--agdp-taupe);margin-bottom:8px;}
+.lineage-name{font-size:16px;font-weight:700;margin-bottom:10px;}
+.lineage-item p{font-size:13.5px;line-height:1.6;color:var(--agdp-dark);}
+
+/* ============ FOOTER (identical to index.html) ============ */
+.site-footer{
+  border-top:1px solid rgba(0,0,0,.08);
+  padding:60px 40px 40px;
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:30px;
+}
+.site-footer .brand-line{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.site-footer .footer-links{display:flex;gap:26px;flex-wrap:wrap;}
+.site-footer a{font-size:12px;letter-spacing:.04em;color:var(--agdp-taupe);}
+.site-footer a:hover{color:var(--agdp-ink);}
+
+@media(max-width:860px){
+  .site-nav{padding:14px 20px;}
+  .nav-links{
+    position:fixed;top:60px;left:0;right:0;bottom:0;
+    background:var(--agdp-cream);
+    flex-direction:column;align-items:flex-start;gap:0;
+    padding:10px 20px 30px;
+    transform:translateX(100%);transition:transform .2s ease;
+    overflow-y:auto;
+  }
+  .nav-links.open{transform:translateX(0);}
+  .nav-item{width:100%;border-bottom:1px solid rgba(0,0,0,.06);}
+  .nav-item>a,.nav-item>button{width:100%;padding:16px 0;justify-content:space-between;}
+  .dropdown{position:static;transform:none;opacity:1;visibility:visible;pointer-events:auto;
+    display:none;border:none;padding:0 0 10px 14px;background:none;}
+  .nav-item.open .dropdown{display:block;}
+  .nav-cta{margin-top:16px;}
+  .nav-toggle{display:block;}
+  .index-mobile-only{display:block;}
+  .doc-hero{padding:50px 20px 40px;}
+  .doc-section{grid-template-columns:1fr;padding:40px 20px;gap:16px;}
+  .values-section{padding:50px 20px 20px;}
+  .value-row{grid-template-columns:50px 1fr;gap:16px;}
+  .pillars-section{padding:50px 20px 60px;}
+  .pillars-grid{grid-template-columns:1fr;}
+  .lineage-section{padding:50px 20px 60px;}
+  .lineage-grid{grid-template-columns:1fr;gap:28px;}
+  .site-footer{padding:40px 20px 30px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="site-nav" aria-label="Primary">
+  <div class="nav-item brand-item">
+    <a href="index.html" class="brand">
+      <img src="AGDPLogo.png" alt="A Gross Domestic Product"/>
+    </a>
+    <div class="dropdown">
+      <a href="#">Texts</a>
+      <a href="#">Processes</a>
+      <a href="#">Materials</a>
+      <a href="#">Archive</a>
+    </div>
+  </div>
+
+  <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+
+  <div class="nav-links" id="navLinks">
+    <div class="nav-item"><a href="index.html#configurator">Configurator</a></div>
+    <div class="nav-item">
+      <button type="button" data-dropdown>Singular Works <span class="caret">▾</span></button>
+      <div class="dropdown">
+        <a href="#">(A) Symmetry</a>
+        <a href="#">Link</a>
+        <a href="#">Cyprus</a>
+        <a href="#">Junction</a>
+        <a href="#">Bespoke</a>
+      </div>
+    </div>
+    <div class="nav-item"><a href="manifesto.html">Manifesto</a></div>
+    <div class="nav-item index-mobile-only">
+      <button type="button" data-dropdown>Index <span class="caret">▾</span></button>
+      <div class="dropdown">
+        <a href="#">Texts</a>
+        <a href="#">Processes</a>
+        <a href="#">Materials</a>
+        <a href="#">Archive</a>
+      </div>
+    </div>
+    <div class="nav-item"><a class="nav-cta" href="#">Commissions</a></div>
+  </div>
+</nav>
+
+<!-- ============ MANIFESTO HERO ============ -->
+<header class="doc-hero">
+  <div class="doc-eyebrow">Manifesto</div>
+  <h1>The object as document. Weight as a form of truth.</h1>
+  <p>A GROSS DOMESTIC PRODUCT does not manufacture accessories. The practice translates social theory and economic metric into material devices of high precision — physical essays that function as instruments of thought.</p>
+</header>
+
+<!-- ============ VISION ============ -->
+<section class="doc-section">
+  <div class="index-mark">I — Vision</div>
+  <div>
+    <h2>Vision</h2>
+    <p>To establish conceptual infrastructure as the standard of contemporary luxury. The object is displaced from ornamentation toward the physical evidence of critical thought, consolidating an ecosystem in which pure metal functions as the final record of an intellectual vanguard. The ambition is to lead a niche of elite collecting in which value resides not in the aesthetics of shine, but in the gravity of form and the honesty of the object as historical and personal document.</p>
+  </div>
+</section>
+
+<!-- ============ MISSION ============ -->
+<section class="doc-section">
+  <div class="index-mark">II — Mission</div>
+  <div>
+    <h2>Mission</h2>
+    <p>To translate social theories and economic metrics into material devices of high precision. A GROSS DOMESTIC PRODUCT executes physical essays that operate as instruments of thought, integrating semiotics with rigorous structural engineering. The work exceeds decorative function to become statements of a radical aesthetic position — exposing the tension between individual sovereignty and global structures.</p>
+  </div>
+</section>
+
+<!-- ============ PROMISE ============ -->
+<section class="doc-section">
+  <div class="index-mark">III — Promise</div>
+  <div>
+    <h2>Promise</h2>
+    <p>To deliver objects of undeniable technical solidity that function as anchors of identity and catalysts of reflection. The wearer is guaranteed a transmutation of jewelry into material document: an extension of intellectual rigor, grounded in the architecture of form and the inescapable presence of raw matter.</p>
+  </div>
+</section>
+
+<!-- ============ VALUES ============ -->
+<section class="values-section">
+  <div class="values-eyebrow">Values</div>
+  <h2>Five principles govern the practice. None of them are negotiable.</h2>
+
+  <div class="value-row">
+    <div class="value-num">01</div>
+    <div>
+      <div class="value-title">Brutalist Rigor</div>
+      <p class="value-body">Research precedes matter. The work does not manufacture accessories; it erects portable monoliths that compress intellectual trajectories into the density of metal.</p>
+    </div>
+  </div>
+
+  <div class="value-row">
+    <div class="value-num">02</div>
+    <div>
+      <div class="value-title">Structural Gravity</div>
+      <p class="value-body">Physical weight is a non-negotiable principle. Each piece is understood as an architectural construction for the body, in which technical precision eliminates all artifice or visual lightness.</p>
+    </div>
+  </div>
+
+  <div class="value-row">
+    <div class="value-num">03</div>
+    <div>
+      <div class="value-title">Symbolic Tension</div>
+      <p class="value-body">A reflective posture toward global systems is maintained throughout. Elevating macroeconomic indicators to the category of personal object generates a constant conflict between symbolic value and technical rigidity.</p>
+    </div>
+  </div>
+
+  <div class="value-row">
+    <div class="value-num">04</div>
+    <div>
+      <div class="value-title">Honest Materiality</div>
+      <p class="value-body">Metal is manifested in its most direct and pure state. Raw texture and industrial finish are prioritized as the definitive language, allowing form to communicate concept without traditional aesthetic mediation.</p>
+    </div>
+  </div>
+
+  <div class="value-row">
+    <div class="value-num">05</div>
+    <div>
+      <div class="value-title">Conceptual Authority</div>
+      <p class="value-body">The brand is the result of a practice in which aesthetics function as a form of knowledge. Value resides in the signature of an author who transforms thought into object, and the experience of language into tangible presence.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ POSITIONING ============ -->
+<section class="pillars-section">
+  <div class="pillars-eyebrow">Positioning</div>
+  <h2>The practice occupies the exact intersection between philosophical essay and authored jewelry.</h2>
+  <div class="pillars-grid">
+    <div class="pillar">
+      <div class="pillar-mark">01</div>
+      <h3>Corporal Architecture</h3>
+      <p>The territory is infrastructure, not jewelry. Technical excellence imposes a physical presence that uses weight as a language addressed to its surroundings.</p>
+    </div>
+    <div class="pillar">
+      <div class="pillar-mark">02</div>
+      <h3>Intellectual Legitimacy</h3>
+      <p>Value emanates from the rigor of process. Integrating disciplines from economics and semiotics converts the object into a document of knowledge.</p>
+    </div>
+    <div class="pillar">
+      <div class="pillar-mark">03</div>
+      <h3>Subversion of Luxury</h3>
+      <p>The name itself is a device of tension. Where the market sells fantasy, a cold economic metric is used to name the intimate.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CULTURAL LINEAGE ============ -->
+<section class="lineage-section">
+  <div class="lineage-eyebrow">Cultural Lineage</div>
+  <h2>Affinities, not influences. The practice recognizes itself in three registers.</h2>
+  <div class="lineage-grid">
+    <div class="lineage-item">
+      <div class="lineage-cat">Cinema</div>
+      <div class="lineage-name">Béla Tarr</div>
+      <p>The gravity of matter over the spectacle of image. Duration as a physical magnitude, rather than a narrative convenience.</p>
+    </div>
+    <div class="lineage-item">
+      <div class="lineage-cat">Music</div>
+      <div class="lineage-name">Iannis Xenakis</div>
+      <p>Structural logic as compositional method. Mass and density substitute for ornamental melody.</p>
+    </div>
+    <div class="lineage-item">
+      <div class="lineage-cat">Literature</div>
+      <div class="lineage-name">Alain Robbe-Grillet</div>
+      <p>The object as absolute physical presence, described through geometry and texture rather than sentiment.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
+  <div class="footer-links">
+    <a href="index.html#configurator">Configurator</a>
+    <a href="#">Singular Works</a>
+    <a href="manifesto.html">Manifesto</a>
+    <a href="#">Commissions</a>
+  </div>
+</footer>
+
+<script>
+const navToggle=document.getElementById('navToggle');
+const navLinks=document.getElementById('navLinks');
+navToggle.addEventListener('click',()=>{
+  const open=navLinks.classList.toggle('open');
+  navToggle.setAttribute('aria-expanded',open?'true':'false');
+});
+document.querySelectorAll('[data-dropdown]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    if(window.innerWidth>860)return;
+    btn.closest('.nav-item').classList.toggle('open');
+  });
+});
+</script>
+</body>
+</html>

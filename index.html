@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -11,7 +10,6 @@
      Declared in <head> because import maps must exist before any module
      script executes, even though the widget itself is injected further
      down the page by configurator.js. -->
-
 <script type="importmap">
 {
   "imports": {
@@ -221,12 +219,10 @@ img{display:block;max-width:100%;}
   .site-footer{padding:40px 20px 30px;}
 }
 </style>
-
 </head>
 <body>
 
 <!-- ============ NAV ============ -->
-
 <nav class="site-nav" aria-label="Primary">
   <div class="nav-item brand-item">
     <a href="#top" class="brand">
@@ -240,7 +236,7 @@ img{display:block;max-width:100%;}
     </div>
   </div>
 
-<button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+  <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
 
   <div class="nav-links" id="navLinks">
     <div class="nav-item"><a href="#configurator">Configurator</a></div>
@@ -254,7 +250,7 @@ img{display:block;max-width:100%;}
         <a href="#">Bespoke</a>
       </div>
     </div>
-    <div class="nav-item"><a href="#">Manifesto</a></div>
+    <div class="nav-item"><a href="manifesto.html">Manifesto</a></div>
     <div class="nav-item index-mobile-only">
       <button type="button" data-dropdown>Index <span class="caret">▾</span></button>
       <div class="dropdown">
@@ -269,7 +265,6 @@ img{display:block;max-width:100%;}
 </nav>
 
 <!-- ============ HERO ============ -->
-
 <header class="hero" id="top">
   <div class="hero-bg"></div>
   <div class="hero-inner">
@@ -291,7 +286,6 @@ img{display:block;max-width:100%;}
 <div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
 
 <!-- ============ CONFIGURATOR ============ -->
-
 <section class="configurator-section" id="configurator">
   <div class="configurator-inner">
     <div class="configurator-head">
@@ -306,13 +300,12 @@ img{display:block;max-width:100%;}
 </section>
 
 <!-- ============ FOOTER ============ -->
-
 <footer class="site-footer">
   <div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
   <div class="footer-links">
     <a href="#configurator">Configurator</a>
     <a href="#">Singular Works</a>
-    <a href="#">Manifesto</a>
+    <a href="manifesto.html">Manifesto</a>
     <a href="#">Commissions</a>
   </div>
 </footer>
@@ -335,8 +328,6 @@ document.querySelectorAll('[data-dropdown]').forEach(btn=>{
 </script>
 
 <!-- ============ AGDP ATELIER CONFIGURATOR (scoped mount) ============ -->
-
 <script src="configurator.js" defer></script>
-
 </body>
 </html>
