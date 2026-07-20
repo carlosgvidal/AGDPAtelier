@@ -116,8 +116,8 @@
 <div class="agdp-public" id="agdpPublic">
   <div class="agdp-utilbar">
     <div class="agdp-lang-switch" id="agdpLangSwitch">
-      <button class="agdp-lang-btn selected" data-lang="es">ES</button>
-      <button class="agdp-lang-btn" data-lang="en">EN</button>
+      <button class="agdp-lang-btn" data-lang="es">ES</button>
+      <button class="agdp-lang-btn selected" data-lang="en">EN</button>
     </div>
   </div>
   <div class="agdp-body">
