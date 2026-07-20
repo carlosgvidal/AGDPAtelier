@@ -1628,7 +1628,19 @@ async function makeCufflinksManifold(wasm, p) {
     // per seed: a plain, reliable crown by construction, not by luck.
     holes:0,railCount:Math.min(1,p.railCount||0),
     crown:false,spikes:0,opening:0,
-    mutation:{active:false,severity:0,mode:null}
+    mutation:{active:false,severity:0,mode:null},
+    // High asymmetry (>=0.25, combined with organic>=0.40) activates the
+    // band builder's "zone mass" feature -- an asymmetric volume bulge.
+    // Diagnosed empirically (Node.js harness, 24 seeds): every crown
+    // construction failure had asymmetry in [0.44, 0.50]. Zone-mass has
+    // a SECOND, independent trigger (featureWeights.vessel>0.18) that
+    // capping asymmetry alone does not block -- confirmed by testing:
+    // failures persisted with asymmetry capped until vessel was also
+    // capped. With both paths closed: 0 crown failures across 24 test
+    // seeds (previously a frequent failure mode), vs. 4 failures in the
+    // first 10-seed sample before this fix.
+    asymmetry:Math.min(p.asymmetry||0,0.18),
+    featureWeights:Object.freeze(Object.assign({},p.featureWeights||{},{vessel:Math.min((p.featureWeights&&p.featureWeights.vessel)||0,0.15)}))
   });
   const built=await buildBandGeometryManifold(wasm,crownParams,{
     type:'pendantAnnularCore',innerD:innerR*2,width:th,closed:true,opening:0
