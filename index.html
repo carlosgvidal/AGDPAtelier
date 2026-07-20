@@ -53,7 +53,7 @@ img{display:block;max-width:100%;}
   display:flex;align-items:center;gap:10px;
   font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
 }
-.site-nav .brand img{height:24px;width:auto;}
+.site-nav .brand img{height:46px;width:auto;}
 .site-nav .brand-text{white-space:nowrap;}
 .nav-links{display:flex;align-items:center;gap:34px;}
 .nav-item{position:relative;}
@@ -151,8 +151,11 @@ img{display:block;max-width:100%;}
   background:var(--agdp-cream);
   padding:70px 40px 0;
 }
+.configurator-inner{
+  max-width:1280px;margin:0 auto;
+}
 .configurator-head{
-  max-width:640px;margin:0 auto 44px;text-align:left;
+  max-width:640px;margin:0 0 44px;text-align:left;
 }
 .configurator-eyebrow{
   font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
@@ -167,8 +170,6 @@ img{display:block;max-width:100%;}
 }
 #agdp-configurator-mount{
   width:100%;
-  max-width:1280px;
-  margin:0 auto;
   height:min(85vh,860px);
   min-height:560px;
   border:1px solid rgba(79,58,39,.14);
@@ -276,13 +277,15 @@ img{display:block;max-width:100%;}
 
 <!-- ============ CONFIGURATOR ============ -->
 <section class="configurator-section" id="configurator">
-  <div class="configurator-head">
-    <div class="configurator-eyebrow">Configurator</div>
-    <h2>Design your own piece.</h2>
-    <p>Choose a typology, generate a form, and download a print-ready file — sterling silver .925, made to order. No two seeds produce the same object.</p>
-  </div>
-  <div id="agdp-configurator-mount">
-    <!-- AGDP Atelier widget is injected here by configurator.js -->
+  <div class="configurator-inner">
+    <div class="configurator-head">
+      <div class="configurator-eyebrow">Configurator</div>
+      <h2>Design your own piece.</h2>
+      <p>Choose a typology, generate a form, and download a print-ready file — sterling silver .925, made to order. No two seeds produce the same object.</p>
+    </div>
+    <div id="agdp-configurator-mount">
+      <!-- AGDP Atelier widget is injected here by configurator.js -->
+    </div>
   </div>
 </section>
 
