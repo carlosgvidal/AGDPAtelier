@@ -2593,17 +2593,14 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
   let { V, F } = manifoldToMeshHelper(manifold);
-  // Manifold-3d is a WASM module: it does not garbage-collect like normal
-  // JS objects. Every top-level manifold produced by a generation attempt
-  // (successful or discarded by the retry loop) must be explicitly freed
-  // here, once its mesh data (V/F) has been extracted, or its memory is
-  // never reclaimed for the lifetime of the page — across many
-  // generations this silently exhausts the WASM heap until the engine
-  // stops working. `manifold` itself is never referenced again after this
-  // point in this function, so deleting it here is always safe.
-  if (manifold && typeof manifold.delete === 'function') {
-    try { manifold.delete(); } catch (e) { /* already freed or not disposable; ignore */ }
-  }
+  // NOTE: the explicit manifold.delete() call that lived here has been
+  // reverted. It is the leading suspect for a "handle[key]" WASM
+  // use-after-free crash reported specifically on cufflinks (which reuse
+  // the same `unit` object twice — once per side of the pair — inside
+  // makeCufflinksManifold). A crash that blocks generation entirely is
+  // worse than the memory-leak this call was meant to mitigate; the leak
+  // fix will be reintroduced once the reuse pattern it interacts badly
+  // with is confirmed and handled correctly.
   const connected = removeFloatingComponents(V, F, p.type==='cufflinks'?2:1);
   V = connected.V; F = connected.F;
   if(connected.discarded && connected.discarded.length){
