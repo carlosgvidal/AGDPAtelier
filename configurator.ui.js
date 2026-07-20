@@ -174,7 +174,7 @@
 generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
-      statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
+      statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'No se pudo generar una pieza válida tras {n} intentos', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
       orderConfirmed:'Archivo STL descargado',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
@@ -200,7 +200,7 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
 generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
-      statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
+      statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Could not generate a valid piece after {n} attempts', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
       orderConfirmed:'STL file downloaded',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
@@ -518,6 +518,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     let acceptedParams=null;
     let acceptedSeed=null;
     let terminalEngineError=null;
+    let lastFailureReason=null;
 
     for(let attempt=0;attempt<AGDP_MAX_GEOMETRY_ATTEMPTS;attempt++){
       if(serial!==generationSerial)return;
@@ -550,6 +551,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
           seed:candidateSeed,
           warning:candidateMesh&&candidateMesh.audit&&candidateMesh.audit.warning
         });
+        lastFailureReason=(candidateMesh&&candidateMesh.audit&&candidateMesh.audit.warning)||lastFailureReason;
       }catch(e){
         console.warn('AGDP: intento de geometría descartado',{
           attempt:attempt+1,type:selectedType,seed:candidateSeed,error:e
@@ -557,6 +559,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         const message=String(e&&e.message||'');
         const engineFailure=/fetch|network|import|module|failed to load|loading chunk|webassembly|wasm/i.test(message);
         if(engineFailure){terminalEngineError=e;break;}
+        lastFailureReason=message||String(e)||lastFailureReason;
       }
 
       if(attempt<AGDP_MAX_GEOMETRY_ATTEMPTS-1){
@@ -568,9 +571,14 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
 
     if(!acceptedMesh){
       console.error('AGDP: no se obtuvo una geometría válida tras los reintentos',{
-        type:selectedType,attempts:AGDP_MAX_GEOMETRY_ATTEMPTS,error:terminalEngineError
+        type:selectedType,attempts:AGDP_MAX_GEOMETRY_ATTEMPTS,error:terminalEngineError,lastFailureReason
       });
-      statusBadge.textContent=terminalEngineError?t('statusEngineError'):t('statusUnavailable');
+      if(terminalEngineError){
+        statusBadge.textContent=t('statusEngineError');
+      }else{
+        const prefix=t('statusFailedAfterRetries').replace('{n}',String(AGDP_MAX_GEOMETRY_ATTEMPTS));
+        statusBadge.textContent=lastFailureReason?(prefix+' — '+lastFailureReason):prefix;
+      }
       statusBadge.className='agdp-status-badge';
       orderBtn.disabled=true;
       return;
