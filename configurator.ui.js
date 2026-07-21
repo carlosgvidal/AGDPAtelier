@@ -403,21 +403,23 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
   let generationSerial=0;
   const AGDP_MAX_GEOMETRY_ATTEMPTS=16;
   // Even with careful WASM object disposal, memory in a long-lived tab
-  // still climbs generation over generation (verified: rings settle to a
-  // modest, roughly-stable increment per piece, but heavier typologies
-  // like cufflinks or chokers still add up over many consecutive
-  // generations in the same session). Rather than let that eventually
-  // surface as an unpredictable crash, a periodic clean reload is a
-  // legitimate, common defensive pattern for WASM-heavy single-page
-  // sessions. The user's current typology selection is preserved across
-  // the reload so it reads as routine, not as an error.
+  // still climbs generation over generation. Choker and headpiece cost
+  // far more per attempt than other types (confirmed via Node.js harness:
+  // ~330-470MB for a successful segmented generation, vs ~40-70MB for
+  // most other types, and a single click's internal retry loop can pay
+  // that cost several times before finding an acceptable seed) -- so the
+  // safe threshold before a refresh for these two types is much lower
+  // than for everything else.
   const AGDP_REFRESH_AFTER_N_GENERATIONS=6;
+  const AGDP_REFRESH_AFTER_N_GENERATIONS_HEAVY=2;
   function agdpGenerationCount(){ return Number(sessionStorage.getItem('agdp_gen_count')||'0'); }
   function agdpBumpGenerationCount(){
     try{ sessionStorage.setItem('agdp_gen_count', String(agdpGenerationCount()+1)); }catch(e){}
   }
   function agdpMaybeRefreshEngine(){
-    if(agdpGenerationCount()<AGDP_REFRESH_AFTER_N_GENERATIONS) return false;
+    const isHeavyType = (selectedType==='choker' || selectedType==='headpiece');
+    const threshold = isHeavyType ? AGDP_REFRESH_AFTER_N_GENERATIONS_HEAVY : AGDP_REFRESH_AFTER_N_GENERATIONS;
+    if(agdpGenerationCount()<threshold) return false;
     try{
       sessionStorage.setItem('agdp_gen_count','0');
       if(selectedType) sessionStorage.setItem('agdp_restore_type', selectedType);

@@ -1191,7 +1191,16 @@ async function buildBandGeometryManifold(wasm, p, opts) {
           v[0]=newX; v[1]=newY;
         }
       }
+      // Same leak pattern found and fixed in applyChokerErgonomics/
+      // applyHeadErgonomics: the old bodyManifold is pure-JS-deformed
+      // above (no WASM calls), then rebuilt from scratch below -- the
+      // old one must be explicitly freed or it leaks every time this
+      // mutation mode is picked, for ANY typology (not just choker/
+      // headpiece). Only disposed after a successful rebuild, so the
+      // catch below still sees a valid bodyManifold if this throws.
+      const oldBody = bodyManifold;
       bodyManifold=meshToManifold(wasm, mesh.V, mesh.F);
+      try{ oldBody.delete(); }catch(e){}
     }catch(err){ console.warn('AGDP: compresión omitida por seguridad topológica',err); }
   }
 
@@ -1938,7 +1947,13 @@ async function makeCufflinksManifold(wasm, p) {
       const mutated=unionAll(wasm,mutationParts);
       const mm=manifoldToMesh(mutated);
       const ma=validate(mm.V,mm.F,{type:'cufflink-mutated-unit',minFeature,printProfile:p.printProfile||'silverPolished'});
-      if(ma.manifoldOK&&ma.components===1&&ma.finite)unit=mutated;
+      if(ma.manifoldOK&&ma.components===1&&ma.finite){
+        const oldUnit=unit;
+        unit=mutated;
+        try{ oldUnit.delete(); }catch(e){}
+      } else {
+        try{ mutated.delete(); }catch(e){}
+      }
     }
   }
 
@@ -2077,6 +2092,14 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
 function applyChokerErgonomics(wasm, manifold, p){
   const mesh=manifoldToMesh(manifold);
   if(!mesh.V.length)return manifold;
+  // The rest of this function is pure JS vertex-array math -- no WASM
+  // calls until the final meshToManifold rebuild. The input `manifold`
+  // is never touched again after the read above, so it can be disposed
+  // here; leaving it undisposed leaked the full decorated choker/
+  // headpiece mesh on every single generation attempt (confirmed via
+  // Node.js harness as a major contributor to the memory pressure
+  // reported live).
+  try{ manifold.delete(); }catch(e){}
 
   // Shared cervical fit field for the whole neck family. The interior fit
   // follows a low torque seat: broad, comparatively flat in front, rising
@@ -2160,6 +2183,7 @@ function applyChokerErgonomics(wasm, manifold, p){
 function applyHeadErgonomics(wasm, manifold, p){
   const mesh=manifoldToMesh(manifold);
   if(!mesh.V.length)return manifold;
+  try{ manifold.delete(); }catch(e){}
 
   const ratio=clamp(p.headDepthRatio||1.18,1.05,1.38);
   const frontHeight=Math.max(1,p.bandWidth||48);
