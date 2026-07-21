@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A GROSS DOMESTIC PRODUCT.® — Privacy Policy</title>
+<meta name="description" content="Privacy Policy for A GROSS DOMESTIC PRODUCT.">
+<link rel="stylesheet" href="agdp-site.css">
+</head>
+<body>
+
+<header class="site-header">
+  <nav class="site-nav" aria-label="Primary">
+    <div class="brand-item">
+      <a href="index.html#top" class="brand">
+        <img src="AGDPLogo.png" alt="A Gross Domestic Product">
+      </a>
+    </div>
+
+    <button class="nav-toggle" id="navToggle" type="button" aria-controls="navLinks" aria-expanded="false">☰</button>
+
+    <div class="nav-links" id="navLinks">
+      <div class="nav-item"><a href="index.html#configurator">Configurator</a></div>
+      <div class="nav-item">
+        <button type="button" data-dropdown>Singular Works <span class="caret">▾</span></button>
+        <div class="dropdown">
+          <a href="#">(A) Symmetry</a>
+          <a href="#">Link</a>
+          <a href="#">Cyprus</a>
+          <a href="#">Junction</a>
+          <a href="#">Bespoke</a>
+        </div>
+      </div>
+      <div class="nav-item"><a href="manifesto.html">Manifesto</a></div>
+      <div class="nav-item"><a class="nav-cta" href="commissions.html">Commissions</a></div>
+    </div>
+  </nav>
+</header>
+
+<main class="doc-hero" id="top">
+  <div class="doc-eyebrow">Legal</div>
+  <h1>Privacy <strong>Policy.</strong></h1>
+  <p>This Privacy Policy explains how A GROSS DOMESTIC PRODUCT collects, uses and protects information obtained through this website.</p>
+</main>
+
+<section class="statement-section">
+<div class="index-mark">01</div>
+<div>
+<h2>General Information</h2>
+<p>At <strong>A GROSS DOMESTIC PRODUCT</strong>, accessible from http://www.agrossdomesticproduct.com, protecting the privacy of our visitors is one of our principal priorities. This Privacy Policy applies exclusively to information collected through this website and to our online activities.</p>
+</div>
+</section>
+
+<section class="statement-section"><div class="index-mark">02</div><div>
+<h2>Consent</h2>
+<p>By using this website, you consent to this Privacy Policy and agree to its terms.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">03</div><div>
+<h2>Information We Collect</h2>
+<p>We may collect personal information that you voluntarily provide, including your name, company, address, email address, telephone number, message contents, attachments and any other information submitted through contact forms, email or account registration.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">04</div><div>
+<h2>How We Use Information</h2>
+<p>Information may be used to operate and improve the website, personalize the user experience, analyze usage, develop products and services, communicate with users, provide customer support, send emails, marketing communications and prevent fraud.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">05</div><div>
+<h2>Log Files</h2>
+<p>Like most websites, we use server log files. These may include IP addresses, browser type, ISP, timestamps, referring and exit pages, click counts and related technical information used for analytics, administration and security.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">06</div><div>
+<h2>Cookies and Advertising</h2>
+<p>Third-party advertising partners may use cookies, JavaScript or web beacons. These technologies are governed by their own privacy policies. You may disable cookies through your browser settings. A GROSS DOMESTIC PRODUCT does not control third-party cookies.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">07</div><div>
+<h2>CCPA Rights</h2>
+<p>California consumers may request disclosure, deletion or restriction regarding personal information as provided under the California Consumer Privacy Act. Requests will be answered within one month.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">08</div><div>
+<h2>GDPR Rights</h2>
+<p>You have the right to access, rectify, erase, restrict processing, object to processing and request portability of your personal data, subject to applicable law. Requests are normally answered within one month.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">09</div><div>
+<h2>Children's Information</h2>
+<p>We do not knowingly collect personally identifiable information from children under 13 years of age. If such information has been provided, please contact us so that it can be removed promptly.</p>
+</div></section>
+
+<section class="statement-section"><div class="index-mark">10</div><div>
+<h2>Contact</h2>
+<p>If you have questions about this Privacy Policy or wish to exercise your privacy rights, please contact the studio at <strong>info@agrossdomesticproduct.com</strong>.</p>
+</div></section>
+
+<footer class="site-footer">
+<div class="footer-meta">
+<div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
+<div class="legal-line">Structural Objects in Sterling Silver<br>© 2026. All rights reserved.</div>
+</div>
+<nav class="footer-links" aria-label="Footer">
+<a href="index.html#configurator">Configurator</a>
+<a href="#">Singular Works</a>
+<a href="manifesto.html">Manifesto</a>
+<a href="commissions.html">Commissions</a>
+</nav>
+</footer>
+
+<script>
+(() => {
+const navToggle=document.getElementById('navToggle');
+const navLinks=document.getElementById('navLinks');
+if(navToggle){
+navToggle.addEventListener('click',()=>{
+const open=navLinks.classList.toggle('open');
+navToggle.setAttribute('aria-expanded',String(open));
+});
+document.querySelectorAll('[data-dropdown]').forEach(btn=>{
+btn.addEventListener('click',()=>{
+if(window.innerWidth>860)return;
+btn.closest('.nav-item').classList.toggle('open');
+});
+});
+}
+})();
+</script>
+
+</body>
+</html>
