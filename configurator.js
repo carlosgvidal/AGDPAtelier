@@ -75,7 +75,8 @@
 #${MOUNT_ID} .agdp-generate-btn:disabled{opacity:.4;cursor:default;}
 #${MOUNT_ID} .agdp-order-btn{border:1.5px solid var(--agdp-dark);background:transparent;color:var(--agdp-dark);font-family:var(--font-sans);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:13px;padding:14px;border-radius:0;cursor:pointer;}
 #${MOUNT_ID} .agdp-order-btn:disabled{opacity:.3;cursor:default;}
-#${MOUNT_ID} .agdp-stage{position:relative;background:#fff;display:flex;align-items:center;justify-content:center;min-height:0;}
+#${MOUNT_ID} .agdp-stage-wrap{position:relative;min-height:0;display:flex;flex-direction:column;background:#fff;}
+#${MOUNT_ID} .agdp-stage{position:relative;flex:1;min-height:0;background:#fff;display:flex;align-items:center;justify-content:center;}
 #${MOUNT_ID} .agdp-stage canvas{width:100%;height:100%;display:block;}
 #${MOUNT_ID} .agdp-status{position:absolute;top:20px;left:20px;right:20px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;}
 #${MOUNT_ID} .agdp-status-badge{font-family:var(--font-sans);font-size:12px;background:var(--agdp-cream);border:1px solid rgba(79,58,39,.2);border-radius:0;padding:8px 16px;color:var(--agdp-dark);pointer-events:auto;}
@@ -84,14 +85,14 @@
 #${MOUNT_ID} .agdp-status-badge.thinking::before{content:'';width:10px;height:10px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:0;animation:agdpThink .8s linear infinite;}
 @keyframes agdpThink{to{transform:rotate(360deg)}}
 #${MOUNT_ID} .agdp-status-badge.ready{color:#3a6b3a;}
-#${MOUNT_ID} .agdp-dims-panel{grid-column:2;grid-row:1;align-self:end;justify-self:start;margin:20px;background:var(--agdp-cream);border:1px solid rgba(79,58,39,.2);border-radius:0;padding:12px 16px;font-family:var(--font-sans);font-size:12.5px;line-height:1.6;color:var(--agdp-dark);max-width:260px;pointer-events:none;}
+#${MOUNT_ID} .agdp-dims-panel{position:absolute;left:20px;bottom:20px;background:var(--agdp-cream);border:1px solid rgba(79,58,39,.2);border-radius:0;padding:12px 16px;font-family:var(--font-sans);font-size:12.5px;line-height:1.6;color:var(--agdp-dark);max-width:260px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-title{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--agdp-taupe);font-weight:700;margin-bottom:4px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-row{display:flex;justify-content:space-between;gap:16px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-val{font-weight:700;}
 #${MOUNT_ID} .agdp-empty-state{font-family:var(--font-sans);color:var(--agdp-taupe);text-align:center;padding:40px;max-width:340px;font-size:14px;line-height:1.5;}
 @media(max-width:820px){
   #${MOUNT_ID} .agdp-body{grid-template-columns:1fr;grid-template-rows:auto auto;min-height:auto;height:100%;overflow-y:auto;}
-  #${MOUNT_ID} .agdp-stage{
+  #${MOUNT_ID} .agdp-stage-wrap{
     position:sticky;top:0;z-index:5;
     min-height:44vh;max-height:48vh;
     order:-1;
@@ -104,7 +105,7 @@
     padding:18px 16px 32px;
   }
   #${MOUNT_ID} .agdp-dims-panel{
-    grid-column:1;grid-row:auto;align-self:auto;justify-self:auto;
+    position:static;
     order:0;
     margin:12px 16px 0;max-width:none;
     pointer-events:auto;
@@ -129,7 +130,6 @@
   <div class="agdp-body">
     <div class="agdp-form">
       <div>
-        <div class="agdp-step-label" data-i18n="step1">Tipo de pieza</div>
         <div class="agdp-type-grid" id="agdpTypeGrid">
           <button class="agdp-type-btn" data-type="ring" data-i18n="typeRing">Anillo</button>
           <button class="agdp-type-btn" data-type="pendant" data-i18n="typePendant">Colgante</button>
@@ -142,7 +142,6 @@
         </div>
       </div>
       <div id="agdpSizeWrap" style="display:none">
-        <div class="agdp-step-label" data-i18n="stepSize">Talla</div>
         <select class="agdp-select" id="agdpSizeSelect"></select>
         <div class="agdp-hint" id="agdpSizeHint" style="margin-top:6px"></div>
       </div>
@@ -167,20 +166,21 @@
       </div>
       <button class="agdp-generate-btn" id="agdpGenerateBtn" disabled data-i18n="generateBtn">Generar pieza</button>
       <div>
-        <div class="agdp-step-label" data-i18n="variantLabel">Variación</div>
         <button class="agdp-seed-btn agdp-variant-btn" id="agdpNewSeedBtn" type="button" data-i18n="newSeedBtn">Generar otra variante</button>
         <div class="agdp-hint" data-i18n="variantHint" style="margin-top:6px">Explora otra configuración formal de la pieza.</div>
       </div>
       <button class="agdp-order-btn" id="agdpOrderBtn" disabled data-i18n="orderBtn">Descargar STL para impresión</button>
     </div>
-    <div class="agdp-stage">
-      <canvas id="view" aria-label="Visualización tridimensional de la pieza"></canvas>
-      <div class="agdp-empty-state" id="agdpEmptyState" data-i18n="emptyState">Elige un tipo de pieza para generar tu diseño aquí.</div>
-      <div class="agdp-status" id="agdpStatusWrap" style="display:none">
-        <div class="agdp-status-badge" id="agdpStatusBadge">—</div>
+    <div class="agdp-stage-wrap">
+      <div class="agdp-stage">
+        <canvas id="view" aria-label="Visualización tridimensional de la pieza"></canvas>
+        <div class="agdp-empty-state" id="agdpEmptyState" data-i18n="emptyState">Elige un tipo de pieza para generar tu diseño aquí.</div>
+        <div class="agdp-status" id="agdpStatusWrap" style="display:none">
+          <div class="agdp-status-badge" id="agdpStatusBadge">—</div>
+        </div>
       </div>
+      <div class="agdp-dims-panel" id="agdpDimsPanel" style="display:none"></div>
     </div>
-    <div class="agdp-dims-panel" id="agdpDimsPanel" style="display:none"></div>
   </div>
 </div>`;
 
