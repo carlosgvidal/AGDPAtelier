@@ -2966,6 +2966,20 @@ function ensureWasm(){
   }
   return _wasmReady;
 }
+// Dropping this reference is what actually reclaims the accumulated WASM
+// linear memory: every leaked (or simply not-yet-disposed) Manifold
+// object lives inside the WASM module instance's own heap, not in normal
+// JS-tracked memory. Once nothing references the old module (this is the
+// only place that held it), the browser's own garbage collector frees
+// the entire heap in one shot -- far more effective than continuing to
+// track down individual .delete() calls. The next ensureWasm() call
+// after this creates a genuinely fresh module with a clean heap. Used by
+// ui.js's soft-reset instead of a full window.location.reload(), so the
+// safety net resets the engine without leaving the page (nav, hero, the
+// visitor's place on the site) at all.
+window.AGDP_resetWasmModule = function(){
+  _wasmReady = null;
+};
 window.makeMeshManifold = async function(inputParams){
   const wasm = await ensureWasm();
   return makeMeshManifoldEntry(wasm, inputParams);

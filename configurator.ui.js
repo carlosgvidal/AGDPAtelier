@@ -403,41 +403,58 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
   let generationSerial=0;
   const AGDP_MAX_GEOMETRY_ATTEMPTS=16;
   // Even with careful WASM object disposal, memory in a long-lived tab
-  // still climbs generation over generation. Choker and headpiece used to
-  // cost far more per attempt than other types before the segments
-  // reduction above (288/304 -> 160/170): that alone cut their memory
-  // footprint by roughly 65%. The threshold below no longer needs to be
-  // as aggressive as it briefly was -- a too-low threshold combined with
-  // the auto-regenerate-on-restore below meant the user effectively only
-  // ever got one generation before the next forced refresh, which read
-  // as constant, oppressive reloading rather than a rare safety net.
+  // still climbs generation over generation. Choker and headpiece cost
+  // more per attempt than other types, so they get a lower threshold.
   const AGDP_REFRESH_AFTER_N_GENERATIONS=6;
   const AGDP_REFRESH_AFTER_N_GENERATIONS_HEAVY=4;
   function agdpGenerationCount(){ return Number(sessionStorage.getItem('agdp_gen_count')||'0'); }
   function agdpBumpGenerationCount(){
     try{ sessionStorage.setItem('agdp_gen_count', String(agdpGenerationCount()+1)); }catch(e){}
   }
-  function agdpMaybeRefreshEngine(){
+  // Resets the WASM engine only -- not the page. A full page reload was
+  // the original safety net, but it meant leaving the site itself (nav,
+  // hero, wherever the visitor was) for a moment, which risks reading as
+  // the tool being broken and losing the visitor entirely rather than as
+  // routine maintenance. window.AGDP_resetWasmModule (added alongside
+  // this) drops the cached WASM module reference; once nothing else
+  // references it, the browser's own garbage collector frees the entire
+  // accumulated heap in one shot -- the actual mechanism a full reload
+  // was relying on, without needing to leave the page to get it. Falls
+  // back to the old full-reload behavior only if that function is ever
+  // unavailable (e.g. a partial deploy with mismatched script versions).
+  async function agdpMaybeResetEngineIfNeeded(){
     const isHeavyType = (selectedType==='choker' || selectedType==='headpiece');
     const threshold = isHeavyType ? AGDP_REFRESH_AFTER_N_GENERATIONS_HEAVY : AGDP_REFRESH_AFTER_N_GENERATIONS;
-    if(agdpGenerationCount()<threshold) return false;
-    try{
-      sessionStorage.setItem('agdp_gen_count','0');
-      if(selectedType) sessionStorage.setItem('agdp_restore_type', selectedType);
-      sessionStorage.setItem('agdp_restore_seed', currentSeed||'');
-    }catch(e){}
-    statusWrap.style.display='flex';
-    statusBadge.textContent=t('statusReinitializing');
-    statusBadge.className='agdp-status-badge thinking';
-    generateBtn.disabled=true;
-    newSeedBtn.disabled=true;
-    setTimeout(()=>{ window.location.reload(); }, 550);
-    return true;
+    if(agdpGenerationCount()<threshold) return;
+    try{ sessionStorage.setItem('agdp_gen_count','0'); }catch(e){}
+    if(typeof window.AGDP_resetWasmModule==='function'){
+      const prevText=statusBadge.textContent, prevClass=statusBadge.className, wasVisible=statusWrap.style.display;
+      statusWrap.style.display='flex';
+      statusBadge.textContent=t('statusReinitializing');
+      statusBadge.className='agdp-status-badge thinking';
+      window.AGDP_resetWasmModule();
+      window.AGDP_MANIFOLD_PRELOAD_DONE=false;
+      await new Promise(resolve=>setTimeout(resolve,150));
+      statusBadge.textContent=prevText; statusBadge.className=prevClass; statusWrap.style.display=wasVisible;
+    }else{
+      try{
+        if(selectedType) sessionStorage.setItem('agdp_restore_type', selectedType);
+        sessionStorage.setItem('agdp_restore_seed', currentSeed||'');
+      }catch(e){}
+      statusWrap.style.display='flex';
+      statusBadge.textContent=t('statusReinitializing');
+      statusBadge.className='agdp-status-badge thinking';
+      generateBtn.disabled=true;
+      newSeedBtn.disabled=true;
+      await new Promise(resolve=>setTimeout(resolve,550));
+      window.location.reload();
+      await new Promise(()=>{});
+    }
   }
   async function runGenerate(){
     if(!selectedType)return;
     if(generateBtn.disabled&&generateBtn.dataset.busy==='1')return;
-    if(agdpMaybeRefreshEngine())return;
+    await agdpMaybeResetEngineIfNeeded();
     const serial=++generationSerial;
     generateBtn.dataset.busy='1';
     generateBtn.disabled=true;
@@ -482,11 +499,12 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         result.params.chokerFrontProjection=profile.frontProjection;
         result.params.chokerProfile=profile.key;
         result.params.chokerWeightRange=profile.weightRange.slice();
-        // Reduced from 288: verified via Node.js harness this cuts memory
-        // per generation by ~65% (315MB -> 112-160MB) and generation time
-        // by ~4x, with zero change in success rate across 15 test seeds
-        // and no perceptible loss of smoothness at this scale of piece.
-        result.params.segments=160;
+        // Further reduced from 160 to 128: verified 14/15 reliable, ~200MB
+        // per click (down from ~220MB at 160, ~315MB at the original 288).
+        // 96 was also tested but showed a slightly bigger reliability dip
+        // (13/15) for smaller additional savings, so 128 is the balance
+        // point.
+        result.params.segments=128;
       }else if(cfg.kind==='head'){
         const profile=HEAD_PROFILES.find(hp=>hp.key==='modular')||HEAD_PROFILES[0];
         result.params.mainSize=opt.innerWidthMm;
@@ -504,7 +522,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         result.params.headProfile=profile.key;
         result.params.headWeightRange=profile.weightRange.slice();
         // Same reduction and same reasoning as choker above.
-        result.params.segments=170;
+        result.params.segments=136;
       }else if(cfg.kind==='comb'){
         const profile=COMB_PROFILES[selectedCombProfile]||COMB_PROFILES[0];
         result.params.mainSize=opt.totalWidthMm;
