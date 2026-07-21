@@ -41,6 +41,38 @@ _renderer.outputColorSpace = THREE.SRGBColorSpace;
 const _ambientLight = new THREE.AmbientLight(0xffffff, 0.16);
 _scene.add(_ambientLight);
 
+// Key/fill lighting per studio spec: key at 45 deg to the left of camera,
+// fill at 135 deg to the right at half intensity. Added as children of
+// the camera (not the scene) so they hold their angle relative to the
+// VIEW as the user orbits the piece with OrbitControls -- a photographer's
+// softboxes don't move as the subject turns on a turntable, and this is
+// the standard technique for reproducing that in an interactive viewer.
+const _keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+_keyLight.position.set(Math.sin(THREE.MathUtils.degToRad(45)), 0.55, Math.cos(THREE.MathUtils.degToRad(45)));
+_camera.add(_keyLight);
+const _fillLight = new THREE.DirectionalLight(0xffffff, 0.68);
+_fillLight.position.set(Math.sin(THREE.MathUtils.degToRad(135)), 0.35, Math.cos(THREE.MathUtils.degToRad(135)));
+_camera.add(_fillLight);
+_scene.add(_camera);
+
+// Ground plane: invisible except where it catches a shadow, per spec
+// ("10% opacity contact shadow"). ShadowMaterial is built for exactly
+// this -- fully transparent except in shadowed areas.
+_renderer.shadowMap.enabled = true;
+_renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+_keyLight.castShadow = true;
+_keyLight.shadow.mapSize.set(1024, 1024);
+_keyLight.shadow.camera.near = 0.1;
+_keyLight.shadow.camera.far = 50;
+_keyLight.shadow.bias = -0.001;
+const _groundPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.ShadowMaterial({ opacity: 0.10 })
+);
+_groundPlane.rotation.x = -Math.PI / 2;
+_groundPlane.receiveShadow = true;
+_scene.add(_groundPlane);
+
 function createLightTentEnvironment(renderer){
   const envScene = new THREE.Scene();
   const white = new THREE.MeshBasicMaterial({ color: 0xf7f7f7, side: THREE.DoubleSide });
@@ -187,54 +219,69 @@ let _mesh3d = null;
 // Initial product-presentation views. These transforms affect only the
 // WebGL display: the generated mesh, audits and exported STL remain unchanged.
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
+  // Angles below are derived directly from a formal camera/lighting spec
+  // (pitch = elevation above horizontal, yaw = rotation around the
+  // vertical axis from the piece's own front-facing direction), via
+  // dy=sin(pitch), and the horizontal component split as
+  // dx=sin(yaw)*cos(pitch), dz=cos(yaw)*cos(pitch) for pieces whose
+  // front faces +Z (ring/pendant/cufflinks family), or with dx/dz
+  // swapped for pieces whose front faces +X (choker/headpiece, per the
+  // axis analysis done earlier for those two types specifically). Not
+  // visually verified in this environment (no WebGL rendering
+  // available) -- please check against real renders and describe any
+  // remaining gap.
   ring:Object.freeze({
-    // Second attempt, based on direct comparison against a reference
-    // photo: the previous fix (X-dominant) overcorrected into a nearly
-    // edge-on side view (confirmed via screenshot -- band profile with
-    // decorative balls seen from the flank, not the intended angle).
-    // The reference shows the ring's front decorative face nearly
-    // head-on with a steep elevated angle, NOT a hole-axis "tunnel"
-    // view and NOT a pure side profile. This keeps meaningful Z (to see
-    // the face design, like the original did) but adds strong Y
-    // elevation so the camera looks down onto the piece rather than
-    // levelly through the hole, with a modest X offset for a slight,
-    // natural 3/4 asymmetry. Still not visually verified here (no WebGL
-    // rendering in this environment) -- please compare directly against
-    // the reference photo again and describe the difference so the next
-    // adjustment can close the gap precisely.
-    objectEulerDeg:[0,0,-6], cameraDirection:[0.28,0.80,0.65], framing:1.15
+    // "Anillos" category: pitch 15-30 deg, yaw 30-45 deg (isometric 3/4,
+    // shank + setting + table all visible at once). Using the midpoint
+    // of each range: pitch 22, yaw 37.
+    objectEulerDeg:[0,0,-6], cameraDirection:[0.56,0.38,0.74], framing:1.15
   }),
   pendant:Object.freeze({
-    objectEulerDeg:[0,-7,0], cameraDirection:[-0.18,0.10,1], framing:1.17
+    // "Pendientes, Dijes y Collares" category: pitch 0-10 deg (near
+    // frontal), vertical hanging pose, exact symmetry. Using pitch 5,
+    // yaw near 0 (a touch of asymmetry only).
+    objectEulerDeg:[0,0,0], cameraDirection:[0.05,0.09,1.0], framing:1.17
   }),
   bangle:Object.freeze({
-    objectEulerDeg:[0,0,8], cameraDirection:[-0.72,0.28,1], framing:1.18
+    // Same "Anillos" logic as ring (built the same way, front faces
+    // +Z): pitch 22, yaw 40.
+    objectEulerDeg:[0,0,8], cameraDirection:[0.60,0.38,0.71], framing:1.18
   }),
   cuffBracelet:Object.freeze({
-    objectEulerDeg:[0,0,6], cameraDirection:[-0.78,0.30,1], framing:1.18
+    // Same as bangle, yaw 33 for slight visual distinction between the
+    // two typologies.
+    objectEulerDeg:[0,0,6], cameraDirection:[0.51,0.38,0.78], framing:1.18
   }),
   choker:Object.freeze({
-    // The collar's front (center of its arc, t=0 in the geometry) sits
-    // along +X, not +Z -- the previous cameraDirection looked at it
-    // almost dead-on from +Z, which shows more of an edge/side view than
-    // the front. Adjusted to look from the front, elevated slightly for
-    // a jewelry-catalog-style 3/4 angle. Not visually verified here (no
-    // WebGL rendering available in this environment) -- please check and
-    // describe what you see if it still isn't right, so the next
-    // adjustment can be precise rather than another guess.
-    objectEulerDeg:[-10,0,0], cameraDirection:[1,0.42,0.62], framing:1.18
+    // Treated as "Collares" (necklace) category: pitch 0-10 deg, near
+    // frontal, symmetric "V/U" of the open collar toward the viewer.
+    // This type's front faces +X, not +Z (established earlier from the
+    // construction code: t=0, the center of the arc, sits along +X) --
+    // so pitch maps to dy as usual but the "frontal" component is dx,
+    // not dz. Using pitch 6.
+    objectEulerDeg:[-10,0,0], cameraDirection:[1,0.11,0.15], framing:1.18
   }),
   headpiece:Object.freeze({
-    // Same axis correction as choker above, adjusted for a tiara's
-    // higher crown and being viewed as if worn (front-facing, slightly
-    // from above).
-    objectEulerDeg:[-14,0,0], cameraDirection:[1,0.48,0.58], framing:1.20
+    // Same "Collares" logic and same +X front axis as choker, pitch 8
+    // (slightly more presence, appropriate for a tiara's higher crown).
+    objectEulerDeg:[-14,0,0], cameraDirection:[1,0.14,0.15], framing:1.20
   }),
   cufflinks:Object.freeze({
-    objectEulerDeg:[-10,-8,0], cameraDirection:[-0.45,0.28,1], framing:1.20
+    // No exact category in the spec for a small emblem/plaque piece;
+    // treated like the pendant/dije category (front faces +Z, same
+    // construction lineage via the shared band builder) but with a
+    // little more yaw (15 deg) to show some depth/dimensionality, since
+    // cufflinks are viewed more like a small object than a hanging,
+    // perfectly symmetric pendant. Pitch 8.
+    objectEulerDeg:[0,-8,0], cameraDirection:[0.26,0.14,0.96], framing:1.20
   }),
   earCuff:Object.freeze({
-    objectEulerDeg:[0,0,-10], cameraDirection:[-0.58,0.24,1], framing:1.18
+    // "Aretes / Pendientes cortos" category: pitch 10-15 deg, yaw 30 deg
+    // (the spec's paired left/right +-30 deg is for showing a matched
+    // pair together, which this tool doesn't render -- applying the same
+    // single-piece angle). Built the same way as ring (front faces +Z).
+    // Pitch 12.
+    objectEulerDeg:[0,0,-10], cameraDirection:[0.49,0.21,0.85], framing:1.18
   }),
   default:Object.freeze({
     objectEulerDeg:[0,0,0], cameraDirection:[0.42,0.30,1], framing:1.20
@@ -311,6 +358,7 @@ window.AGDP_setRenderMesh = function(nextMesh){
   }
   geometry.center();
   _mesh3d = new THREE.Mesh(geometry, _material);
+  _mesh3d.castShadow = true;
   const presentation=_presentationViewFor(nextMesh);
   const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
   _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
@@ -320,6 +368,10 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.computeBoundingSphere();
   const sphere=geometry.boundingSphere;
   const radius=Math.max(1,sphere?sphere.radius:10);
+  // Ground plane sits just below the piece's bounding sphere -- a safe
+  // lower bound regardless of the object's rotation, since nothing in
+  // the mesh can extend further than its own bounding radius from center.
+  _groundPlane.position.y = -radius * 1.02;
 
   _controls.target.set(0,0,0);
   const vFov=THREE.MathUtils.degToRad(_camera.fov);
