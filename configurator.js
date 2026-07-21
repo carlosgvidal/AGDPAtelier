@@ -85,7 +85,7 @@
 #${MOUNT_ID} .agdp-status-badge.thinking::before{content:'';width:10px;height:10px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:0;animation:agdpThink .8s linear infinite;}
 @keyframes agdpThink{to{transform:rotate(360deg)}}
 #${MOUNT_ID} .agdp-status-badge.ready{color:#3a6b3a;}
-#${MOUNT_ID} .agdp-dims-panel{position:absolute;left:20px;bottom:20px;background:var(--agdp-cream);border:1px solid rgba(79,58,39,.2);border-radius:0;padding:12px 16px;font-family:var(--font-sans);font-size:12.5px;line-height:1.6;color:var(--agdp-dark);max-width:260px;}
+#${MOUNT_ID} .agdp-dims-panel{margin-top:14px;background:var(--agdp-cream);border:1px solid rgba(79,58,39,.2);border-radius:0;padding:12px 16px;font-family:var(--font-sans);font-size:12.5px;line-height:1.6;color:var(--agdp-dark);}
 #${MOUNT_ID} .agdp-dims-panel .dims-title{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--agdp-taupe);font-weight:700;margin-bottom:4px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-row{display:flex;justify-content:space-between;gap:16px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-val{font-weight:700;}
@@ -103,12 +103,6 @@
     order:1;
     border-right:none;border-bottom:none;
     padding:18px 16px 32px;
-  }
-  #${MOUNT_ID} .agdp-dims-panel{
-    position:static;
-    order:0;
-    margin:12px 16px 0;max-width:none;
-    pointer-events:auto;
   }
 }
 #${MOUNT_ID} .agdp-stage #view{width:100%;height:100%;display:none;background:#fff;touch-action:none;}
@@ -170,6 +164,7 @@
         <div class="agdp-hint" data-i18n="variantHint" style="margin-top:6px">Explora otra configuración formal de la pieza.</div>
       </div>
       <button class="agdp-order-btn" id="agdpOrderBtn" disabled data-i18n="orderBtn">Descargar STL para impresión</button>
+      <div class="agdp-dims-panel" id="agdpDimsPanel" style="display:none"></div>
     </div>
     <div class="agdp-stage-wrap">
       <div class="agdp-stage">
@@ -179,7 +174,6 @@
           <div class="agdp-status-badge" id="agdpStatusBadge">—</div>
         </div>
       </div>
-      <div class="agdp-dims-panel" id="agdpDimsPanel" style="display:none"></div>
     </div>
   </div>
 </div>`;

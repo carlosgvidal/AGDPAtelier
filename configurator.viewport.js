@@ -188,7 +188,16 @@ let _mesh3d = null;
 // WebGL display: the generated mesh, audits and exported STL remain unchanged.
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    objectEulerDeg:[-18,0,-7], cameraDirection:[0.12,0.22,1], framing:1.15
+    // The ring is built around the Z axis (Z = the hole/finger axis). The
+    // previous cameraDirection was Z-dominant ([0.12,0.22,1]), which
+    // looks almost straight down the hole -- confirmed via screenshot,
+    // it read like looking into a tire, not a jewelry presentation shot.
+    // Swapped to X-dominant so the camera views the band's outer profile
+    // from the side instead, with a slight elevation and only a small Z
+    // component for a natural 3/4 angle -- not visually verified here
+    // (no WebGL rendering available in this environment), please check
+    // and describe what you see if it still isn't right.
+    objectEulerDeg:[6,0,-10], cameraDirection:[1,0.40,0.30], framing:1.15
   }),
   pendant:Object.freeze({
     objectEulerDeg:[0,-7,0], cameraDirection:[-0.18,0.10,1], framing:1.17
