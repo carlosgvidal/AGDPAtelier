@@ -107,9 +107,9 @@ img{display:block;max-width:100%;}
 }
 .hero-title{
   font-size:clamp(40px,6vw,68px);
-  line-height:1.04;font-weight:400;
+  line-height:.96;font-weight:700;
   color:var(--agdp-ink);
-  letter-spacing:-.01em;
+  letter-spacing:-.03em;
 }
 .hero-rule{width:52px;height:1px;background:var(--agdp-ink);opacity:.55;}
 .hero-sub{
@@ -134,6 +134,8 @@ img{display:block;max-width:100%;}
 .hero-strip .col{
   padding:26px 40px;font-size:13px;line-height:1.6;color:var(--agdp-dark);
 }
+.hero-strip .col strong{font-weight:700;color:var(--agdp-ink);}
+.hero-strip .col em{font-style:italic;}
 .hero-strip .col:not(:last-child){border-right:1px solid rgba(0,0,0,.08);}
 .hero-strip .col.legal{
   display:flex;align-items:center;justify-content:flex-end;text-align:right;
@@ -169,6 +171,8 @@ img{display:block;max-width:100%;}
 .configurator-head p{
   font-size:15px;line-height:1.6;color:var(--agdp-dark);max-width:480px;
 }
+.configurator-head p strong{font-weight:700;color:var(--agdp-ink);}
+.configurator-head p em{font-style:italic;}
 #agdp-configurator-mount{
   width:100%;
   height:min(85vh,860px);
@@ -185,7 +189,9 @@ img{display:block;max-width:100%;}
   padding:60px 40px 40px;
   display:flex;justify-content:space-between;flex-wrap:wrap;gap:30px;
 }
+.site-footer .footer-meta{display:flex;flex-direction:column;gap:8px;}
 .site-footer .brand-line{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.site-footer .legal-line{font-size:11px;line-height:1.5;color:var(--agdp-taupe);}
 .site-footer .footer-links{display:flex;gap:26px;flex-wrap:wrap;}
 .site-footer a{font-size:12px;letter-spacing:.04em;color:var(--agdp-taupe);}
 .site-footer a:hover{color:var(--agdp-ink);}
@@ -224,16 +230,10 @@ img{display:block;max-width:100%;}
 
 <!-- ============ NAV ============ -->
 <nav class="site-nav" aria-label="Primary">
-  <div class="nav-item brand-item">
+  <div class="brand-item">
     <a href="#top" class="brand">
       <img src="AGDPLogo.png" alt="A Gross Domestic Product"/>
     </a>
-    <div class="dropdown">
-      <a href="#">Texts</a>
-      <a href="#">Processes</a>
-      <a href="#">Materials</a>
-      <a href="#">Archive</a>
-    </div>
   </div>
 
   <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
@@ -268,9 +268,9 @@ img{display:block;max-width:100%;}
 <header class="hero" id="top">
   <div class="hero-bg"></div>
   <div class="hero-inner">
-    <h1 class="hero-title">Objects generated.<br/>Never repeated.</h1>
+    <h1 class="hero-title"><strong>Objects generated.</strong><br/><strong><em>Never repeated.</em></strong></h1>
     <div class="hero-rule"></div>
-    <p class="hero-sub">No object precedes its configuration. Existence begins at the point of execution.</p>
+    <p class="hero-sub">No object precedes its <strong>configuration</strong>. Existence begins at the point of <em>execution</em>.</p>
     <a class="hero-cta" href="#configurator">
       <span>Generate</span><span class="arrow">↓</span>
     </a>
@@ -278,10 +278,10 @@ img{display:block;max-width:100%;}
 </header>
 
 <div class="hero-strip">
-  <div class="col">Configuration precedes production.<br/>No object exists before its order.</div>
-  <div class="col">Computational precision.<br/>Metallurgical execution.</div>
-  <div class="col">Produced to order.<br/>Shipped upon completion.</div>
-  <div class="col legal">© A GROSS DOMESTIC PRODUCT. All rights reserved.</div>
+  <div class="col"><strong>Configuration</strong> precedes production.<br/>No object exists before its <em>order</em>.</div>
+  <div class="col"><strong>Computational precision.</strong><br/>Metallurgical <em>execution</em>.</div>
+  <div class="col">Produced <strong>to order.</strong><br/>Shipped upon <em>completion</em>.</div>
+  <div class="col"><strong>Finite operations.</strong><br/>Infinite <em>outcomes</em>.</div>
 </div>
 <div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
 
@@ -291,7 +291,7 @@ img{display:block;max-width:100%;}
     <div class="configurator-head">
       <div class="configurator-eyebrow">Configurator</div>
       <h2>Configure the Object.</h2>
-      <p>Select a typology. Generate a configuration. Export a print-ready file. Sterling silver .925, produced to order — no seed yields an identical object.</p>
+      <p>Select a <strong>typology</strong>. Generate a <strong>configuration</strong>. Export a print-ready file. Sterling silver .925, produced to order. <em>No seed yields an identical object.</em></p>
     </div>
     <div id="agdp-configurator-mount">
       <!-- AGDP Atelier widget is injected here by configurator.js -->
@@ -301,7 +301,10 @@ img{display:block;max-width:100%;}
 
 <!-- ============ FOOTER ============ -->
 <footer class="site-footer">
-  <div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
+  <div class="footer-meta">
+    <div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
+    <div class="legal-line">Structural Objects in Sterling Silver<br/>© 2026. All rights reserved.</div>
+  </div>
   <div class="footer-links">
     <a href="#configurator">Configurator</a>
     <a href="#">Singular Works</a>
