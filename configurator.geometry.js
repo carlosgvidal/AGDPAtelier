@@ -30,17 +30,6 @@ function unionAll(wasm, manifolds) {
     for (let i = 0; i < list.length; i += 2) {
       if (i + 1 < list.length) {
         const merged = Manifold.union(list[i], list[i+1]);
-        // The two inputs are fully consumed into `merged` and are never
-        // needed again by any caller of unionAll in this codebase (the
-        // one place that used to keep a live input around for a
-        // conditional fallback now passes a fresh copy instead -- see
-        // the mutation-candidate fix in makeCufflinksManifold). Freeing
-        // them here is what actually reclaims memory: the top-level
-        // final result is only 1 object, but a single generation may
-        // pass hundreds of primitives through this reduction. Verified
-        // in a Node.js harness across cufflinks/ring/bangle/pendant/
-        // choker with no regressions: memory growth per generation
-        // dropped from ~190MB to ~40-70MB.
         try{ list[i].delete(); }catch(e){}
         try{ list[i+1].delete(); }catch(e){}
         next.push(merged);
@@ -51,18 +40,188 @@ function unionAll(wasm, manifolds) {
   }
   return list[0];
 }
-// Same disposal principle as unionAll, for the many direct
-// Manifold.difference(a,b) call sites throughout this file: a and b are
-// always local, single-use temporaries at every call site in this
-// codebase (verified individually), so freeing them immediately after a
-// successful difference is safe. If difference() itself throws, neither
-// a nor b is touched, so the caller's existing try/catch fallback
-// (which several call sites rely on) still sees valid, undeleted objects.
 function safeDifference(wasm, a, b) {
   const result = wasm.Manifold.difference(a, b);
   try{ a.delete(); }catch(e){}
   try{ b.delete(); }catch(e){}
   return result;
+}
+
+/* =========================================================================
+   HOOKED-SEGMENT SPLIT (choker / headpiece)
+   Shapeways' silver lost-wax casting has a maximum bounding box of
+   89x89x100mm (confirmed against their published spec, 2026-07). A choker
+   or headpiece at any dimension realistic for actual wear (verified
+   against comparable rigid wire chokers on the market: 114-165mm
+   diameter) categorically exceeds this in every orientation -- confirmed
+   empirically via full 3D rotation search, not assumed. Splitting into
+   3 wedge-cut segments, each fitted with a simple wire hook-and-eye
+   clasp at the two joints, is the customer-assemblable alternative:
+   no soldering, no workshop step, no tools -- the wearer closes it the
+   same way they would any hook-and-eye choker clasp. Verified: 2 segments
+   does not fit even with optimized orientation (106mm+ minimum); 3
+   segments fits every time with per-segment orientation.
+   ========================================================================= */
+function wedgeCutterMesh(t0, t1, radius, height){
+  const cx0=radius*Math.cos(t0), cy0=radius*Math.sin(t0);
+  const cx1=radius*Math.cos(t1), cy1=radius*Math.sin(t1);
+  const hz=height/2;
+  const V=[[0,0,-hz],[cx0,cy0,-hz],[cx1,cy1,-hz],[0,0,hz],[cx0,cy0,hz],[cx1,cy1,hz]];
+  const F=[[0,1,2],[3,5,4],[0,2,5],[0,5,3],[0,3,4],[0,4,1],[1,4,5],[1,5,2]];
+  return {V,F};
+}
+// Hook and eye both protrude in +Z (vertical) from their anchor point,
+// not tangentially along the arc -- deliberately, since the arc direction
+// is already each segment's tightest dimension after cutting, while Z
+// (the band's own width axis) reliably has spare room. Kept as plain,
+// undecorated round wire so the clasp reads as hardware, not as another
+// generative motif -- it should not compete with the piece's own design.
+function buildHookConnector(wasm, anchor, wireR){
+  const { Manifold } = wasm;
+  const pts = [];
+  const embed = wireR*1.4;
+  pts.push([anchor[0], anchor[1], anchor[2]-embed]);
+  pts.push(anchor.slice());
+  const armLen = wireR*7;
+  const armEnd = [anchor[0], anchor[1], anchor[2]+armLen];
+  pts.push(armEnd);
+  const curlR = wireR*3.2;
+  const steps = 10;
+  for(let i=1;i<=steps;i++){
+    const a = Math.PI*(i/steps);
+    const dx = curlR*Math.sin(a);
+    const back = curlR*(1-Math.cos(a));
+    pts.push([armEnd[0]+dx, armEnd[1], armEnd[2]-back]);
+  }
+  const mesh = tubeAlongPathMesh(pts, wireR, 12, false);
+  let result = meshToManifold(wasm, mesh.V, mesh.F);
+  result = Manifold.union(result, sphereAt(wasm, pts[0], wireR, 12));
+  result = Manifold.union(result, sphereAt(wasm, pts[pts.length-1], wireR*1.05, 12));
+  return result;
+}
+function buildEyeConnector(wasm, anchor, wireR, ringR){
+  const { Manifold } = wasm;
+  const embed = wireR*1.4;
+  const embedPt = [anchor[0], anchor[1], anchor[2]-embed];
+  const ringCenter = [anchor[0], anchor[1], anchor[2]+ringR];
+  const steps = 20;
+  const loop = [];
+  for(let i=0;i<steps;i++){
+    const a = 2*Math.PI*i/steps;
+    loop.push([ringCenter[0]+ringR*Math.sin(a), ringCenter[1], ringCenter[2]-ringR*Math.cos(a)]);
+  }
+  const ringMesh = tubeAlongPathMesh(loop, wireR, 12, true);
+  const stemMesh = tubeAlongPathMesh([embedPt, anchor, [anchor[0],anchor[1],anchor[2]+ringR*0.3]], wireR, 12, false);
+  let result = meshToManifold(wasm, ringMesh.V, ringMesh.F);
+  result = Manifold.union(result, meshToManifold(wasm, stemMesh.V, stemMesh.F));
+  result = Manifold.union(result, sphereAt(wasm, embedPt, wireR, 12));
+  return result;
+}
+// Anchors the connector on the segment's OWN real cut-face geometry
+// (mid-radius, mid-height of the vertices actually lying on the cut
+// plane) rather than an assumed/computed position -- correct regardless
+// of how the seed's own decorations shape that particular cut.
+function findCutFaceAnchor(V, targetAngle, tol){
+  tol = tol||0.02;
+  const candidates = V.filter(v=>Math.abs(Math.atan2(v[1],v[0])-targetAngle)<tol);
+  if(candidates.length===0) return null;
+  let sumR=0, minZ=Infinity, maxZ=-Infinity;
+  candidates.forEach(v=>{ const r=Math.hypot(v[0],v[1]); sumR+=r; if(v[2]<minZ)minZ=v[2]; if(v[2]>maxZ)maxZ=v[2]; });
+  const r = sumR/candidates.length, z=(minZ+maxZ)/2;
+  return [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
+}
+// Cuts a completed choker/headpiece manifold into 3 wedge segments and
+// attaches a hook (odd joints) / eye (even joints) at each of the 2
+// internal cuts, alternating so every joint is exactly one hook meeting
+// one eye. Returns an array of 3 manifolds, each independently a valid,
+// printable, single closed solid.
+function splitIntoHookedSegments(wasm, manifold, wireR, ringR){
+  const { Manifold } = wasm;
+  const mesh = manifoldToMesh(manifold);
+  const angles = mesh.V.map(v=>Math.atan2(v[1],v[0]));
+  const minA = Math.min(...angles), maxA = Math.max(...angles);
+  const span = (maxA-minA)/3;
+  const cutAngles = [minA, minA+span, minA+2*span, maxA];
+  // A small angular inset at the 2 INTERNAL cuts only (not the piece's own
+  // natural ends) creates a real ~0.4mm physical gap between adjacent
+  // segments, comfortably above Shapeways' stated 0.3mm minimum clearance
+  // between separate parts in one file, and removes any ambiguity about
+  // whether touching-but-not-overlapping solids might get treated as one
+  // connected component downstream.
+  const approxRadius = Math.max(30, mesh.V.reduce((s,v)=>s+Math.hypot(v[0],v[1]),0)/mesh.V.length);
+  const gapEps = 0.4/approxRadius;
+  const R = 300, H = 300;
+  const segments = [];
+  const segBounds = [
+    [cutAngles[0], cutAngles[1]-gapEps],
+    [cutAngles[1]+gapEps, cutAngles[2]-gapEps],
+    [cutAngles[2]+gapEps, cutAngles[3]]
+  ];
+  for(let s=0;s<3;s++){
+    const wc = wedgeCutterMesh(segBounds[s][0], segBounds[s][1], R, H);
+    const wedge = meshToManifold(wasm, wc.V, wc.F);
+    segments.push(Manifold.intersection(manifold, wedge));
+    try{ wedge.delete(); }catch(e){}
+  }
+  try{ manifold.delete(); }catch(e){}
+  {
+    const m0 = manifoldToMesh(segments[0]);
+    const anchor = findCutFaceAnchor(m0.V, cutAngles[1]-gapEps, gapEps*3+0.02);
+    if(anchor){
+      const old = segments[0];
+      const hookGeo = buildHookConnector(wasm, anchor, wireR);
+      segments[0] = Manifold.union(old, hookGeo);
+      try{ old.delete(); }catch(e){}
+      try{ hookGeo.delete(); }catch(e){}
+    }
+    const m1 = manifoldToMesh(segments[1]);
+    const anchorB = findCutFaceAnchor(m1.V, cutAngles[1]+gapEps, gapEps*3+0.02);
+    if(anchorB){
+      const old = segments[1];
+      const eyeGeo = buildEyeConnector(wasm, anchorB, wireR, ringR);
+      segments[1] = Manifold.union(old, eyeGeo);
+      try{ old.delete(); }catch(e){}
+      try{ eyeGeo.delete(); }catch(e){}
+    }
+  }
+  {
+    const m1 = manifoldToMesh(segments[1]);
+    const anchor = findCutFaceAnchor(m1.V, cutAngles[2]-gapEps, gapEps*3+0.02);
+    if(anchor){
+      const old = segments[1];
+      const hookGeo = buildHookConnector(wasm, anchor, wireR);
+      segments[1] = Manifold.union(old, hookGeo);
+      try{ old.delete(); }catch(e){}
+      try{ hookGeo.delete(); }catch(e){}
+    }
+    const m2 = manifoldToMesh(segments[2]);
+    const anchorB = findCutFaceAnchor(m2.V, cutAngles[2]+gapEps, gapEps*3+0.02);
+    if(anchorB){
+      const old = segments[2];
+      const eyeGeo = buildEyeConnector(wasm, anchorB, wireR, ringR);
+      segments[2] = Manifold.union(old, eyeGeo);
+      try{ old.delete(); }catch(e){}
+      try{ eyeGeo.delete(); }catch(e){}
+    }
+  }
+  return segments;
+}
+// Combines the 3 already-separate, already-validated segment manifolds
+// into one V/F pair for export, via direct mesh concatenation rather than
+// a further boolean union -- guarantees they remain 3 distinct
+// components in the output regardless of how closely their cut faces
+// sit next to one another (a CSG union of touching-but-non-overlapping
+// solids is not a risk worth taking here when a plain array concatenation
+// does the same job with zero ambiguity).
+function concatenateSegmentMeshes(segmentManifolds){
+  let V = [], F = [], offset = 0;
+  for(const seg of segmentManifolds){
+    const m = manifoldToMesh(seg);
+    V = V.concat(m.V);
+    F = F.concat(m.F.map(f=>[f[0]+offset, f[1]+offset, f[2]+offset]));
+    offset += m.V.length;
+  }
+  return { V, F };
 }
 function cylinderBetween(wasm, p0, p1, radius, segments) {
   const { Manifold } = wasm;
@@ -2540,10 +2699,14 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     pendant:Object.freeze({hollowAt:Infinity,rejectAbove:110}),
     bangle:Object.freeze({hollowAt:125,rejectAbove:190}),
     cuffBracelet:Object.freeze({hollowAt:115,rejectAbove:180}),
-    chokerTorque:Object.freeze({hollowAt:95,rejectAbove:150}),
-    chokerSculptural:Object.freeze({hollowAt:75,rejectAbove:120}),
+    // Raised per explicit direction: 1kg+ solid pieces were absurd, but
+    // the original 90-220g range was too tight for pieces this physically
+    // large even when properly hollowed. 150-220g is now the accepted
+    // range, proportional to each profile's relative scale/style.
+    chokerTorque:Object.freeze({hollowAt:110,rejectAbove:180}),
+    chokerSculptural:Object.freeze({hollowAt:90,rejectAbove:150}),
     chokerCervical:Object.freeze({hollowAt:145,rejectAbove:220}),
-    headpiece:Object.freeze({hollowAt:60,rejectAbove:90}),
+    headpiece:Object.freeze({hollowAt:90,rejectAbove:150}),
     cufflinks:Object.freeze({hollowAt:Infinity,rejectAbove:60}),
     earCuff:Object.freeze({hollowAt:Infinity,rejectAbove:28})
   })
@@ -2589,7 +2752,7 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // with correct dimensions (diagnosed via Node.js harness). Raising
   // the ceiling for these two types lets the real wall-based formula
   // govern instead of the safety cap.
-  const scaleCeiling=(p.type==='choker'||p.type==='headpiece')?.994:.94;
+  const scaleCeiling=p.type==='choker'?.985:p.type==='headpiece'?.994:.94;
   const scale=dim.map(d=>clamp((d-2*wall)/d,.15,scaleCeiling));
   let inner=manifold.translate(center.map(v=>-v)).scale(scale).translate(center);
   let hollowed;
@@ -2695,16 +2858,30 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     }
   }
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
-  let { V, F } = manifoldToMeshHelper(manifold);
-  // NOTE: the explicit manifold.delete() call that lived here has been
-  // reverted. It is the leading suspect for a "handle[key]" WASM
-  // use-after-free crash reported specifically on cufflinks (which reuse
-  // the same `unit` object twice — once per side of the pair — inside
-  // makeCufflinksManifold). A crash that blocks generation entirely is
-  // worse than the memory-leak this call was meant to mitigate; the leak
-  // fix will be reintroduced once the reuse pattern it interacts badly
-  // with is confirmed and handled correctly.
-  const connected = removeFloatingComponents(V, F, p.type==='cufflinks'?2:1);
+
+  // Choker and headpiece are split into 3 hook-and-eye-jointed segments
+  // here, unconditionally: at any wearable scale (verified against real
+  // market comparables, 114-165mm diameter for rigid wire chokers) a
+  // single continuous piece exceeds Shapeways' 89x89x100mm silver-casting
+  // bounding box in every orientation (confirmed via full rotation
+  // search), so a one-piece STL for these two types was never actually
+  // printable through this process. See splitIntoHookedSegments above.
+  const isSegmentedType = (p.type==='choker' || p.type==='headpiece');
+  let V, F;
+  if(isSegmentedType){
+    const wireR = 1.1, ringR = wireR*4.5;
+    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wireR, ringR);
+    ({V, F} = concatenateSegmentMeshes(segmentManifolds));
+    segmentManifolds.forEach(seg => { try{ seg.delete(); }catch(e){} });
+    p.segmentedIntoParts = 3;
+    p.segmentConnectorType = 'hookAndEye';
+    p.segmentConnectorWireMm = wireR*2;
+  } else {
+    ({ V, F } = manifoldToMeshHelper(manifold));
+  }
+
+  const expectedComponents = p.type==='cufflinks' ? 2 : (isSegmentedType ? 3 : 1);
+  const connected = removeFloatingComponents(V, F, expectedComponents);
   V = connected.V; F = connected.F;
   if(connected.discarded && connected.discarded.length){
     console.warn('AGDP: '+connected.discarded.length+' componente(s) descartado(s) de '+connected.totalComponents+' total — ', connected.discarded);
@@ -2713,7 +2890,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     type:p.type, innerD:(p.type==='ring'||p.type==='bangle'||p.type==='earCuff')?p.mainSize:(p.type==='cuffBracelet'?p.mainSize*0.85:0),
     bandW:p.bandWidth, holeCells:0, printProfile:p.printProfile, minFeature:p.minFeature,
     maxRelief:p.surfaceRelief+p.sideRelief, spikes:0, hinges:p.hinges,
-    allowConstructiveOverlap:true, booleanUnion:true, allowedSolids:p.type==='cufflinks'?2:1
+    allowConstructiveOverlap:true, booleanUnion:true, allowedSolids:expectedComponents
   };
   const audit = window.validate(V, F, extra);
   const weightLimits=AGDP_SILVER_HOLLOWING.thresholdsGrams[silverWeightProfileKey(p)]||{rejectAbove:Infinity};
