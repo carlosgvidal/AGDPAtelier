@@ -9,33 +9,8 @@
 </head>
 <body>
 
-<header class="site-header">
-  <nav class="site-nav" aria-label="Primary">
-    <div class="brand-item">
-      <a href="index.html#top" class="brand">
-        <img src="AGDPLogo.png" alt="A Gross Domestic Product">
-      </a>
-    </div>
-
-    <button class="nav-toggle" id="navToggle" type="button" aria-controls="navLinks" aria-expanded="false">☰</button>
-
-    <div class="nav-links" id="navLinks">
-      <div class="nav-item"><a href="index.html#configurator">Configurator</a></div>
-      <div class="nav-item">
-        <button type="button" data-dropdown>Singular Works <span class="caret">▾</span></button>
-        <div class="dropdown">
-          <a href="#">(A) Symmetry</a>
-          <a href="#">Link</a>
-          <a href="#">Cyprus</a>
-          <a href="#">Junction</a>
-          <a href="#">Bespoke</a>
-        </div>
-      </div>
-      <div class="nav-item"><a href="manifesto.html">Manifesto</a></div>
-      <div class="nav-item"><a class="nav-cta" href="commissions.html">Commissions</a></div>
-    </div>
-  </nav>
-</header>
+<!-- ============ AGDP SITE HEADER (external) ============ -->
+<div id="agdp-header-mount"></div>
 
 <main class="doc-hero" id="top">
   <div class="doc-eyebrow">Legal</div>
@@ -96,35 +71,91 @@
 <p>If you have questions about this Privacy Policy or wish to exercise your privacy rights, please contact the studio at <strong>info@agrossdomesticproduct.com</strong>.</p>
 </div></section>
 
-<footer class="site-footer">
-<div class="footer-meta">
-<div class="brand-line">A GROSS DOMESTIC PRODUCT.®</div>
-<div class="legal-line">Structural Objects in Sterling Silver<br>© 2026. All rights reserved.</div>
-</div>
-<nav class="footer-links" aria-label="Footer">
-<a href="index.html#configurator">Configurator</a>
-<a href="#">Singular Works</a>
-<a href="manifesto.html">Manifesto</a>
-<a href="commissions.html">Commissions</a>
-</nav>
-</footer>
+<!-- ============ AGDP SITE FOOTER (external) ============ -->
+<div id="agdp-footer-mount"></div>
 
 <script>
 (() => {
-const navToggle=document.getElementById('navToggle');
-const navLinks=document.getElementById('navLinks');
-if(navToggle){
-navToggle.addEventListener('click',()=>{
-const open=navLinks.classList.toggle('open');
-navToggle.setAttribute('aria-expanded',String(open));
-});
-document.querySelectorAll('[data-dropdown]').forEach(btn=>{
-btn.addEventListener('click',()=>{
-if(window.innerWidth>860)return;
-btn.closest('.nav-item').classList.toggle('open');
-});
-});
-}
+  const loadFragment = async (mountId, url) => {
+    const mount = document.getElementById(mountId);
+    if (!mount) return null;
+
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) {
+      throw new Error(`Unable to load ${url}: ${response.status} ${response.statusText}`);
+    }
+
+    mount.innerHTML = await response.text();
+    return mount;
+  };
+
+  const markCurrentPage = (mount) => {
+    if (!mount) return;
+
+    const current = new URL(window.location.href);
+    const currentFile = current.pathname.split('/').pop() || 'index.html';
+
+    mount.querySelectorAll('a[href]').forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:')) return;
+
+      const target = new URL(href, window.location.href);
+      const targetFile = target.pathname.split('/').pop() || 'index.html';
+
+      if (targetFile === currentFile) {
+        link.setAttribute('aria-current', 'page');
+      } else {
+        link.removeAttribute('aria-current');
+      }
+    });
+  };
+
+  const initNavigation = (headerMount) => {
+    if (!headerMount) return;
+
+    const navToggle = headerMount.querySelector('#navToggle');
+    const navLinks = headerMount.querySelector('#navLinks');
+
+    if (!navToggle || !navLinks) return;
+
+    navToggle.addEventListener('click', () => {
+      const isOpen = navLinks.classList.toggle('open');
+      navToggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    headerMount.querySelectorAll('[data-dropdown]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (window.innerWidth > 860) return;
+
+        const item = button.closest('.nav-item');
+        if (!item) return;
+
+        const isOpen = item.classList.toggle('open');
+        button.setAttribute('aria-expanded', String(isOpen));
+      });
+    });
+
+    navLinks.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth > 860) return;
+        navLinks.classList.remove('open');
+        navToggle.setAttribute('aria-expanded', 'false');
+      });
+    });
+  };
+
+  Promise.all([
+    loadFragment('agdp-header-mount', 'agdp-header.html'),
+    loadFragment('agdp-footer-mount', 'agdp-footer.html')
+  ])
+    .then(([headerMount, footerMount]) => {
+      markCurrentPage(headerMount);
+      markCurrentPage(footerMount);
+      initNavigation(headerMount);
+    })
+    .catch((error) => {
+      console.error('[AGDP] External site component loading failed.', error);
+    });
 })();
 </script>
 
