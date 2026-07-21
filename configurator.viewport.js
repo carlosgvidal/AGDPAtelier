@@ -188,16 +188,21 @@ let _mesh3d = null;
 // WebGL display: the generated mesh, audits and exported STL remain unchanged.
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // The ring is built around the Z axis (Z = the hole/finger axis). The
-    // previous cameraDirection was Z-dominant ([0.12,0.22,1]), which
-    // looks almost straight down the hole -- confirmed via screenshot,
-    // it read like looking into a tire, not a jewelry presentation shot.
-    // Swapped to X-dominant so the camera views the band's outer profile
-    // from the side instead, with a slight elevation and only a small Z
-    // component for a natural 3/4 angle -- not visually verified here
-    // (no WebGL rendering available in this environment), please check
-    // and describe what you see if it still isn't right.
-    objectEulerDeg:[6,0,-10], cameraDirection:[1,0.40,0.30], framing:1.15
+    // Second attempt, based on direct comparison against a reference
+    // photo: the previous fix (X-dominant) overcorrected into a nearly
+    // edge-on side view (confirmed via screenshot -- band profile with
+    // decorative balls seen from the flank, not the intended angle).
+    // The reference shows the ring's front decorative face nearly
+    // head-on with a steep elevated angle, NOT a hole-axis "tunnel"
+    // view and NOT a pure side profile. This keeps meaningful Z (to see
+    // the face design, like the original did) but adds strong Y
+    // elevation so the camera looks down onto the piece rather than
+    // levelly through the hole, with a modest X offset for a slight,
+    // natural 3/4 asymmetry. Still not visually verified here (no WebGL
+    // rendering in this environment) -- please compare directly against
+    // the reference photo again and describe the difference so the next
+    // adjustment can close the gap precisely.
+    objectEulerDeg:[0,0,-6], cameraDirection:[0.28,0.80,0.65], framing:1.15
   }),
   pendant:Object.freeze({
     objectEulerDeg:[0,-7,0], cameraDirection:[-0.18,0.10,1], framing:1.17
