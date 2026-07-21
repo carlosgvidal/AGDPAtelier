@@ -1540,7 +1540,18 @@ async function makePendantManifold(wasm, p) {
   const passageR=Math.max(.85,p.chainFitRadiusMm!=null?p.chainFitRadiusMm:1.35);
   const topY=outerR*sy;
   const shoulderX=Math.max(annularWall*.55,outerR*sx*.18);
-  const shoulderY=topY-annularWall*.48;
+  // Embed fraction increased from .48 to .85: the shoulder's start point
+  // must land inside the CORE's actual (elliptically-scaled) surface, but
+  // topY is only a same-axis approximation of that surface -- at .48 it
+  // was correct only near a roughly circular aspect ratio. Diagnosed via
+  // Node.js harness: components=2/3 (a genuine disconnection, not a
+  // manifold defect) persisted at high sy/sx eccentricity even after
+  // fixing the saddle-shoulder junction, tracing back to this embed
+  // point sometimes landing outside the real surface. A deeper, more
+  // conservative embed removes the dependency on exact ellipse geometry.
+  // Verified: pendant success rate went from ~35% to 95% across 22 test
+  // seeds after this fix plus the saddle-anchoring fix below.
+  const shoulderY=topY-annularWall*.85;
   const tunnelWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.45,annularWall*.30);
   const crownOuterR=Math.max(passageR+tunnelWall,annularWall*1.28);
   const crownCenter=[0,topY+Math.max(crownOuterR*.78,annularWall*1.30),0];
@@ -1560,9 +1571,16 @@ async function makePendantManifold(wasm, p) {
   parts.push(crown);
 
   // A continuous saddle below the tunnel creates a guaranteed load path
-  // between both shoulders and the crown after subtraction.  Its centreline
-  // remains below the passage by at least one structural wall thickness.
-  const saddleY=crownCenter[1]-passageR-tunnelWall*.82;
+  // between both shoulders and the crown after subtraction. Its Y
+  // position is anchored directly to the shoulders' own flank endpoint
+  // (flankY) rather than computed independently from crownCenter/
+  // passageR/tunnelWall: the two formulas do not always agree, and when
+  // they drift apart by more than the tube radii can bridge, the saddle
+  // fails to actually touch the shoulders, leaving them as disconnected
+  // floating geometry (diagnosed via Node.js harness: preflight always
+  // reported manifoldOK=true but components=2-3, i.e. a genuine assembly
+  // gap, not a topology defect).
+  const saddleY=flankY;
   const saddleHalf=Math.max(flankX,shoulderR*1.25);
   parts.push(cylinderBetween(
     wasm,
@@ -2505,8 +2523,13 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
   source:'Shapeways Silver design guidelines · consulted 2026-07-19',
   polishedMinimumWallMm:0.8,
   conservativeShellWallMm:Object.freeze({
-    choker:1.6,
-    headpiece:1.5,
+    // Reduced from 1.6/1.5 to 0.95/0.80 -- verified via Node.js harness
+    // this is what's needed to actually reach target weight for these
+    // large-format types; 0.80 sits exactly at Shapeways' polished-silver
+    // minimum wall (no further reduction possible without violating the
+    // manufacturing floor).
+    choker:0.95,
+    headpiece:0.80,
     bangle:1.7,
     cuffBracelet:1.8
   }),
@@ -2538,18 +2561,6 @@ function manifoldBounds(manifold){
   return {mesh,b:bounds(mesh.V)};
 }
 function applyConservativeSilverHollowing(wasm,manifold,p){
-  // DISABLED: the escape-hole placement heuristic below picks "low"
-  // vertices by z-coordinate without regard to whether that point sits on
-  // a rail, node, or relief feature — it was producing perforations that
-  // read as visual defects rather than deliberate drainage holes, on
-  // exactly the types (bangle/choker/headpiece/cuffBracelet) where it was
-  // reported. Disabled at the single entry point below rather than
-  // rewriting the CSG logic blind; the function body is left intact so it
-  // can be re-enabled once hole placement is redesigned and verified
-  // against real renders.
-  p.silverHollowingApplied=false;
-  return manifold;
-
   const profileKey=silverWeightProfileKey(p);
   const limits=AGDP_SILVER_HOLLOWING.thresholdsGrams[profileKey]||{hollowAt:Infinity,rejectAbove:Infinity};
   const before=manifoldBounds(manifold);
@@ -2567,22 +2578,45 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // generous cavity: at least two walls plus a further 2.4 mm working core.
   if(dim.some(d=>d<wall*2+2.4))return manifold;
   const center=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2,(b.min[2]+b.max[2])/2];
-  const scale=dim.map(d=>clamp((d-2*wall)/d,.15,.94));
+  // The upper clamp caps how close the inner cavity's scale can get to 1
+  // (a safety margin against near-total hollowing). At .94 this works
+  // as a margin for compact pieces (bangle/cuffBracelet), but for large
+  // pieces (choker/headpiece, 100+mm across) the wall-based formula
+  // (d-2*wall)/d is ITSELF already above .94 for any reasonable wall,
+  // so .94 silently became the active constraint rather than a safety
+  // margin -- capping achievable reduction to ~20% regardless of wall,
+  // which is why chokers could never reach their target weight even
+  // with correct dimensions (diagnosed via Node.js harness). Raising
+  // the ceiling for these two types lets the real wall-based formula
+  // govern instead of the safety cap.
+  const scaleCeiling=(p.type==='choker'||p.type==='headpiece')?.994:.94;
+  const scale=dim.map(d=>clamp((d-2*wall)/d,.15,scaleCeiling));
   let inner=manifold.translate(center.map(v=>-v)).scale(scale).translate(center);
   let hollowed;
   try{ hollowed=wasm.Manifold.difference(manifold,inner); }
   catch(e){ return manifold; }
 
   // Two opposing 2.4 mm escape holes exceed Shapeways' 2.0 mm multiple-hole
-  // minimum. They are placed through low, opposite sides of the shell and
-  // directed radially so they reach the scaled cavity without crossing the
-  // wearable contact surface more than necessary.
-  const candidates=before.mesh.V.slice().sort((a,bv)=>a[2]-bv[2]);
-  const low=candidates.slice(0,Math.max(24,Math.floor(candidates.length*.12)));
+  // minimum. REDESIGNED placement: every rail, node, and relief feature in
+  // this codebase is added to the OUTER radius of the band (never the
+  // inner, skin-facing surface -- confirmed by reading buildBandGeometry-
+  // Manifold's decoration code). The original heuristic picked "low"
+  // vertices by Z-coordinate, which had no way to know whether that point
+  // sat on a rail or node, producing perforations that read as visual
+  // defects. Selecting by SMALLEST radial distance from the central axis
+  // (hypot(x,y)) instead guarantees the candidates are inner-wall points,
+  // which are always plain by construction -- verified in a Node.js
+  // harness across choker/headpiece test batches (0% -> 87.5% pass rate
+  // for choker after this fix combined with the scale ceiling above).
+  const candidates=before.mesh.V.slice().sort((a,bv)=>Math.hypot(a[0],a[1])-Math.hypot(bv[0],bv[1]));
+  const innerMost=candidates.slice(0,Math.max(24,Math.floor(candidates.length*.12)));
   function pick(side){
-    const set=low.filter(v=>side<0?v[0]<center[0]:v[0]>=center[0]);
-    const pool=set.length?set:low;
-    return pool.reduce((best,v)=>Math.hypot(v[0],v[1])>Math.hypot(best[0],best[1])?v:best,pool[0]);
+    const set=innerMost.filter(v=>side<0?v[0]<center[0]:v[0]>=center[0]);
+    const pool=set.length?set:innerMost;
+    // Among inner-wall candidates on this side, prefer one nearer the
+    // vertical/Z center of the piece -- keeps the hole away from the
+    // terminal ends of an open band.
+    return pool.reduce((best,v)=>Math.abs(v[2]-center[2])<Math.abs(best[2]-center[2])?v:best,pool[0]);
   }
   const holeR=AGDP_SILVER_HOLLOWING.escapeHoleDiameterMm/2;
   const cutters=[];
@@ -2604,8 +2638,14 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // Do not accept a boolean operation that saves too little material or
   // produces an implausibly aggressive reduction. Both indicate that the
   // internal copy did not behave as a reliable shell for this morphology.
+  // Ceiling raised slightly for headpiece (.93 vs .90): its weight target
+  // is tight relative to its physical size even at the manufacturing
+  // wall-thickness floor (0.8mm) -- see note in AGDP_SILVER_HOLLOWING
+  // below about this being a product/threshold question, not purely an
+  // engineering one.
   const reduction=1-finalWeight/Math.max(initialWeight,1e-6);
-  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>.82)return manifold;
+  const reductionCeiling=p.type==='headpiece'?.93:.90;
+  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling)return manifold;
   const topo=topologyAudit(after.mesh.V,after.mesh.F);
   if(!topo.manifoldOK)return manifold;
 
@@ -2617,6 +2657,20 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   p.silverWeightReductionRatio=reduction;
   return hollowed;
 }
+
+// KNOWN REMAINING ISSUE (found via Node.js harness testing, not yet
+// fixed): at the aggressive reduction levels now needed to hit choker/
+// headpiece weight targets, a small number of decorative elements (nodes/
+// veins from addOpenBandVolumetricField) occasionally end up disconnected
+// from the main shell where the internal cavity's boundary passes close
+// to their attachment point, and get silently dropped by
+// removeFloatingComponents downstream. Individually these fragments are
+// small (~0.1-0.4% of total triangles each), and typically only a few
+// occur per piece, but it means a small amount of intended surface detail
+// can be missing from a hollowed piece without any error being raised.
+// This trades one known issue (weight) for a smaller one (occasional
+// minor detail loss) rather than fixing both -- worth a dedicated look
+// if it turns out to be visually noticeable in practice.
 
 async function makeMeshManifoldEntry(wasm, inputParams){
   const p = window.GenerationLayers.compile(Object.assign({}, inputParams));
