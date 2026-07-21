@@ -200,10 +200,21 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     objectEulerDeg:[0,0,6], cameraDirection:[-0.78,0.30,1], framing:1.18
   }),
   choker:Object.freeze({
-    objectEulerDeg:[-4,0,0], cameraDirection:[0,0.10,1], framing:1.16
+    // The collar's front (center of its arc, t=0 in the geometry) sits
+    // along +X, not +Z -- the previous cameraDirection looked at it
+    // almost dead-on from +Z, which shows more of an edge/side view than
+    // the front. Adjusted to look from the front, elevated slightly for
+    // a jewelry-catalog-style 3/4 angle. Not visually verified here (no
+    // WebGL rendering available in this environment) -- please check and
+    // describe what you see if it still isn't right, so the next
+    // adjustment can be precise rather than another guess.
+    objectEulerDeg:[-10,0,0], cameraDirection:[1,0.42,0.62], framing:1.18
   }),
   headpiece:Object.freeze({
-    objectEulerDeg:[-3,0,0], cameraDirection:[-0.18,0.12,1], framing:1.18
+    // Same axis correction as choker above, adjusted for a tiara's
+    // higher crown and being viewed as if worn (front-facing, slightly
+    // from above).
+    objectEulerDeg:[-14,0,0], cameraDirection:[1,0.48,0.58], framing:1.20
   }),
   cufflinks:Object.freeze({
     objectEulerDeg:[-10,-8,0], cameraDirection:[-0.45,0.28,1], framing:1.20

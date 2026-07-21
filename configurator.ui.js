@@ -335,6 +335,12 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     const dim = result.audit.bounds.dim;
     const rows = [];
     const overallStr = dim.map(d=>d.toFixed(1)).join(' × ')+' mm';
+    // Curated for the customer: only dimensions that answer "will it fit
+    // me", "how big is it", "how heavy is it". Internal engineering
+    // parameters (structural module, formal envelope, projection, the
+    // target weight *range* used only to accept/reject during
+    // generation) are left out of this default view -- they described
+    // the generation process, not the object the customer receives.
     if(params.type==='ring'){
       rows.push([t('dimNominal'), (params.mainSizeNominal!=null?params.mainSizeNominal:params.mainSize).toFixed(2)+' mm']);
       rows.push([t('dimWidth'), params.bandWidth.toFixed(1)+' mm']);
@@ -342,40 +348,22 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       rows.push([t('dimInnerWidth'), params.mainSize.toFixed(1)+' mm']);
       rows.push([t('dimInnerDepth'), params.chokerInnerDepthMm.toFixed(1)+' mm']);
       rows.push([t('dimOpening'), params.chokerOpeningMm.toFixed(1)+' mm']);
-      rows.push([t('dimFrontHeight'), params.bandWidth.toFixed(1)+' mm']);
-      rows.push([t('dimRearHeight'), (params.bandWidth*params.chokerRearHeightRatio).toFixed(1)+' mm']);
-      rows.push([t('dimThickness'), params.chokerWallMm.toFixed(1)+' mm']);
-      rows.push([t('dimTargetWeight'), params.chokerWeightRange[0]+'–'+params.chokerWeightRange[1]+' g']);
     } else if(params.type==='headpiece'){
       rows.push([t('dimEarToEar'), params.mainSize.toFixed(1)+' mm']);
       rows.push([t('dimCranialDepth'), params.headInnerDepthMm.toFixed(1)+' mm']);
       rows.push([t('dimArc'), params.headArcDeg.toFixed(0)+'°']);
-      rows.push([t('dimFrontHeight'), params.bandWidth.toFixed(1)+' mm']);
-      rows.push([t('dimCrownRise'), params.headCrownRiseMm.toFixed(1)+' mm']);
-      rows.push([t('dimThickness'), params.headWallMm.toFixed(1)+' mm']);
-      rows.push([t('dimTargetWeight'), params.headWeightRange[0]+'–'+params.headWeightRange[1]+' g']);
     } else if(params.type==='comb'){
       rows.push([t('dimTotalWidth'), params.mainSize.toFixed(1)+' mm']);
-      rows.push([t('dimTopHeight'), params.combTopHeightMm.toFixed(1)+' mm']);
       rows.push([t('dimToothLength'), params.combToothLengthMm.toFixed(1)+' mm']);
       rows.push([t('dimToothCount'), String(params.combToothCount)]);
-      rows.push([t('dimToothSpacing'), params.combToothSpacingMm.toFixed(1)+' mm']);
-      rows.push([t('dimCranialCurve'), params.combCranialCurveMm.toFixed(1)+' mm']);
-      rows.push([t('dimInsertionAngle'), params.combInsertionAngleDeg.toFixed(0)+'°']);
-      rows.push([t('dimThickness'), params.combBodyWallMm.toFixed(1)+' mm']);
-      rows.push([t('dimTargetWeight'), params.combWeightRange[0]+'–'+params.combWeightRange[1]+' g']);
     } else if(params.type==='moneyClip'){
       rows.push([t('dimMoneyClipLength'), params.moneyClipLengthMm.toFixed(1)+' mm']);
       rows.push([t('dimMoneyClipWidth'), params.moneyClipWidthMm.toFixed(1)+' mm']);
-      rows.push([t('dimThickness'), params.moneyClipThicknessMm.toFixed(1)+' mm']);
       rows.push([t('dimMoneyClipCapacity'), params.moneyClipGapMm.toFixed(1)+' mm']);
-      rows.push([t('dimMoneyClipReturn'), params.moneyClipReturnRadiusMm.toFixed(1)+' mm']);
     } else if(params.type==='clip'){
       rows.push([t('dimClipLength'), params.clipLengthMm.toFixed(1)+' mm']);
       rows.push([t('dimClipWidth'), params.clipFaceWidthMm.toFixed(1)+' mm']);
       rows.push([t('dimClipHeight'), params.clipFaceHeightMm.toFixed(1)+' mm']);
-      rows.push([t('dimThickness'), params.clipThicknessMm.toFixed(1)+' mm']);
-      rows.push([t('dimClipGap'), params.clipGapMm.toFixed(1)+' mm']);
     } else if(params.type==='cuffBracelet'){
       rows.push([t('dimInnerWidth'), (params.mainSize*1.20).toFixed(1)+' mm']);
       rows.push([t('dimInnerDepth'), (params.mainSize*0.85).toFixed(1)+' mm']);
@@ -386,9 +374,6 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     } else if(params.type==='pendant'||params.type==='cufflinks'){
       rows.push([t('dimPlate'), params.mainSize.toFixed(1)+' mm']);
     }
-    if(params.structuralModuleMm!=null)rows.push([t('dimStructuralModule'), params.structuralModuleMm.toFixed(2)+' mm']);
-    if(params.envelopeHeightMm!=null)rows.push([t('dimFormalEnvelope'), params.envelopeHeightMm.toFixed(1)+' mm']);
-    if(params.projectionDepthMm!=null)rows.push([t('dimProjection'), params.projectionDepthMm.toFixed(1)+' mm']);
     rows.push([t('dimOverall'), overallStr]);
     rows.push([t('dimWeight'), result.audit.silverG.toFixed(1)+' g']);
     if(params.type==='pendant'){
