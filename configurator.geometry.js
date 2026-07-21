@@ -2860,15 +2860,34 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
 
   // Choker and headpiece are split into 3 hook-and-eye-jointed segments
-  // here, unconditionally: at any wearable scale (verified against real
-  // market comparables, 114-165mm diameter for rigid wire chokers) a
+  // (see splitIntoHookedSegments above) because at any wearable scale a
   // single continuous piece exceeds Shapeways' 89x89x100mm silver-casting
-  // bounding box in every orientation (confirmed via full rotation
-  // search), so a one-piece STL for these two types was never actually
-  // printable through this process. See splitIntoHookedSegments above.
+  // bounding box in every orientation. BUT that split is expensive (3
+  // wedge intersections + hook/eye CSG per attempt, confirmed via Node.js
+  // harness at ~300-360MB peak per generation) -- and the retry loop in
+  // ui.js can attempt up to 16 seeds per click. Running the full split on
+  // every attempt, including ones that will be rejected moments later for
+  // weight, is what produced the severe memory pressure reported live
+  // (site forced into refresh, chokers/headpieces effectively impossible
+  // to generate). The fix: check weight on the cheap UNSEGMENTED mesh
+  // first, and only pay the segmentation cost once a candidate has
+  // already cleared the one check most likely to reject it.
   const isSegmentedType = (p.type==='choker' || p.type==='headpiece');
   let V, F;
   if(isSegmentedType){
+    const preMesh = manifoldToMeshHelper(manifold);
+    const preWeightLimits = AGDP_SILVER_HOLLOWING.thresholdsGrams[silverWeightProfileKey(p)]||{rejectAbove:Infinity};
+    const preWeight = silverWeightGrams(meshVolumeMm3(preMesh.V, preMesh.F));
+    if (preWeight > preWeightLimits.rejectAbove) {
+      try{ manifold.delete(); }catch(e){}
+      return {
+        V: preMesh.V, F: preMesh.F,
+        audit: { ok:false, warning:'FALLA: masa de plata superior al límite ergonómico y económico',
+          silverG:preWeight, weightLimitG:preWeightLimits.rejectAbove, weightOK:false,
+          components:1, manifoldOK:true, finite:true, discardedComponents:[] },
+        bandW: p.bandWidth||0, innerR:(p.mainSize||0)/2
+      };
+    }
     const wireR = 1.1, ringR = wireR*4.5;
     const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wireR, ringR);
     ({V, F} = concatenateSegmentMeshes(segmentManifolds));
