@@ -1885,7 +1885,7 @@ async function makeCufflinksManifold(wasm, p) {
 
   /* Closed posterior finding. All joints overlap by at least one structural
      wall, preventing isolated components after boolean evaluation. */
-  const postRadius=Math.max(1.73,minFeature*.9);
+  const postRadius=Math.max(2.60,minFeature*.9);
   const postLength=17.0;
   const postCurvatureRadius=34.0;
   const postTiltRad=4*Math.PI/180;
