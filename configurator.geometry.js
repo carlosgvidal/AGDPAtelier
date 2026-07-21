@@ -1688,17 +1688,10 @@ async function makePendantManifold(wasm, p) {
   });
   let core=built.manifold;
 
-  // Give the pendant an upright, non-repetitive silhouette without changing
-  // its closed annular topology. The deformation is applied to the complete
-  // core, so the result remains one continuous skin.
-  // Range dampened per feedback ("se ve raro" -- looked distorted): the
-  // previous range (sx .82-.98, sy 1.02-1.25) allowed an aspect ratio up
-  // to ~1.52 between the two axes at high `longitudinal`, stretching the
-  // pendant into a visibly elongated, narrow shape. Halving the spread on
-  // both ends keeps the intended "upright, not a perfect circle" variety
-  // while staying subtle -- max aspect ratio now ~1.27.
-  const sx=clamp(.90+.06*(1-longitudinal)+.02*rng(),.90,.98);
-  const sy=clamp(1.01+.10*longitudinal+.03*rng(),1.01,1.14);
+  // Deformation removed per explicit request: the pendant core keeps its
+  // natural, undeformed proportions (sx=sy=1) rather than being stretched
+  // for silhouette variety.
+  const sx=1, sy=1;
   core=core.scale([sx,sy,1]);
 
   const parts=[core];
@@ -1848,8 +1841,9 @@ async function makeCufflinksManifold(wasm, p) {
   const built=await buildBandGeometryManifold(wasm,crownParams,{
     type:'pendantAnnularCore',innerD:innerR*2,width:th,closed:true,opening:0
   });
-  const sx=clamp(.86+.09*(1-longitudinal)+.03*rng(),.86,.98);
-  const sy=clamp(1.00+.14*longitudinal+.04*rng(),1.00,1.18);
+  // Deformation removed per explicit request: the crown keeps its
+  // natural, undeformed proportions (sx=sy=1).
+  const sx=1, sy=1;
   const crown=built.manifold.scale([sx,sy,1]);
 
   const crownMesh=manifoldToMesh(crown);
@@ -1891,7 +1885,7 @@ async function makeCufflinksManifold(wasm, p) {
 
   /* Closed posterior finding. All joints overlap by at least one structural
      wall, preventing isolated components after boolean evaluation. */
-  const postRadius=Math.max(1.3,minFeature*.9);
+  const postRadius=Math.max(1.73,minFeature*.9);
   const postLength=17.0;
   const postCurvatureRadius=34.0;
   const postTiltRad=4*Math.PI/180;
