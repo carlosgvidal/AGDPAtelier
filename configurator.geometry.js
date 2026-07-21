@@ -960,7 +960,18 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const u = pinCount===1?.5:k/(pinCount-1);
       const t = -arcRad/2+arcRad*(0.15+0.7*u);
       const ct=Math.cos(t), st=Math.sin(t);
-      const rInner=innerR, rOuter=localSurfaceRZ(t,0)+pinR*0.8;
+      // BUG FIX: this used to run the pin all the way from innerR (the
+      // bore surface, where skin touches) out to the decorated outer
+      // surface -- a full-thickness spike rather than a surface
+      // decoration, visible as a protruding block on the inside of the
+      // ring (confirmed via screenshot: pinCount pins showed as exactly
+      // that many tabs inside the bore). Every other decoration in this
+      // file embeds a modest, capped depth below the OUTER surface
+      // instead of reaching toward the inner one; this now does the
+      // same, capping the embed at a small multiple of the pin's own
+      // radius regardless of how deep embedAtZ would otherwise allow.
+      const embed = Math.min(embedAtZ(t,0), pinR*2.2);
+      const rInner=localSurfaceRZ(t,0)-embed, rOuter=localSurfaceRZ(t,0)+pinR*0.8;
       decorations.push(cylinderBetween(wasm, [rInner*ct,rInner*st,0], [rOuter*ct,rOuter*st,0], pinR, 12));
     }
   }
