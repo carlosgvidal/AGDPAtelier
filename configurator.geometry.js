@@ -1691,8 +1691,14 @@ async function makePendantManifold(wasm, p) {
   // Give the pendant an upright, non-repetitive silhouette without changing
   // its closed annular topology. The deformation is applied to the complete
   // core, so the result remains one continuous skin.
-  const sx=clamp(.82+.12*(1-longitudinal)+.04*rng(),.82,.98);
-  const sy=clamp(1.02+.20*longitudinal+.06*rng(),1.02,1.25);
+  // Range dampened per feedback ("se ve raro" -- looked distorted): the
+  // previous range (sx .82-.98, sy 1.02-1.25) allowed an aspect ratio up
+  // to ~1.52 between the two axes at high `longitudinal`, stretching the
+  // pendant into a visibly elongated, narrow shape. Halving the spread on
+  // both ends keeps the intended "upright, not a perfect circle" variety
+  // while staying subtle -- max aspect ratio now ~1.27.
+  const sx=clamp(.90+.06*(1-longitudinal)+.02*rng(),.90,.98);
+  const sy=clamp(1.01+.10*longitudinal+.03*rng(),1.01,1.14);
   core=core.scale([sx,sy,1]);
 
   const parts=[core];
