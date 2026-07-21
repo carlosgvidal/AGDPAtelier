@@ -70,52 +70,43 @@ function wedgeCutterMesh(t0, t1, radius, height){
   const F=[[0,1,2],[3,5,4],[0,2,5],[0,5,3],[0,3,4],[0,4,1],[1,4,5],[1,5,2]];
   return {V,F};
 }
-// Hook and eye both protrude in +Z (vertical) from their anchor point,
-// not tangentially along the arc -- deliberately, since the arc direction
-// is already each segment's tightest dimension after cutting, while Z
-// (the band's own width axis) reliably has spare room. Kept as plain,
-// undecorated round wire so the clasp reads as hardware, not as another
-// generative motif -- it should not compete with the piece's own design.
-function buildHookConnector(wasm, anchor, wireR){
+// REDESIGNED per updated request: a fixed post-and-socket joint instead
+// of a hook-and-eye clasp -- two parallel straight posts on one segment
+// press-fit into two tubular socket cavities on the adjacent segment.
+// Non-articulated (nothing hinges or swings): the wearer presses the two
+// segments together and the posts seat into the sockets, similar to a
+// two-pin snap joint. TWO posts per joint (not one) specifically to
+// resist rotation around a single pin's axis, which a one-post design
+// would allow. Both posts and sockets protrude/embed in +Z, for the same
+// reason the previous hook/eye did: Z (the band's own width axis)
+// reliably has spare room after the wedge cut, while the arc direction
+// is already each segment's tightest dimension.
+function buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ){
   const { Manifold } = wasm;
-  const pts = [];
-  const embed = wireR*1.4;
-  pts.push([anchor[0], anchor[1], anchor[2]-embed]);
-  pts.push(anchor.slice());
-  const armLen = wireR*7;
-  const armEnd = [anchor[0], anchor[1], anchor[2]+armLen];
-  pts.push(armEnd);
-  const curlR = wireR*3.2;
-  const steps = 10;
-  for(let i=1;i<=steps;i++){
-    const a = Math.PI*(i/steps);
-    const dx = curlR*Math.sin(a);
-    const back = curlR*(1-Math.cos(a));
-    pts.push([armEnd[0]+dx, armEnd[1], armEnd[2]-back]);
+  function onePost(zOffset){
+    const embed = postR*1.3;
+    const base = [anchor[0], anchor[1], anchor[2]+zOffset-embed];
+    const tip = [anchor[0], anchor[1], anchor[2]+zOffset+postLen];
+    let post = cylinderBetween(wasm, base, tip, postR, 14);
+    post = Manifold.union(post, sphereAt(wasm, tip, postR*0.92, 14));
+    post = Manifold.union(post, sphereAt(wasm, base, postR, 14));
+    return post;
   }
-  const mesh = tubeAlongPathMesh(pts, wireR, 12, false);
-  let result = meshToManifold(wasm, mesh.V, mesh.F);
-  result = Manifold.union(result, sphereAt(wasm, pts[0], wireR, 12));
-  result = Manifold.union(result, sphereAt(wasm, pts[pts.length-1], wireR*1.05, 12));
+  let result = onePost(-offsetZ);
+  result = Manifold.union(result, onePost(offsetZ));
   return result;
 }
-function buildEyeConnector(wasm, anchor, wireR, ringR){
+function cutSocketPairCavity(wasm, segmentManifold, anchor, socketR, socketDepth, offsetZ){
   const { Manifold } = wasm;
-  const embed = wireR*1.4;
-  const embedPt = [anchor[0], anchor[1], anchor[2]-embed];
-  const ringCenter = [anchor[0], anchor[1], anchor[2]+ringR];
-  const steps = 20;
-  const loop = [];
-  for(let i=0;i<steps;i++){
-    const a = 2*Math.PI*i/steps;
-    loop.push([ringCenter[0]+ringR*Math.sin(a), ringCenter[1], ringCenter[2]-ringR*Math.cos(a)]);
+  function oneSocketCutter(zOffset){
+    const mouth = [anchor[0], anchor[1], anchor[2]+zOffset-socketR*0.4];
+    const bottom = [anchor[0], anchor[1], anchor[2]+zOffset+socketDepth];
+    return cylinderBetween(wasm, mouth, bottom, socketR, 14);
   }
-  const ringMesh = tubeAlongPathMesh(loop, wireR, 12, true);
-  const stemMesh = tubeAlongPathMesh([embedPt, anchor, [anchor[0],anchor[1],anchor[2]+ringR*0.3]], wireR, 12, false);
-  let result = meshToManifold(wasm, ringMesh.V, ringMesh.F);
-  result = Manifold.union(result, meshToManifold(wasm, stemMesh.V, stemMesh.F));
-  result = Manifold.union(result, sphereAt(wasm, embedPt, wireR, 12));
-  return result;
+  const cutterA = oneSocketCutter(-offsetZ);
+  const cutterB = oneSocketCutter(offsetZ);
+  const cutters = unionAll(wasm, [cutterA, cutterB]);
+  return safeDifference(wasm, segmentManifold, cutters);
 }
 // Anchors the connector on the segment's OWN real cut-face geometry
 // (mid-radius, mid-height of the vertices actually lying on the cut
@@ -131,12 +122,16 @@ function findCutFaceAnchor(V, targetAngle, tol){
   return [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
 }
 // Cuts a completed choker/headpiece manifold into 3 wedge segments and
-// attaches a hook (odd joints) / eye (even joints) at each of the 2
-// internal cuts, alternating so every joint is exactly one hook meeting
-// one eye. Returns an array of 3 manifolds, each independently a valid,
-// printable, single closed solid.
-function splitIntoHookedSegments(wasm, manifold, wireR, ringR){
+// attaches a post-pair (odd joints) / socket-pair (even joints) at each
+// of the 2 internal cuts, alternating so every joint is exactly one
+// post-bearing face meeting one socket-bearing face. Returns an array of
+// 3 manifolds, each independently a valid, printable, single closed
+// solid.
+function splitIntoHookedSegments(wasm, manifold, postR, postLen){
   const { Manifold } = wasm;
+  const socketR = postR + 0.25; // press-fit clearance over the post radius
+  const socketDepth = postLen + 1.5; // safety margin so the post doesn't bottom out
+  const offsetZ = postR*3.5; // spacing between the two posts/sockets in a pair
   const mesh = manifoldToMesh(manifold);
   const angles = mesh.V.map(v=>Math.atan2(v[1],v[0]));
   const minA = Math.min(...angles), maxA = Math.max(...angles);
@@ -169,19 +164,15 @@ function splitIntoHookedSegments(wasm, manifold, wireR, ringR){
     const anchor = findCutFaceAnchor(m0.V, cutAngles[1]-gapEps, gapEps*3+0.02);
     if(anchor){
       const old = segments[0];
-      const hookGeo = buildHookConnector(wasm, anchor, wireR);
-      segments[0] = Manifold.union(old, hookGeo);
+      const postGeo = buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ);
+      segments[0] = Manifold.union(old, postGeo);
       try{ old.delete(); }catch(e){}
-      try{ hookGeo.delete(); }catch(e){}
+      try{ postGeo.delete(); }catch(e){}
     }
     const m1 = manifoldToMesh(segments[1]);
     const anchorB = findCutFaceAnchor(m1.V, cutAngles[1]+gapEps, gapEps*3+0.02);
     if(anchorB){
-      const old = segments[1];
-      const eyeGeo = buildEyeConnector(wasm, anchorB, wireR, ringR);
-      segments[1] = Manifold.union(old, eyeGeo);
-      try{ old.delete(); }catch(e){}
-      try{ eyeGeo.delete(); }catch(e){}
+      segments[1] = cutSocketPairCavity(wasm, segments[1], anchorB, socketR, socketDepth, offsetZ);
     }
   }
   {
@@ -189,19 +180,15 @@ function splitIntoHookedSegments(wasm, manifold, wireR, ringR){
     const anchor = findCutFaceAnchor(m1.V, cutAngles[2]-gapEps, gapEps*3+0.02);
     if(anchor){
       const old = segments[1];
-      const hookGeo = buildHookConnector(wasm, anchor, wireR);
-      segments[1] = Manifold.union(old, hookGeo);
+      const postGeo = buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ);
+      segments[1] = Manifold.union(old, postGeo);
       try{ old.delete(); }catch(e){}
-      try{ hookGeo.delete(); }catch(e){}
+      try{ postGeo.delete(); }catch(e){}
     }
     const m2 = manifoldToMesh(segments[2]);
     const anchorB = findCutFaceAnchor(m2.V, cutAngles[2]+gapEps, gapEps*3+0.02);
     if(anchorB){
-      const old = segments[2];
-      const eyeGeo = buildEyeConnector(wasm, anchorB, wireR, ringR);
-      segments[2] = Manifold.union(old, eyeGeo);
-      try{ old.delete(); }catch(e){}
-      try{ eyeGeo.delete(); }catch(e){}
+      segments[2] = cutSocketPairCavity(wasm, segments[2], anchorB, socketR, socketDepth, offsetZ);
     }
   }
   return segments;
@@ -2923,13 +2910,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
         bandW: p.bandWidth||0, innerR:(p.mainSize||0)/2
       };
     }
-    const wireR = 1.1, ringR = wireR*4.5;
-    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wireR, ringR);
+    const postR = 1.4, postLen = 5.5;
+    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, postR, postLen);
     ({V, F} = concatenateSegmentMeshes(segmentManifolds));
     segmentManifolds.forEach(seg => { try{ seg.delete(); }catch(e){} });
     p.segmentedIntoParts = 3;
-    p.segmentConnectorType = 'hookAndEye';
-    p.segmentConnectorWireMm = wireR*2;
+    p.segmentConnectorType = 'postAndSocket';
+    p.segmentConnectorPostMm = postR*2;
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
   }
