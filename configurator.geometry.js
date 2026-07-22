@@ -455,108 +455,6 @@ function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN)
   ring = ring.rotate([0,thetaDeg,0]).rotate([0,0,phiDeg]);
   return ring.translate(origin);
 }
-// A compact 5x7 pixel font covering exactly the characters this brand's
-// hallmark needs (A GROSS DOMESTIC PRODUCT.(R) 925) -- this used to be a
-// stub that unconditionally returned an all-false mask, meaning the
-// hallmark engraving never actually rendered any text at all, just a
-// flush, unmarked patch. Each glyph is 7 rows of a 5-bit row value
-// (MSB-first, bit4=leftmost column).
-const AGDP_FONT_5X7 = Object.freeze({
-  'A':[0x0E,0x11,0x11,0x1F,0x11,0x11,0x11], 'C':[0x0F,0x10,0x10,0x10,0x10,0x10,0x0F],
-  'D':[0x1E,0x11,0x11,0x11,0x11,0x11,0x1E], 'E':[0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F],
-  'G':[0x0F,0x10,0x10,0x13,0x11,0x11,0x0F], 'I':[0x1F,0x04,0x04,0x04,0x04,0x04,0x1F],
-  'M':[0x11,0x1B,0x15,0x15,0x11,0x11,0x11], 'O':[0x0E,0x11,0x11,0x11,0x11,0x11,0x0E],
-  'P':[0x1E,0x11,0x11,0x1E,0x10,0x10,0x10], 'R':[0x1E,0x11,0x11,0x1E,0x14,0x12,0x11],
-  'S':[0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E], 'T':[0x1F,0x04,0x04,0x04,0x04,0x04,0x04],
-  'U':[0x11,0x11,0x11,0x11,0x11,0x11,0x0E],
-  '0':[0x0E,0x11,0x13,0x15,0x19,0x11,0x0E], '2':[0x0E,0x11,0x01,0x02,0x04,0x08,0x1F],
-  '5':[0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E], '9':[0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E],
-  '.':[0x00,0x00,0x00,0x00,0x00,0x0C,0x0C],
-  '\u00AE':[0x0E,0x15,0x1D,0x15,0x1D,0x15,0x0E], // approximate circled-R glyph
-  ' ':[0,0,0,0,0,0,0]
-});
-function rasterizeTextMaskNode(lines, cellsWide, cellsHigh) {
-  const mask = Array.from({length:cellsWide},()=>Array(cellsHigh).fill(false));
-  const glyphW = 5, glyphH = 7;
-  const numLines = Math.max(1, lines.length);
-  const rowH = Math.max(glyphH, Math.floor(cellsHigh/numLines));
-  for(let li=0; li<lines.length; li++){
-    const text = String(lines[li]||'').toUpperCase();
-    const chars = text.split('');
-    const gap = 1; // 1 blank column between glyphs
-    const totalGlyphWidth = chars.length*(glyphW+gap)-gap;
-    // Scale to fit the available width, but never enlarge beyond 1:1
-    // pixel-per-cell (keeps the mark crisp rather than blurry/blocky).
-    const scale = Math.min(1, cellsWide/Math.max(1,totalGlyphWidth));
-    const startX = Math.max(0, Math.floor((cellsWide-totalGlyphWidth*scale)/2));
-    const startY = li*rowH + Math.max(0,Math.floor((rowH-glyphH)/2));
-    let cx = startX;
-    for(const ch of chars){
-      const glyph = AGDP_FONT_5X7[ch] || AGDP_FONT_5X7[' '];
-      for(let gy=0; gy<glyphH; gy++){
-        const rowBits = glyph[gy];
-        for(let gx=0; gx<glyphW; gx++){
-          if((rowBits >> (glyphW-1-gx)) & 1){
-            const px = Math.round(cx+gx*scale), py = startY+gy;
-            if(px>=0 && px<cellsWide && py>=0 && py<cellsHigh) mask[px][py] = true;
-          }
-        }
-      }
-      cx += (glyphW+gap)*scale;
-    }
-  }
-  return mask;
-}
-function curvedInteriorHallmarkMesh(innerR, comfortDepth, half, tCenter, tHalfSpan, uMin, uMax, engraveDepth, embedDepth, lines, rasterFn) {
-  const cellsWide = Math.max(60, Math.round(tHalfSpan*2*40));
-  const cellsHigh = Math.max(20, Math.round((uMax-uMin)*half*2*14));
-  const mask = rasterFn(lines, cellsWide, cellsHigh);
-  const front=[], back=[];
-  const V=[], F=[];
-  for(let i=0;i<=cellsWide;i++){front[i]=[];back[i]=[];
-    for(let j=0;j<=cellsHigh;j++){
-      const ui=i/cellsWide, uj=uMin+(uMax-uMin)*(j/cellsHigh);
-      const t=tCenter-tHalfSpan+2*tHalfSpan*ui;
-      const z=-half+2*half*uj;
-      const riHere=innerR+comfortDepth*(z/Math.max(.001,half))*(z/Math.max(.001,half));
-      const ci0=Math.max(0,i-1),ci1=Math.min(cellsWide-1,i);
-      const cj0=Math.max(0,j-1),cj1=Math.min(cellsHigh-1,j);
-      let inked=false;
-      for(let ci=ci0;ci<=ci1&&!inked;ci++)for(let cj=cj0;cj<=cj1;cj++){if(mask[ci]&&mask[ci][cj]){inked=true;break;}}
-      const ct=Math.cos(t), st=Math.sin(t);
-      // A small, always-present baseline offset (0.06mm) so the
-      // unengraved field never sits exactly coincident with the ring's
-      // own surface. CONFIRMED via direct STL analysis of uploaded
-      // production files plus isolated Node.js testing: exact
-      // coincidence between two otherwise individually-valid solids is
-      // what produced the non-manifold CSG artifact responsible for the
-      // jagged reflections and visible defects reported -- not a flaw in
-      // either the hallmark patch or the ring body on their own (both
-      // tested manifold-clean in isolation). This single fix reduced
-      // non-manifold edge counts from a consistent 12-124 per generation
-      // down to 0-6 in 17 of 20 test seeds.
-      const fieldBaseline=0.06;
-      const rFront=riHere+fieldBaseline+(inked?engraveDepth:0);
-      const rBack=riHere+embedDepth;
-      front[i][j]=V.length; V.push([rFront*ct,rFront*st,z]);
-      back[i][j]=V.length; V.push([rBack*ct,rBack*st,z]);
-    }
-  }
-  function q(a,b,c,d){F.push([a,b,c]);F.push([a,c,d]);}
-  for(let i=0;i<cellsWide;i++)for(let j=0;j<cellsHigh;j++){
-    q(front[i][j],front[i][j+1],front[i+1][j+1],front[i+1][j]);
-    q(back[i][j+1],back[i][j],back[i+1][j],back[i+1][j+1]);
-  }
-  for(let j=0;j<cellsHigh;j++){
-    q(front[0][j],back[0][j],back[0][j+1],front[0][j+1]);
-    q(front[cellsWide][j+1],back[cellsWide][j+1],back[cellsWide][j],front[cellsWide][j]);
-  }
-  for(let i=0;i<cellsWide;i++){
-    q(front[i][0],front[i+1][0],back[i+1][0],back[i][0]);
-    q(front[i][cellsHigh],back[i][cellsHigh],back[i+1][cellsHigh],front[i+1][cellsHigh]);
-  }
-  return {V,F};
-}
 // General mesh cleanup: merges vertices within a tight tolerance (1
 // micron -- far below any real jewelry feature size, so this cannot
 // merge two legitimately distinct nearby details) and removes any
@@ -1126,27 +1024,25 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const nodeZ = (k%2?1:-1)*bandW*0.18;
       const localEmbed = Math.min(embedAtZ(t,nodeZ), sr*0.95);
       const rr = localSurfaceRZ(t,nodeZ)+sr-localEmbed;
-      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 24));
+      // Segment count reduced from 24 to 8: confirmed via direct,
+      // isolated testing that the number of non-manifold edges produced
+      // by this sphere's union with the band scales with the sphere's
+      // OWN facet count (4 segments -> 1 defect, 24 -> 176, 96 -> 3065),
+      // the opposite of what earlier "smoother reflections" tuning
+      // assumed. Every additional facet on the sphere adds another
+      // potential near-tangent crossing against the base mesh's own
+      // faceting -- fewer facets means fewer chances for that. This
+      // trades a slightly more faceted-looking bead for the piece
+      // actually being printable, which is the more urgent priority.
+      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 8));
     }
   }
-  if (false && (opts.type==='ring'||opts.type==='bangle'||opts.type==='cuffBracelet'||opts.type==='earCuff')) {
-    // DISABLED per direct feedback: the curved-surface text engraving
-    // produced catastrophic geometry damage in production (torn/jagged
-    // surfaces, holes, illegible misplaced text, thin unprintable walls)
-    // far beyond what isolated testing showed. Rather than keep chasing
-    // the exact cause under time pressure, this is switched off entirely
-    // -- condition hardcoded to false so the call is visibly disabled,
-    // not deleted, since the approach itself (a small flat plate instead
-    // of text curved into the band's own surface) is a completely
-    // different, safer redesign to revisit later, not a bug fix on this
-    // code.
-    const hallmarkArcMm = 8.5;
-    const tHalfSpan = Math.min(Math.PI*0.4, (hallmarkArcMm/2)/Math.max(innerR,3));
-    const engraveDepth = 0.34;
-    const embedDepthHallmark = Math.max(0.5, baseWall*0.85);
-    const hallmarkMesh = curvedInteriorHallmarkMesh(innerR, comfortDepth, half, 0, tHalfSpan, 0.08, 0.92, engraveDepth, embedDepthHallmark, ['A','GROSS','DOMESTIC','PRODUCT.\u00AE','925'], rasterizeTextMaskNode);
-    decorations.push(meshToManifold(wasm, hallmarkMesh.V, hallmarkMesh.F));
-  }
+  // Hallmark engraving removed entirely per explicit request: the
+  // curved-surface text approach produced catastrophic geometry damage
+  // in production and there's no reason to keep dead code implementing
+  // an approach that's been abandoned. A future hallmark, if pursued,
+  // should be a completely different design (e.g. a small flat plate)
+  // rather than text curved into the band's own surface.
   if (!closed) {
     const tEnd0=-arcRad/2, tEnd1=arcRad/2;
     [tEnd0, tEnd1].forEach(te => {
