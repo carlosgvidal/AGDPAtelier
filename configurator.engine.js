@@ -122,7 +122,16 @@ const SeededVariation=(()=>{
     p.mutation={
       active:rng()<.28,
       severity:Math.pow(rng(),.42),
-      mode:['rupture','hypertrophy','erosion','displacement','compression','proliferation','inversion'][Math.floor(rng()*7)]
+      // 'compression' removed from this pool: confirmed via direct
+      // correlated testing (100% of active-compression samples showed
+      // severe non-manifold defects, e.g. 12166 edges in one case, vs
+      // 0-2 for every other active mutation mode) that its hard
+      // radius-clamp -- forcing many different original vertices to the
+      // exact same minimum radius -- creates severe self-overlapping
+      // geometry. The application code below is left in place but is
+      // now unreachable, rather than deleted, in case a properly
+      // soft-clamped version is worth revisiting later.
+      mode:['rupture','hypertrophy','erosion','displacement','proliferation','inversion'][Math.floor(rng()*6)]
     };
     if(p.mutation.active){
       const sv=p.mutation.severity;
@@ -278,13 +287,28 @@ const ProportionEngine=(()=>{
     if(widthRange){
       p.bandWidth=wearableWidthMm;
     }else if(p.type==='choker'){
-      p.bandWidth=envelopeHeightMm;
-      p.chokerWallMm=projectionDepthMm;
-      p.chokerFrontProjection=clamp(projectionDepthMm/Math.max(70,p.mainSize||100),.018,.095);
+      // BUG FIX: this generic envelope system used to unconditionally
+      // overwrite bandWidth/chokerWallMm/chokerFrontProjection, silently
+      // discarding the carefully-tuned per-profile dimensions ui.js sets
+      // for torque/cervical/sculptural (chokerProfile is only present
+      // once that profile selection has run). Diagnosed via Node.js
+      // harness: chokers were coming out 5-15x their target weight
+      // because this override replaced each profile's fixed wall/height
+      // with a generic, seed-random 3.8-7.2mm value regardless of which
+      // profile was actually chosen.
+      if(!p.chokerProfile){
+        p.bandWidth=envelopeHeightMm;
+        p.chokerWallMm=projectionDepthMm;
+        p.chokerFrontProjection=clamp(projectionDepthMm/Math.max(70,p.mainSize||100),.018,.095);
+      }
     }else if(p.type==='headpiece'){
-      p.bandWidth=envelopeHeightMm;
-      p.headWallMm=projectionDepthMm;
-      p.headFrontProjection=clamp(projectionDepthMm/Math.max(100,p.mainSize||140),.015,.052);
+      // Same bug, same fix: respect the profile system's own dimensions
+      // once headProfile has been set, rather than overwriting them here.
+      if(!p.headProfile){
+        p.bandWidth=envelopeHeightMm;
+        p.headWallMm=projectionDepthMm;
+        p.headFrontProjection=clamp(projectionDepthMm/Math.max(100,p.mainSize||140),.015,.052);
+      }
     }else if(p.type==='pendant'){
       p.mainSize=clamp(p.mainSize||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
       p.bandWidth=projectionDepthMm;
