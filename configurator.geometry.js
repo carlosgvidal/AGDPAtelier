@@ -108,20 +108,29 @@ function dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, r
   ];
   return {V,F};
 }
-function buildDovetailRailPair(wasm, anchor, wall, railLen, offsetZ){
+// REDESIGNED per direct feedback (with a wood tongue-and-groove joint as
+// reference): a single continuous rail spanning nearly the full height
+// of the cut face, instead of two small localized rail pairs. The
+// previous two-point design held the segments together at only two
+// small contact patches; a full-height rail gives dramatically more
+// contact area and rigidity, matching how a real sliding wood joint is
+// built -- solid along its whole length, not just pinned at a couple of
+// points.
+function buildDovetailRailFull(wasm, anchor, wall, zMin, zMax){
   const rr = Math.hypot(anchor[0],anchor[1])||1;
   const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
   const tangentDir = [-radialDir[1], radialDir[0], 0];
   const baseHalfW = wall*0.9, tipHalfW = wall*1.5, railHeight = wall*1.9;
-  function oneRail(zOff){
-    const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen, zOff);
-    return meshToManifold(wasm, mesh.V, mesh.F);
-  }
-  const railA = oneRail(-offsetZ);
-  const railB = oneRail(offsetZ);
-  return unionAll(wasm, [railA, railB]);
+  // Small margin at each end of the cut face so the rail's own end caps
+  // stay comfortably embedded in real material rather than reaching
+  // exactly to the surface edge.
+  const margin = Math.max(1.0, wall*0.5);
+  const railLen = Math.max(4, (zMax-zMin) - 2*margin);
+  const zCenter = (zMin+zMax)/2 - anchor[2];
+  const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen, zCenter);
+  return meshToManifold(wasm, mesh.V, mesh.F);
 }
-function cutDovetailGroovePair(wasm, segmentManifold, anchor, wall, railLen, offsetZ){
+function cutDovetailGrooveFull(wasm, segmentManifold, anchor, wall, zMin, zMax){
   const rr = Math.hypot(anchor[0],anchor[1])||1;
   const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
   const tangentDir = [-radialDir[1], radialDir[0], 0];
@@ -131,19 +140,19 @@ function cutDovetailGroovePair(wasm, segmentManifold, anchor, wall, railLen, off
   // bottom out, and +1mm extra length so the rail can fully enter
   // without jamming at the very end of its travel.
   const baseHalfW = wall*0.9+0.25, tipHalfW = wall*1.5+0.25, railHeight = wall*1.9+0.3;
-  function oneGroove(zOff){
-    const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen+1.0, zOff);
-    return meshToManifold(wasm, mesh.V, mesh.F);
-  }
-  const grooveA = oneGroove(-offsetZ);
-  const grooveB = oneGroove(offsetZ);
-  const cutters = unionAll(wasm, [grooveA, grooveB]);
-  return safeDifference(wasm, segmentManifold, cutters);
+  const margin = Math.max(1.0, wall*0.5);
+  const railLen = Math.max(4, (zMax-zMin) - 2*margin);
+  const zCenter = (zMin+zMax)/2 - anchor[2];
+  const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen+1.0, zCenter);
+  const cutter = meshToManifold(wasm, mesh.V, mesh.F);
+  return safeDifference(wasm, segmentManifold, cutter);
 }
 // Anchors the connector on the segment's OWN real cut-face geometry
 // (mid-radius, mid-height of the vertices actually lying on the cut
 // plane) rather than an assumed/computed position -- correct regardless
-// of how the seed's own decorations shape that particular cut.
+// of how the seed's own decorations shape that particular cut. Now also
+// returns the face's real Z range so the rail/groove can span nearly its
+// full height.
 function findCutFaceAnchor(V, targetAngle, tol){
   tol = tol||0.02;
   const candidates = V.filter(v=>Math.abs(Math.atan2(v[1],v[0])-targetAngle)<tol);
@@ -151,7 +160,8 @@ function findCutFaceAnchor(V, targetAngle, tol){
   let sumR=0, minZ=Infinity, maxZ=-Infinity;
   candidates.forEach(v=>{ const r=Math.hypot(v[0],v[1]); sumR+=r; if(v[2]<minZ)minZ=v[2]; if(v[2]>maxZ)maxZ=v[2]; });
   const r = sumR/candidates.length, z=(minZ+maxZ)/2;
-  return [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
+  const point = [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
+  return { point, minZ, maxZ };
 }
 // Cuts a completed choker/headpiece manifold into 3 wedge segments and
 // attaches a dovetail-rail-pair (odd joints) / matching-groove-pair
@@ -159,9 +169,8 @@ function findCutFaceAnchor(V, targetAngle, tol){
 // joint is exactly one rail-bearing face meeting one groove-bearing
 // face. Returns an array of 3 manifolds, each independently a valid,
 // printable, single closed solid.
-function splitIntoHookedSegments(wasm, manifold, wall, railLen){
+function splitIntoHookedSegments(wasm, manifold, wall){
   const { Manifold } = wasm;
-  const offsetZ = wall*4.5; // spacing between the two rails/grooves in a pair
   const mesh = manifoldToMesh(manifold);
   const angles = mesh.V.map(v=>Math.atan2(v[1],v[0]));
   const minA = Math.min(...angles), maxA = Math.max(...angles);
@@ -204,7 +213,7 @@ function splitIntoHookedSegments(wasm, manifold, wall, railLen){
     const anchor = findCutFaceAnchor(m0.V, cutAngles[1]-gapEps, gapEps*3+0.02);
     if(anchor){
       const old = segments[0];
-      const railGeo = buildDovetailRailPair(wasm, anchor, wall, railLen, offsetZ);
+      const railGeo = buildDovetailRailFull(wasm, anchor.point, wall, anchor.minZ, anchor.maxZ);
       segments[0] = Manifold.union(old, railGeo);
       try{ old.delete(); }catch(e){}
       try{ railGeo.delete(); }catch(e){}
@@ -212,7 +221,7 @@ function splitIntoHookedSegments(wasm, manifold, wall, railLen){
     const m1 = manifoldToMesh(segments[1]);
     const anchorB = findCutFaceAnchor(m1.V, cutAngles[1]+gapEps, gapEps*3+0.02);
     if(anchorB){
-      segments[1] = cutDovetailGroovePair(wasm, segments[1], anchorB, wall, railLen, offsetZ);
+      segments[1] = cutDovetailGrooveFull(wasm, segments[1], anchorB.point, wall, anchorB.minZ, anchorB.maxZ);
     }
   }
   {
@@ -220,7 +229,7 @@ function splitIntoHookedSegments(wasm, manifold, wall, railLen){
     const anchor = findCutFaceAnchor(m1.V, cutAngles[2]-gapEps, gapEps*3+0.02);
     if(anchor){
       const old = segments[1];
-      const railGeo = buildDovetailRailPair(wasm, anchor, wall, railLen, offsetZ);
+      const railGeo = buildDovetailRailFull(wasm, anchor.point, wall, anchor.minZ, anchor.maxZ);
       segments[1] = Manifold.union(old, railGeo);
       try{ old.delete(); }catch(e){}
       try{ railGeo.delete(); }catch(e){}
@@ -228,7 +237,7 @@ function splitIntoHookedSegments(wasm, manifold, wall, railLen){
     const m2 = manifoldToMesh(segments[2]);
     const anchorB = findCutFaceAnchor(m2.V, cutAngles[2]+gapEps, gapEps*3+0.02);
     if(anchorB){
-      segments[2] = cutDovetailGroovePair(wasm, segments[2], anchorB, wall, railLen, offsetZ);
+      segments[2] = cutDovetailGrooveFull(wasm, segments[2], anchorB.point, wall, anchorB.minZ, anchorB.maxZ);
     }
   }
   return segments;
@@ -2950,13 +2959,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
         bandW: p.bandWidth||0, innerR:(p.mainSize||0)/2
       };
     }
-    const wall = 2.2, railLen = 9.0;
-    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wall, railLen);
+    const wall = 2.2;
+    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wall);
     ({V, F} = concatenateSegmentMeshes(segmentManifolds));
     segmentManifolds.forEach(seg => { try{ seg.delete(); }catch(e){} });
     p.segmentedIntoParts = 3;
     p.segmentConnectorType = 'slidingDovetailRail';
-    p.segmentConnectorRailMm = railLen;
+    p.segmentConnectorRailMm = 'full-height';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
   }
