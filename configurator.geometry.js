@@ -87,9 +87,9 @@ function buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ){
     const embed = postR*1.3;
     const base = [anchor[0], anchor[1], anchor[2]+zOffset-embed];
     const tip = [anchor[0], anchor[1], anchor[2]+zOffset+postLen];
-    let post = cylinderBetween(wasm, base, tip, postR, 14);
-    post = Manifold.union(post, sphereAt(wasm, tip, postR*0.92, 14));
-    post = Manifold.union(post, sphereAt(wasm, base, postR, 14));
+    let post = cylinderBetween(wasm, base, tip, postR, 32);
+    post = Manifold.union(post, sphereAt(wasm, tip, postR*0.92, 28));
+    post = Manifold.union(post, sphereAt(wasm, base, postR, 28));
     return post;
   }
   let result = onePost(-offsetZ);
@@ -101,7 +101,7 @@ function cutSocketPairCavity(wasm, segmentManifold, anchor, socketR, socketDepth
   function oneSocketCutter(zOffset){
     const mouth = [anchor[0], anchor[1], anchor[2]+zOffset-socketR*0.4];
     const bottom = [anchor[0], anchor[1], anchor[2]+zOffset+socketDepth];
-    return cylinderBetween(wasm, mouth, bottom, socketR, 14);
+    return cylinderBetween(wasm, mouth, bottom, socketR, 32);
   }
   const cutterA = oneSocketCutter(-offsetZ);
   const cutterB = oneSocketCutter(offsetZ);
@@ -1692,7 +1692,7 @@ async function makePendantManifold(wasm, p) {
   function addMember(a,b,r=memberR){
     // Endpoints penetrate the annular body by `embed`, guaranteeing a true
     // volumetric union rather than tangent contact.
-    parts.push(cylinderBetween(wasm,a,b,r,20));
+    parts.push(cylinderBetween(wasm,a,b,r,32));
   }
 
   // The main annulus carries the same generated radial field on its outer
@@ -1752,7 +1752,7 @@ async function makePendantManifold(wasm, p) {
     [-saddleHalf,saddleY,0],
     [ saddleHalf,saddleY,0],
     Math.max(shoulderR*.92,tunnelWall*.62),
-    28
+    32
   ));
 
   let manifold=unionAll(wasm,parts);
@@ -1873,7 +1873,7 @@ async function makeCufflinksManifold(wasm, p) {
   /* Closed posterior finding. All joints overlap by at least one structural
      wall, preventing isolated components after boolean evaluation. */
   const postRadius=Math.max(2.60,minFeature*.9);
-  const postLength=17.0;
+  const postLength=21.0;
   const postCurvatureRadius=34.0;
   const postTiltRad=4*Math.PI/180;
   const rootRadius=Math.max(2.15,postRadius*2.25,minFeature*1.7);
@@ -1888,19 +1888,19 @@ async function makeCufflinksManifold(wasm, p) {
   function addFinding(target){
     const root=cufflinkPostPoint(0);
     target.push(cylZ(0,0,rootRadius,rearFaceZ-rootDepth,rearFaceZ+minFeature*.55));
-    target.push(sphereAt(wasm,[0,0,rearFaceZ-minFeature*.35],rootRadius,24));
+    target.push(sphereAt(wasm,[0,0,rearFaceZ-minFeature*.35],rootRadius,32));
     const segments=14;
     let previous=[root[0],root[1],rearFaceZ-rootDepth*.42];
     for(let i=1;i<=segments;i++){
       const raw=cufflinkPostPoint(i/segments);
       const current=[raw[0],raw[1],raw[2]-rootDepth*.18];
-      target.push(cylinderBetween(wasm,previous,current,postRadius,24));
-      if(i<segments)target.push(sphereAt(wasm,current,postRadius*1.04,16));
+      target.push(cylinderBetween(wasm,previous,current,postRadius,32));
+      if(i<segments)target.push(sphereAt(wasm,current,postRadius*1.04,28));
       previous=current;
     }
     const pivot=previous;
     const hingeRadius=Math.max(1.7,postRadius*1.8);
-    target.push(sphereAt(wasm,pivot,hingeRadius,24));
+    target.push(sphereAt(wasm,pivot,hingeRadius,32));
     target.push(box(pivot[0],pivot[1],pivot[2],toggleLength,toggleWidth,toggleThickness));
     target.push(box(pivot[0],pivot[1],pivot[2]+toggleThickness*.62,5.4,5.0,3.2));
   }
@@ -2729,7 +2729,7 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     chokerSculptural:Object.freeze({hollowAt:90,rejectAbove:150}),
     chokerCervical:Object.freeze({hollowAt:145,rejectAbove:220}),
     headpiece:Object.freeze({hollowAt:90,rejectAbove:150}),
-    cufflinks:Object.freeze({hollowAt:Infinity,rejectAbove:60}),
+    cufflinks:Object.freeze({hollowAt:Infinity,rejectAbove:80}),
     earCuff:Object.freeze({hollowAt:Infinity,rejectAbove:28})
   })
 });
