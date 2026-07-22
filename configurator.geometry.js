@@ -1056,7 +1056,18 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     }
   }
 
-  const pinCount = cellularActive ? 0 : Math.round(p.screws||0);
+  // Disabled for choker/headpiece specifically: confirmed via ablation
+  // testing (forcing this off while varying every other decoration
+  // independently) that it was the largest single contributor to severe
+  // non-manifold defects at choker's much larger scale, though isolated
+  // testing of the pin decoration alone (even with multiple pins) on a
+  // simple band stayed clean -- meaning this is an interaction with the
+  // piece's full real complexity, not reproducible standalone. This is a
+  // mitigation matching the same "disable, don't keep chasing under
+  // time pressure" approach taken for the hallmark engraving; a smaller
+  // residual defect remains (worst case dropped from 6337 to 561 in
+  // testing) and still needs dedicated root-cause investigation.
+  const pinCount = (cellularActive || opts.type==='choker' || opts.type==='headpiece') ? 0 : Math.round(p.screws||0);
   if (pinCount>0) {
     const pinR = Math.max(AGDP_MIN_WALL_MM*0.35, baseWall*0.16);
     for (let k=0;k<pinCount;k++) {
