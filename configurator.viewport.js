@@ -5,25 +5,24 @@ const _canvas3d = document.getElementById('view');
 const _scene = new THREE.Scene();
 _scene.background = new THREE.Color(0xffffff);
 (function loadCanvasBackgroundGradient(){
-  // Warmer, more particular neutral than a plain near-white: a soft cream
-  // top easing into a warm greige toward the bottom, where the floor and
-  // its shadow live — closer to the seamless-paper look of the reference,
-  // built from this brand's own cream/taupe palette rather than a generic
-  // studio white.
+  // Gradient narrowed to near-imperceptible per feedback -- previously a
+  // fairly visible cream-to-greige shift top to bottom; now a much
+  // smaller delta between stops, reading as essentially flat while still
+  // avoiding a perfectly uniform canvas-texture look.
   const w = 512, h = 512;
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const cx = c.getContext('2d');
   const vgrad = cx.createLinearGradient(0, 0, 0, h);
-  vgrad.addColorStop(0, '#FBF8F3');
-  vgrad.addColorStop(0.55, '#F6F0E8');
-  vgrad.addColorStop(1, '#E7DDD0');
+  vgrad.addColorStop(0, '#FBF9FA');
+  vgrad.addColorStop(0.55, '#FAF7F8');
+  vgrad.addColorStop(1, '#F8F5F6');
   cx.fillStyle = vgrad;
   cx.fillRect(0, 0, w, h);
   const rgrad = cx.createRadialGradient(w/2, h*0.42, 0, w/2, h*0.42, w*0.78);
-  rgrad.addColorStop(0, 'rgba(255,253,250,0.55)');
-  rgrad.addColorStop(0.6, 'rgba(255,253,250,0.12)');
-  rgrad.addColorStop(1, 'rgba(255,253,250,0)');
+  rgrad.addColorStop(0, 'rgba(255,255,255,0.25)');
+  rgrad.addColorStop(0.6, 'rgba(255,255,255,0.06)');
+  rgrad.addColorStop(1, 'rgba(255,255,255,0)');
   cx.fillStyle = rgrad;
   cx.fillRect(0, 0, w, h);
   const tex = new THREE.CanvasTexture(c);
@@ -209,8 +208,8 @@ function buildBrushedRoughnessMap(){
   return tex;
 }
 const _material = new THREE.MeshPhysicalMaterial({
-  color: 0xffffff, metalness: 0.90, roughness: 0.0875, envMapIntensity: 0.736,
-  clearcoat: 0, reflectivity: 0.64,
+  color: 0xeeeeee, metalness: 1.0, roughness: 0.1, ior: 1.35, envMapIntensity: 0.736,
+  clearcoat: 0,
   normalMap: buildBrushedLinesNormalMap(), normalScale: new THREE.Vector2(0.08, 0.08),
   roughnessMap: buildBrushedRoughnessMap(),
 });

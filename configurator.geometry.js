@@ -640,7 +640,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const ballR = Math.max(AGDP_MIN_WALL_MM*1.1, strandR*1.3);
       [-arcRad/2, arcRad/2].forEach(te => {
         const ct=Math.cos(te), st=Math.sin(te);
-        parts.push(sphereAt(wasm, [windR*ct, windR*st, 0], ballR, 14));
+        parts.push(sphereAt(wasm, [windR*ct, windR*st, 0], ballR, 24));
       });
     }
     const beadCount = Math.round(clamp((p.rivets||0)+(p.nodes||0),0,4));
@@ -654,7 +654,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const embed = beadR*0.6;
       const cx=rr*Math.cos(t), cy=rr*Math.sin(t);
       const nx=Math.cos(t), ny=Math.sin(t);
-      parts.push(sphereAt(wasm, [cx+nx*(beadR-embed), cy+ny*(beadR-embed), axialWobble], beadR, 12));
+      parts.push(sphereAt(wasm, [cx+nx*(beadR-embed), cy+ny*(beadR-embed), axialWobble], beadR, 24));
     }
     {
       const featureWeightsK=p.featureWeights||{};
@@ -677,22 +677,22 @@ async function buildBandGeometryManifold(wasm, p, opts) {
           const z = (inst%2?1:-1)*half*0.35;
           if(pathKey==='vesselDome'){
             const bigR=Math.max(AGDP_MIN_WALL_MM*1.0,strandR*(1.1+1.2*intensity));
-            parts.push(sphereAt(wasm,[rr*ct,rr*st,z],bigR,14));
+            parts.push(sphereAt(wasm,[rr*ct,rr*st,z],bigR,24));
           }else if(pathKey==='cageLattice'){
             const barR=Math.max(AGDP_MIN_WALL_MM*0.65,strandR*(0.55+0.5*intensity));
             const halfSpan=half*(0.18+0.16*intensity);
-            parts.push(cylinderBetween(wasm,[rr*ct,rr*st,z-halfSpan],[rr*ct,rr*st,z+halfSpan],barR,12));
-            parts.push(sphereAt(wasm,[rr*ct,rr*st,z-halfSpan],barR*1.3,10));
-            parts.push(sphereAt(wasm,[rr*ct,rr*st,z+halfSpan],barR*1.3,10));
+            parts.push(cylinderBetween(wasm,[rr*ct,rr*st,z-halfSpan],[rr*ct,rr*st,z+halfSpan],barR,24));
+            parts.push(sphereAt(wasm,[rr*ct,rr*st,z-halfSpan],barR*1.3,24));
+            parts.push(sphereAt(wasm,[rr*ct,rr*st,z+halfSpan],barR*1.3,24));
           }else if(pathKey==='wrapped'){
             const bumpR=Math.max(AGDP_MIN_WALL_MM*0.7,strandR*(0.9+0.9*intensity));
-            parts.push(sphereAt(wasm,[rr*ct,rr*st,z],bumpR,14));
+            parts.push(sphereAt(wasm,[rr*ct,rr*st,z],bumpR,24));
           }else if(pathKey==='cellular'){
             const sr=Math.max(AGDP_MIN_WALL_MM*0.6,strandR*(0.75+0.7*intensity));
             const anchor=[windR*ct,windR*st,z];
             const center=[rr*ct,rr*st,z];
-            parts.push(sphereAt(wasm,center,sr,12));
-            parts.push(cylinderBetween(wasm,anchor,center,sr*0.55,10));
+            parts.push(sphereAt(wasm,center,sr,24));
+            parts.push(cylinderBetween(wasm,anchor,center,sr*0.55,24));
           }
         }
       });
@@ -959,7 +959,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       // radius regardless of how deep embedAtZ would otherwise allow.
       const embed = Math.min(embedAtZ(t,0), pinR*2.2);
       const rInner=localSurfaceRZ(t,0)-embed, rOuter=localSurfaceRZ(t,0)+pinR*0.8;
-      decorations.push(cylinderBetween(wasm, [rInner*ct,rInner*st,0], [rOuter*ct,rOuter*st,0], pinR, 12));
+      decorations.push(cylinderBetween(wasm, [rInner*ct,rInner*st,0], [rOuter*ct,rOuter*st,0], pinR, 24));
     }
   }
   const rivetCount = cellularActive ? 0 : Math.round(p.rivets||0);
@@ -972,7 +972,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const rivetZ = (k%2?1:-1)*bandW*0.22;
       const localEmbed = Math.min(embedAtZ(t,rivetZ), rivetR*0.9);
       const rOut = localSurfaceRZ(t,rivetZ)+rivetR-localEmbed;
-      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR, 10));
+      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR, 24));
     }
   }
   const plainBody = facetCount===0 && p.holes<=0 && (p.architectural||0)*10<0.5;
@@ -999,7 +999,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const nodeZ = (k%2?1:-1)*bandW*0.18;
       const localEmbed = Math.min(embedAtZ(t,nodeZ), sr*0.9);
       const rr = localSurfaceRZ(t,nodeZ)+sr-localEmbed;
-      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 14));
+      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 24));
     }
   }
   if (closed && (opts.type==='ring'||opts.type==='bangle')) {
@@ -1017,7 +1017,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const wallHere = localSurfaceRZ(te,0)-innerR;
       const ballR = Math.max(AGDP_MIN_WALL_MM*1.1, wallHere*0.62);
       const rCenter = innerR+ballR;
-      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 14));
+      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 24));
     });
   }
 
@@ -1047,7 +1047,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const t=phase+2.42,ct=Math.cos(t),st=Math.sin(t);
     const sr=Math.max(AGDP_MIN_WALL_MM*.95,baseWall*(.17+.12*vesselI));
     const rr=localSurfaceRZ(t,0)-sr*.22;
-    voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,0],sr,18));
+    voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,0],sr,24));
   }
 
   {
@@ -1055,7 +1055,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const sr=Math.max(AGDP_MIN_WALL_MM*.82,baseWall*(.14+.10*cellularI));
     const z=bandW*.08*(p.compositionSignature?.polarity||1);
     const rr=localSurfaceRZ(t,z)-sr*.18;
-    voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,z],sr,16));
+    voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,z],sr,24));
   }
   }
 
@@ -1114,7 +1114,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.4, baseWall*(1.8+2.2*sv));
     const embed=massR*0.35;
     const massCenterR=hSurface+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR, 22));
+    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR, 24));
     const oppositeT=ht+Math.PI;
     const oppCt=Math.cos(oppositeT), oppSt=Math.sin(oppositeT);
     const oppSurface=localSurfaceRZ(oppositeT,0);
@@ -1144,7 +1144,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const esr=Math.max(AGDP_MIN_WALL_MM*1.1, baseWall*(0.55+0.65*sv)*(0.7+0.6*eRng()));
       const esurf=localSurfaceRZ(et,ez);
       const erAdj=esurf-esr*0.15;
-      erosionCutters.push(sphereAt(wasm,[erAdj*ect, erAdj*est, ez], esr, 16));
+      erosionCutters.push(sphereAt(wasm,[erAdj*ect, erAdj*est, ez], esr, 24));
     }
     try{ bodyManifold=safeDifference(wasm,bodyManifold, unionAll(wasm, erosionCutters)); }
     catch(err){ console.warn('AGDP: erosión omitida por seguridad topológica',err); }
@@ -1161,7 +1161,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const dMassR=Math.max(baseWall*1.3, baseWall*(1.5+1.3*sv));
     const embed=dMassR*0.4;
     const centerR=esurf+dMassR-embed;
-    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR, 20));
+    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR, 24));
   }
 
   // Compresión literal: un lado real se aplasta hacia el eje mientras el
@@ -1219,7 +1219,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const r=Math.max(AGDP_MIN_WALL_MM*0.5, baseWall*(0.16+0.10*pRng()));
       const embed=r*0.5;
       const rr=surf+r-embed;
-      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r, 10));
+      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r, 24));
     }
   }
 
@@ -1235,13 +1235,13 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.1, baseWall*(1.2+0.8*sv));
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR, 18));
+    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR, 24));
     const voidT=invT+Math.PI*0.5+iRng()*0.3;
     const vct=Math.cos(voidT), vst=Math.sin(voidT);
     const voidSurf=localSurfaceRZ(voidT,0);
     const voidR=Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.7+0.5*sv));
     try{
-      const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 16);
+      const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 24);
       bodyManifold=safeDifference(wasm,bodyManifold, voidCutter);
     }catch(err){ console.warn('AGDP: inversión omitida por seguridad topológica',err); }
   }
@@ -1286,7 +1286,7 @@ const StructuralKit = (()=>{
     const parts=[];
     const r=Math.max(AGDP_MIN_WALL_MM*0.62, wallRef*(.09+.16*clamp(intensity,0,1)))*(extraRadiusMul||1);
     for(let i=0;i<anchors.length-1;i++){
-      parts.push(cylinderBetween(wasm,anchors[i],anchors[i+1],r,14));
+      parts.push(cylinderBetween(wasm,anchors[i],anchors[i+1],r,24));
     }
     return parts;
   }
@@ -1318,11 +1318,11 @@ async function makeCageFaceManifold(wasm, p, outerR, hoopWidth) {
   const capR = barR*1.35;
   const bridgeHalfLen = Math.max(barR*2, outerR-frameWidth*0.45);
   const parts = [frameManifold];
-  parts.push(cylinderBetween(wasm, [-bridgeHalfLen,0,0], [bridgeHalfLen,0,0], barR, 16));
+  parts.push(cylinderBetween(wasm, [-bridgeHalfLen,0,0], [bridgeHalfLen,0,0], barR, 24));
   [-bridgeHalfLen, bridgeHalfLen].forEach(x => {
-    parts.push(cylinderBetween(wasm, [x,-capR*1.6,0], [x,capR*1.6,0], capR, 14));
-    parts.push(sphereAt(wasm, [x,-capR*1.6,0], capR, 12));
-    parts.push(sphereAt(wasm, [x,capR*1.6,0], capR, 12));
+    parts.push(cylinderBetween(wasm, [x,-capR*1.6,0], [x,capR*1.6,0], capR, 24));
+    parts.push(sphereAt(wasm, [x,-capR*1.6,0], capR, 24));
+    parts.push(sphereAt(wasm, [x,capR*1.6,0], capR, 24));
   });
   const manifold = unionAll(wasm, parts);
   return { manifold, frameHalfW: outerR, frameHalfH: outerR, barR };
@@ -1344,7 +1344,7 @@ function makeVesselFaceManifold(wasm, p, outerR, height) {
     const sphereR = Math.max(AGDP_MIN_WALL_MM*1.1, (k===0?1:0.22)*(outerR*0.36+p.nodeVolume*0.75));
     const embed = sphereR*0.42;
     const cx = rho*Math.cos(tiltAngle)*0.55, cy = rho*Math.sin(tiltAngle)*0.55;
-    parts.push(sphereAt(wasm, [cx,cy,zBase+sphereR-embed], sphereR, 16));
+    parts.push(sphereAt(wasm, [cx,cy,zBase+sphereR-embed], sphereR, 24));
   }
   const manifold = unionAll(wasm, parts);
   return { manifold, outerR, domeHeight: height };
@@ -1377,7 +1377,7 @@ function makeDomeFaceManifold(wasm, p, outerR, domeHeight) {
     const nrm = rhoHere>1e-6 ? [realPt[0]/rhoHere, realPt[1]/rhoHere] : [1,0];
     const phi = uPos*Math.PI/2;
     const nx = Math.sin(phi)*nrm[0], ny = Math.sin(phi)*nrm[1], nz = Math.cos(phi);
-    parts.push(sphereAt(wasm, [realPt[0]+nx*(bumpR-embed), realPt[1]+ny*(bumpR-embed), realPt[2]+nz*(bumpR-embed)], bumpR, 12));
+    parts.push(sphereAt(wasm, [realPt[0]+nx*(bumpR-embed), realPt[1]+ny*(bumpR-embed), realPt[2]+nz*(bumpR-embed)], bumpR, 24));
   }
   const manifold = unionAll(wasm, parts);
   return { manifold, outerR, domeHeight };
@@ -1430,14 +1430,14 @@ function makeSpatialFramePendantFace(wasm,p,outerR,th){
   const front=[[-w*.53,-h*.43,z],[w*.43,-h*.50,z],[w*.55,h*.38,z],[-w*.35+skew,h*.50,z]];
   const back=[[-w*.42,-h*.50,-z],[w*.55,-h*.35,-z],[w*.38,h*.52,-z],[-w*.55+skew*.55,h*.35,-z]];
   const parts=[];
-  function edgeLoop(points,r){for(let i=0;i<4;i++)parts.push(cylinderBetween(wasm,points[i],points[(i+1)%4],r,18));}
+  function edgeLoop(points,r){for(let i=0;i<4;i++)parts.push(cylinderBetween(wasm,points[i],points[(i+1)%4],r,24));}
   edgeLoop(front,barR*1.08); edgeLoop(back,barR*.92);
-  for(let i=0;i<4;i++)parts.push(cylinderBetween(wasm,front[i],back[i],barR*.78,16));
+  for(let i=0;i<4;i++)parts.push(cylinderBetween(wasm,front[i],back[i],barR*.78,24));
   const polarity=p.compositionSignature?.polarity||1;
-  parts.push(cylinderBetween(wasm,front[polarity>0?0:1],front[polarity>0?2:3],barR*.72,16));
-  parts.push(cylinderBetween(wasm,back[polarity>0?1:0],back[polarity>0?3:2],barR*.62,16));
+  parts.push(cylinderBetween(wasm,front[polarity>0?0:1],front[polarity>0?2:3],barR*.72,24));
+  parts.push(cylinderBetween(wasm,back[polarity>0?1:0],back[polarity>0?3:2],barR*.62,24));
   const node=front[polarity>0?2:3];
-  parts.push(sphereAt(wasm,node,barR*1.65,16));
+  parts.push(sphereAt(wasm,node,barR*1.65,24));
   return {manifold:unionAll(wasm,parts),frameHalfW:w*.58,frameHalfH:h*.56,barR,kind:'spatialFrame',attachPoint:node,attachR:barR*1.65};
 }
 function makePiercedSlabPendantFace(wasm,p,outerR,th){
@@ -1454,10 +1454,10 @@ function makePiercedSlabPendantFace(wasm,p,outerR,th){
   slab=safeDifference(wasm,slab,voidBox);
   const parts=[slab];
   const z=d*.58, r=Math.max(AGDP_MIN_WALL_MM*.8,d*.11);
-  parts.push(cylinderBetween(wasm,[-w*.46,-h*.34,z],[w*.42,h*.28,z],r,16));
-  parts.push(cylinderBetween(wasm,[-w*.34,h*.43,-z],[w*.48,-h*.22,-z],r*.88,16));
+  parts.push(cylinderBetween(wasm,[-w*.46,-h*.34,z],[w*.42,h*.28,z],r,24));
+  parts.push(cylinderBetween(wasm,[-w*.34,h*.43,-z],[w*.48,-h*.22,-z],r*.88,24));
   const nodeCenter=[xOff+w*.20,h*.20,z];
-  parts.push(sphereAt(wasm,nodeCenter,r*1.55,16));
+  parts.push(sphereAt(wasm,nodeCenter,r*1.55,24));
   return {manifold:unionAll(wasm,parts),frameHalfW:w*.56,frameHalfH:h*.56,barR:r,kind:'piercedSlab',attachPoint:nodeCenter,attachR:r*1.55};
 }
 function makeFoldedTotemPendantFace(wasm,p,outerR,th){
@@ -1469,11 +1469,11 @@ function makeFoldedTotemPendantFace(wasm,p,outerR,th){
   const wingB=Manifold.cube([w*.76,h*.30,d*.62],true).rotate([-14,20,polarity*-28]).translate([-w*.20,-h*.20,-d*.34]);
   const parts=[spine,wingA,wingB];
   const r=Math.max(AGDP_MIN_WALL_MM*.82,d*.12);
-  parts.push(cylinderBetween(wasm,[-w*.34,-h*.42,0],[w*.36,h*.40,0],r,18));
+  parts.push(cylinderBetween(wasm,[-w*.34,-h*.42,0],[w*.36,h*.40,0],r,24));
   const tiltRad=polarity*8*Math.PI/180;
   const nodeCenter=[-(h*.46)*Math.sin(tiltRad), (h*.46)*Math.cos(tiltRad), 0];
   const nodeR=Math.max(AGDP_MIN_WALL_MM*1.1, r*1.7);
-  parts.push(sphereAt(wasm,nodeCenter,nodeR,16));
+  parts.push(sphereAt(wasm,nodeCenter,nodeR,24));
   return {manifold:unionAll(wasm,parts),frameHalfW:w*.58,frameHalfH:h*.54,barR:r,kind:'foldedTotem',attachPoint:nodeCenter,attachR:nodeR};
 }
 
@@ -1550,18 +1550,18 @@ async function makeFaceManifold(wasm, p, outerR, th, domeHeight) {
   // continuous vocabulary, regardless of category or base type.
   if(domeI>.08 && baseType!=='dome'){
     const rr=effR*(.32+.28*domeI);
-    parts.push(sphereAt(wasm,[0,0,frontZ],rr,22).scale([1,1,.42+.30*domeI]));
+    parts.push(sphereAt(wasm,[0,0,frontZ],rr,24).scale([1,1,.42+.30*domeI]));
   }
   if(vesselI>.08 && baseType!=='vessel'){
     const rr=effR*(.22+.25*vesselI);
     const polarity=(p.variation?.offset||0)>=0?1:-1;
-    parts.push(sphereAt(wasm,[polarity*effR*.22,-effR*.10,frontZ*.76],rr,20).scale([1.18,.86,.48+.22*vesselI]));
+    parts.push(sphereAt(wasm,[polarity*effR*.22,-effR*.10,frontZ*.76],rr,24).scale([1.18,.86,.48+.22*vesselI]));
   }
   if(cageI>.08){
     const barR=Math.max(AGDP_MIN_WALL_MM*.9,th*(.07+.07*cageI));
     const span=effR*(.52+.24*cageI);
-    parts.push(cylinderBetween(wasm,[-span,0,0],[span,0,0],barR,14));
-    parts.push(cylinderBetween(wasm,[0,-span,0],[0,span,0],barR,14));
+    parts.push(cylinderBetween(wasm,[-span,0,0],[span,0,0],barR,24));
+    parts.push(cylinderBetween(wasm,[0,-span,0],[0,span,0],barR,24));
   }
   if(wrappedI>.08 && baseType!=='wrapped'){
     const count=2+Math.round(wrappedI*2);
@@ -1569,14 +1569,14 @@ async function makeFaceManifold(wasm, p, outerR, th, domeHeight) {
       const a=(p.variation?.phaseB||0)+i*Math.PI*2/count;
       const rr=effR*(.66+.08*Math.sin(a*2));
       const nr=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.055+.045*wrappedI));
-      parts.push(sphereAt(wasm,[Math.cos(a)*rr,Math.sin(a)*rr,th*.08],nr,14));
+      parts.push(sphereAt(wasm,[Math.cos(a)*rr,Math.sin(a)*rr,th*.08],nr,24));
     }
   }
   if(interI>.12){
     const r=Math.max(AGDP_MIN_WALL_MM*.75,th*(.055+.05*interI));
     const span=effR*.72;
-    parts.push(cylinderBetween(wasm,[-span*.72,-span*.38,th*.04],[span*.72,span*.38,th*.04],r,12));
-    parts.push(cylinderBetween(wasm,[-span*.72,span*.38,th*.04],[span*.72,-span*.38,th*.04],r,12));
+    parts.push(cylinderBetween(wasm,[-span*.72,-span*.38,th*.04],[span*.72,span*.38,th*.04],r,24));
+    parts.push(cylinderBetween(wasm,[-span*.72,span*.38,th*.04],[span*.72,-span*.38,th*.04],r,24));
   }
   return {manifold:unionAll(wasm,parts),frameHalfW:base.frameHalfW||effR,frameHalfH:base.frameHalfH||effR,barR:base.barR||Math.max(AGDP_MIN_WALL_MM,th*.15),kind:baseType,outerR:effR,domeHeight:base.domeHeight||domeHeight};
 }
@@ -1630,14 +1630,14 @@ function addFullVocabularyAccentsGeneric(wasm,parts,p,scaleRef,seedTag,faceKind,
   {
     const center=targetAt(phase+2.42,.36,.01);
     const r=Math.max(AGDP_MIN_WALL_MM*1.05,scaleRef*(.055+.032*intensity.vessel));
-    if(outsideReserved(center,r))voidCutters.push(sphereAt(wasm,center,r,18));
+    if(outsideReserved(center,r))voidCutters.push(sphereAt(wasm,center,r,24));
   }
 
   {
     const c1=targetAt(phase+5.72,.35,-.015),c2=targetAt(phase+6.02,.35,.02);
     const r=Math.max(AGDP_MIN_WALL_MM*.88,scaleRef*(.043+.028*intensity.cellular));
-    if(outsideReserved(c1,r))voidCutters.push(sphereAt(wasm,c1,r,16));
-    if(intensity.cellular>.56&&outsideReserved(c2,r*.68))voidCutters.push(sphereAt(wasm,c2,r*.68,14));
+    if(outsideReserved(c1,r))voidCutters.push(sphereAt(wasm,c1,r,24));
+    if(intensity.cellular>.56&&outsideReserved(c2,r*.68))voidCutters.push(sphereAt(wasm,c2,r*.68,24));
   }
   return voidCutters;
 }
@@ -1908,7 +1908,7 @@ async function makeCufflinksManifold(wasm, p) {
 
   if(featureIntensity(p,'interweave')>.58){
     const spokeR=Math.max(minFeature*.72,th*.11);
-    structuralParts.push(cylinderBetween(wasm,[0,0,rearFaceZ+minFeature*.2],[r*.72,0,rearFaceZ+minFeature*.2],spokeR,18));
+    structuralParts.push(cylinderBetween(wasm,[0,0,rearFaceZ+minFeature*.2],[r*.72,0,rearFaceZ+minFeature*.2],spokeR,24));
   }
 
   let unit=unionAll(wasm,structuralParts);
@@ -1938,7 +1938,7 @@ async function makeCufflinksManifold(wasm, p) {
         const jitter=th*.42;
         const pt=[anchor[0]+(pRng()*2-1)*jitter,anchor[1]+(pRng()*2-1)*jitter,
           Math.max(th*.02,anchor[2]+(pRng()*2-1)*jitter*.28)-rr*.48];
-        mutationParts.push(sphereAt(wasm,pt,rr,16));
+        mutationParts.push(sphereAt(wasm,pt,rr,24));
       }
     }
     if(mutationParts.length>1){
@@ -2045,7 +2045,7 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
     // rising out of the mesh's edge rather than floating near it,
     // regardless of how the embed math alone works out.
     const rootSurfacePoint=[surfaceR*Math.cos(t),surfaceR*Math.sin(t),zBase];
-    parts.push(cylinderBetween(wasm, rootSurfacePoint, p0, rr*0.62, 14));
+    parts.push(cylinderBetween(wasm, rootSurfacePoint, p0, rr*0.62, 24));
   }
   {
     const veinIntensity=clamp(Math.max(lattice,cage),0,1);
@@ -2420,7 +2420,7 @@ function makeCombManifold(wasm,p){
       for(let k=0;k<count;k++){
         const idx=Math.floor(eRng()*n);
         const vr=Math.max(1.0, topH*(0.09+0.09*sv));
-        cutters.push(sphereAt(wasm,mid[idx],vr,14));
+        cutters.push(sphereAt(wasm,mid[idx],vr,24));
       }
       if(cutters.length){
         try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(safeDifference(wasm,merged,unionAll(wasm,cutters))); }
@@ -2497,13 +2497,13 @@ async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
     const a=sphereAt(wasm,[-3.8*sx,1.0*sy,0],7.4*Math.min(sx,sy),28).scale([1.20,.90,.50]);
     const b=sphereAt(wasm,[3.6*sx,-1.6*sy,0],6.6*Math.min(sx,sy),26).scale([1.16,.96,.54]);
     const c=sphereAt(wasm,[.6*sx,2.4*sy,faceTh*.07],5.2*Math.min(sx,sy),24).scale([1.02,1.00,.46]);
-    const notch=sphereAt(wasm,[polarity*6.2*sx,-2.6*sy,0],3.2*Math.min(sx,sy),22).scale([1.08,.9,.75]);
+    const notch=sphereAt(wasm,[polarity*6.2*sx,-2.6*sy,0],3.2*Math.min(sx,sy),24).scale([1.08,.9,.75]);
     face=safeDifference(wasm,unionAll(wasm,[a,b,c]),notch);
   }else{
     const rot=(p.compositionSignature?.polarity||1)*(5+9*rng());
     let slab=Manifold.cube([faceW*.86,faceH*.79,faceTh],true).rotate([0,0,rot]);
     const lobe1=sphereAt(wasm,[faceW*.26,faceH*.14,0],faceH*.31,24).scale([1.20,.85,.55]);
-    const lobe2=sphereAt(wasm,[-faceW*.28,-faceH*.16,0],faceH*.27,22).scale([.98,1.00,.52]);
+    const lobe2=sphereAt(wasm,[-faceW*.28,-faceH*.16,0],faceH*.27,24).scale([.98,1.00,.52]);
     const voidCut=Manifold.cube([faceW*.18,faceH*.35,faceTh*1.8],true).rotate([0,0,-17]).translate([-faceW*.07,faceH*.045,0]);
     face=safeDifference(wasm,unionAll(wasm,[slab,lobe1,lobe2]),voidCut);
   }
@@ -2519,7 +2519,7 @@ async function makeUniversalClipManifold(wasm,p){
   const springL=Math.min(mechL-4,Math.max(30,p.clipSpringLengthMm||32));
   const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|universal-clip-face');
   const parts=[];
-  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,20),sphereAt(wasm,b,r,20)]);
+  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
 
   const faceW=clamp((p.clipFaceWidthMm||32)*(0.90+rng()*.22),27,38);
   const faceH=clamp((p.clipFaceHeightMm||30)*(0.88+rng()*.26),25,37);
@@ -2544,7 +2544,7 @@ async function makeUniversalClipManifold(wasm,p){
     const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|clip-hypertrophy');
     const fx=(hRng()*2-1)*faceW*0.28, fy=(hRng()*2-1)*faceH*0.28;
     const massR=Math.max(faceTh*0.9, faceTh*(1.0+0.9*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.35+massR*0.3],massR,20));
+    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.35+massR*0.3],massR,24));
   }
 
   // Placa posterior de unión, completamente oculta por la cara visible.
@@ -2587,11 +2587,11 @@ async function makeUniversalClipManifold(wasm,p){
   }
   const tipMesh=tubeAlongPathMesh(tipPts,tipR,14,false);
   parts.push(meshToManifold(wasm,tipMesh.V,tipMesh.F));
-  parts.push(sphereAt(wasm,tipPts[tipPts.length-1],tipR*1.05,20));
+  parts.push(sphereAt(wasm,tipPts[tipPts.length-1],tipR*1.05,24));
 
   // Dos apoyos cortos vinculan el mecanismo con la placa posterior, sin atravesar la cara.
-  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,zRear],Math.max(1.0,T*.52),18));
-  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,zRear],Math.max(1.0,T*.52),18));
+  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,zRear],Math.max(1.0,T*.52),24));
+  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,zRear],Math.max(1.0,T*.52),24));
 
   p.clipFaceWidthMm=faceW;
   p.clipFaceHeightMm=faceH;
@@ -2613,7 +2613,7 @@ async function makeMoneyClipManifold(wasm,p){
   const requestedRearL=Math.max(L*.72,p.moneyClipRearLengthMm||L-8);
   const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|money-clip-face');
   const parts=[];
-  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,20),sphereAt(wasm,b,r,20)]);
+  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
 
   // El frente usa la misma función compartida que el clip universal —
   // no una copia propia con constantes ligeramente distintas — adaptada
@@ -2639,7 +2639,7 @@ async function makeMoneyClipManifold(wasm,p){
     const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|moneyclip-hypertrophy');
     const fx=(hRng()*2-1)*faceL*0.30, fy=(hRng()*2-1)*faceW*0.28;
     const massR=Math.max(faceTh*0.85, faceTh*(0.95+0.85*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.4+massR*0.3],massR,20));
+    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.4+massR*0.3],massR,24));
   }
 
   // Punteras redondeadas discretas en los extremos, ancladas a la cara real.
@@ -2666,8 +2666,8 @@ async function makeMoneyClipManifold(wasm,p){
   const zBack=faceBackZ-plateT*.5+0.08;
   const backPlate=Manifold.cube([backW,backH,plateT],true).translate([0,0,zBack]);
   parts.push(backPlate);
-  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,rearZ],Math.max(0.85,T*.44),18));
-  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,rearZ],Math.max(0.85,T*.44),18));
+  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,rearZ],Math.max(0.85,T*.44),24));
+  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,rearZ],Math.max(0.85,T*.44),24));
 
   // Retorno en U construido desde la separación efectiva entre frente y brazo.
   // Sus extremos coinciden exactamente con zBack y rearZ, por lo que no quedan
