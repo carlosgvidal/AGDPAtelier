@@ -1118,17 +1118,17 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 24));
     }
   }
-  if (opts.type==='ring'||opts.type==='bangle'||opts.type==='cuffBracelet'||opts.type==='earCuff') {
-    // The interior bore surface is always hidden against skin when worn,
-    // regardless of whether the band is a closed loop (ring/bangle) or
-    // open (cuffBracelet/earCuff) -- extended from ring/bangle-only per
-    // explicit request to include the maker's mark more broadly. Choker
-    // and headpiece are NOT included here: their "t=0" reference point is
-    // the visually prominent front of the design (established earlier
-    // when fixing their camera framing), not a hidden interior surface,
-    // so placing a mark there would need different positioning logic.
-    // Pendant and cufflinks use separate construction functions entirely
-    // and still need their own hallmark implementation as a follow-up.
+  if (false && (opts.type==='ring'||opts.type==='bangle'||opts.type==='cuffBracelet'||opts.type==='earCuff')) {
+    // DISABLED per direct feedback: the curved-surface text engraving
+    // produced catastrophic geometry damage in production (torn/jagged
+    // surfaces, holes, illegible misplaced text, thin unprintable walls)
+    // far beyond what isolated testing showed. Rather than keep chasing
+    // the exact cause under time pressure, this is switched off entirely
+    // -- condition hardcoded to false so the call is visibly disabled,
+    // not deleted, since the approach itself (a small flat plate instead
+    // of text curved into the band's own surface) is a completely
+    // different, safer redesign to revisit later, not a bug fix on this
+    // code.
     const hallmarkArcMm = 8.5;
     const tHalfSpan = Math.min(Math.PI*0.4, (hallmarkArcMm/2)/Math.max(innerR,3));
     const engraveDepth = 0.34;
