@@ -1006,7 +1006,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const rivetZ = (k%2?1:-1)*bandW*0.22;
       const localEmbed = Math.min(embedAtZ(t,rivetZ), rivetR*0.9);
       const rOut = localSurfaceRZ(t,rivetZ)+rivetR-localEmbed;
-      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR, 24));
+      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR, 8));
     }
   }
   const plainBody = facetCount===0 && p.holes<=0 && (p.architectural||0)*10<0.5;
@@ -1059,7 +1059,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const wallHere = localSurfaceRZ(te,0)-innerR;
       const ballR = Math.max(AGDP_MIN_WALL_MM*1.1, wallHere*0.62);
       const rCenter = innerR+ballR;
-      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 24));
+      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 8));
     });
   }
 
@@ -1156,7 +1156,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.4, baseWall*(1.8+2.2*sv));
     const embed=massR*0.35;
     const massCenterR=hSurface+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR, 24));
+    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR, 8));
     const oppositeT=ht+Math.PI;
     const oppCt=Math.cos(oppositeT), oppSt=Math.sin(oppositeT);
     const oppSurface=localSurfaceRZ(oppositeT,0);
@@ -1203,7 +1203,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const dMassR=Math.max(baseWall*1.3, baseWall*(1.5+1.3*sv));
     const embed=dMassR*0.4;
     const centerR=esurf+dMassR-embed;
-    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR, 24));
+    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR, 8));
   }
 
   // Compresión literal: un lado real se aplasta hacia el eje mientras el
@@ -1261,7 +1261,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const r=Math.max(AGDP_MIN_WALL_MM*0.5, baseWall*(0.16+0.10*pRng()));
       const embed=r*0.5;
       const rr=surf+r-embed;
-      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r, 24));
+      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r, 8));
     }
   }
 
@@ -1277,7 +1277,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.1, baseWall*(1.2+0.8*sv));
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR, 24));
+    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR, 8));
     const voidT=invT+Math.PI*0.5+iRng()*0.3;
     const vct=Math.cos(voidT), vst=Math.sin(voidT);
     const voidSurf=localSurfaceRZ(voidT,0);
