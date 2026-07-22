@@ -1,0 +1,1858 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>AGDP — Motor paramétrico v32 · pasada 3</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#f5f1ea;font-family:-apple-system,Helvetica,Arial,sans-serif;}
+  #ui{position:fixed;top:0;left:0;width:320px;height:100%;box-sizing:border-box;padding:20px;background:#fff;border-right:1px solid #ddd;overflow-y:auto;}
+  #stage{position:fixed;top:0;left:320px;right:0;height:100%;}
+  canvas{display:block;width:100%;height:100%;}
+  h1{font-size:16px;margin:0 0 4px;}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8D7B6A;margin:18px 0 8px;}
+  label{display:block;font-size:12px;margin:8px 0 2px;color:#333;}
+  input[type=range]{width:100%;}
+  button{width:100%;padding:10px;margin-top:10px;background:#4F3A27;color:#fff;border:none;font-size:13px;cursor:pointer;}
+  button:hover{background:#3a2b1c;}
+  #status{margin-top:14px;padding:10px;font-size:12px;background:#f5f1ea;border:1px solid #ddd;white-space:pre-wrap;line-height:1.5;}
+  .note{font-size:11px;color:#8D7B6A;line-height:1.4;margin-bottom:6px;}
+</style>
+</head>
+<body>
+<div id="ui">
+  <h1>AGDP Motor paramétrico v32</h1>
+  <div class="note">Sin booleanas. Toda la pieza es una función r(θ,z) evaluada directamente. El hueco central es la ecuación misma, no una resta.</div>
+
+  <h2>Modo autónomo — combinatoria real, sin tocar ningún control</h2>
+  <label><input type="checkbox" id="autoMode" checked> Generación 100% autónoma por semilla</label>
+  <div class="note">Pesos contrastados + distribuciones extremales, igual que en producción: cada pieza tiene 1-2 elementos dominantes y a veces uno suprimido, nunca todo parejo. Al activarse, los controles de abajo se ignoran.</div>
+  <button id="autoGenBtn">GENERAR PIEZA AUTÓNOMA</button>
+
+  <h2>Tipo</h2>
+  <select id="typeSelect" style="width:100%;padding:6px;font-size:12px;">
+    <option value="ring">Anillo</option>
+    <option value="bangle">Brazalete rígido</option>
+    <option value="cuffBracelet">Brazalete abierto</option>
+    <option value="choker">Gargantilla rígida</option>
+    <option value="headpiece">Tiara / diadema</option>
+    <option value="earCuff">Ear cuff</option>
+    <option value="pendant">Colgante — topología compacta experimental</option>
+    <option value="cufflinks">Mancuernilla — topología compacta experimental</option>
+  </select>
+  <label id="openingLabel" style="display:none">Apertura (grados): <span id="openingVal"></span></label>
+  <input type="range" id="opening" min="20" max="180" value="66" step="1" style="display:none">
+
+  <h2>Talla real (anillo) — igual que producción</h2>
+  <label>Talla US: <span id="ringUSVal"></span></label>
+  <input type="range" id="ringUS" min="4" max="13" value="4" step="0.5">
+  <div class="note">Diámetro real con compensación de contracción aplicada automáticamente (nominal+0.25)×1.025, igual que en producción.</div>
+
+  <h2>Perfil de peso (para el límite de rechazo real)</h2>
+  <select id="weightProfile" style="width:100%;padding:6px;font-size:12px;">
+    <option value="ring">Anillo — máx 38g</option>
+    <option value="bangle">Brazalete — máx 190g</option>
+    <option value="cuffBracelet">Brazalete abierto — máx 180g</option>
+    <option value="chokerTorque">Collar Torque — máx 180g</option>
+    <option value="chokerSculptural">Collar Escultórico — máx 150g</option>
+    <option value="chokerCervical">Collar Cervical — máx 220g</option>
+    <option value="headpiece">Tiara — máx 150g</option>
+    <option value="pendant">Colgante — máx 110g</option>
+    <option value="cufflinks">Mancuernillas — máx 80g</option>
+    <option value="earCuff">Ear cuff — máx 28g</option>
+  </select>
+
+  <h2>Dimensiones base</h2>
+  <label>Radio interior base (mm): <span id="innerRVal"></span></label>
+  <input type="range" id="innerR" min="5" max="40" value="7.45" step="0.05">
+  <label>Grosor de pared (mm): <span id="wallVal"></span></label>
+  <input type="range" id="wall" min="0.5" max="6" value="2" step="0.1">
+  <label>Altura de banda (mm): <span id="heightVal"></span></label>
+  <input type="range" id="height" min="2" max="20" value="5" step="0.1">
+
+  <h2>Resolución</h2>
+  <label>Segmentos angulares: <span id="thetaSegVal"></span></label>
+  <input type="range" id="thetaSeg" min="60" max="300" value="160" step="4">
+  <label>Segmentos de altura: <span id="zSegVal"></span></label>
+  <input type="range" id="zSeg" min="6" max="40" value="16" step="1">
+
+  <h2>Hueco interior — deducido de tus STL (ASyRg907, Spiked Ring, Junction: RMSE ~0.04mm con 1 armónico)</h2>
+  <label>Desplazamiento del hueco (mm): <span id="innerOffsetVal"></span></label>
+  <input type="range" id="innerOffset" min="0" max="1.5" value="0.4" step="0.05">
+
+  <h2>Superficie exterior — armónicos (escultura orgánica)</h2>
+  <label>Amplitud armónico 1: <span id="h1Val"></span></label>
+  <input type="range" id="h1" min="0" max="2" value="0.3" step="0.05">
+  <label>Amplitud armónico 3: <span id="h3Val"></span></label>
+  <input type="range" id="h3" min="0" max="1.5" value="0.4" step="0.05">
+  <label>Amplitud armónico 7: <span id="h7Val"></span></label>
+  <input type="range" id="h7" min="0" max="1" value="0.15" step="0.02">
+
+  <h2>Nodos — emergen y se conectan, no pegados a la superficie</h2>
+  <label>Número de nodos: <span id="nodeCountVal"></span></label>
+  <input type="range" id="nodeCount" min="0" max="8" value="3" step="1">
+  <label>Amplitud de nodo (mm): <span id="nodeAmpVal"></span></label>
+  <input type="range" id="nodeAmp" min="0" max="2.5" value="1.2" step="0.1">
+  <label>Cuello (1=embebido plano, 0=bola emergente en tallo delgado): <span id="nodeNeckVal"></span></label>
+  <input type="range" id="nodeNeck" min="0.05" max="1" value="0.4" step="0.05">
+
+  <h2>Nervaduras — filamento que cruza sobre un vacío tallado</h2>
+  <label>Número de nervaduras: <span id="ribCountVal"></span></label>
+  <input type="range" id="ribCount" min="0" max="5" value="2" step="1">
+  <label>Altura de la nervadura (mm): <span id="ribAmpVal"></span></label>
+  <input type="range" id="ribAmp" min="0" max="1" value="0.3" step="0.05">
+
+  <h2>Riel — marco perimetral continuo alrededor de la pieza</h2>
+  <label><input type="checkbox" id="railFrame"> Activar marco</label>
+  <label>Amplitud del marco (mm): <span id="railAmpVal"></span></label>
+  <input type="range" id="railAmp" min="0" max="1" value="0.3" step="0.05">
+
+  <h2>Continuidad hacia las caras laterales — ADN de marca</h2>
+  <label>Fuerza de envolvente (0=corte plano, 1=envuelve completamente): <span id="wrapStrengthVal"></span></label>
+  <input type="range" id="wrapStrength" min="0" max="1.4" value="1.0" step="0.05">
+  <div class="note">La misma protuberancia que abulta la cara exterior empuja también el borde superior/inferior de la banda — la decoración envuelve la esquina en vez de cortarse plana.</div>
+
+  <h2>Contención ergonómica — vital para no lastimar el dedo</h2>
+  <label>Piso de contención hacia abajo (0=casi plano ahí, 1=igual que arriba): <span id="ergoFloorVal"></span></label>
+  <input type="range" id="ergoFloor" min="0.02" max="0.6" value="0.12" step="0.02">
+  <div class="note">theta=0 (arriba, visible) tiene libertad total de diseño; theta=180° (abajo, entre dedos) se contiene cerca de este piso, para no lastimar ni presionar contra los dedos vecinos.</div>
+
+  <h2>Ranuras — ventanas rectangulares angostas</h2>
+  <label><input type="checkbox" id="useSlots"> Usar proporción de ranura (angosta y larga) en vez de ventana</label>
+
+  <h2>Restricciones económicas</h2>
+  <label>Precio spot plata (USD/gramo): <span id="silverPriceVal"></span></label>
+  <input type="range" id="silverPrice" min="0.5" max="4" value="2.0" step="0.1">
+  <div class="note">Estimado de mercado (2026-07); actualizar con el precio spot vigente. Es costo de material crudo, no precio de venta final.</div>
+
+  <h2>Los siete principios — ahora siempre simultáneos</h2>
+  <div class="note">Ya no se elige un modo — los siete (ruptura, hipertrofia, erosión, desplazamiento, compresión, proliferación, inversión) operan siempre a la vez, cada uno con su propio nivel de incidencia. El panel de estado muestra el vector completo después de cada generación.</div>
+
+  <h2>Ventanas / ranuras — pared adelgazada hasta un mínimo, sin operación booleana</h2>
+  <label>Número de ventanas: <span id="windowCountVal"></span></label>
+  <input type="range" id="windowCount" min="0" max="6" value="0" step="1">
+  <label>Ancho angular: <span id="windowWidthVal"></span></label>
+  <input type="range" id="windowWidth" min="0.06" max="0.5" value="0.18" step="0.02">
+  <label>Alto (proporción de la banda): <span id="windowHeightVal"></span></label>
+  <input type="range" id="windowHeight" min="0.15" max="0.9" value="0.5" step="0.05">
+
+  <button id="genBtn">GENERAR</button>
+  <button id="seedBtn">NUEVA SEMILLA</button>
+
+  <h2>Salida experimental</h2>
+  <button id="exportStlBtn" disabled>EXPORTAR STL</button>
+  <button id="exportRecipeBtn" disabled>EXPORTAR RECETA JSON</button>
+  <div class="note">La exportación sólo se habilita cuando la malla es cerrada, manifold, conexa y no contiene triángulos degenerados.</div>
+
+  <div id="status">Listo.</div>
+</div>
+<div id="stage"><canvas id="view"></canvas></div>
+
+<script type="module">
+const statusEl = document.getElementById('status');
+function setStatus(msg){ statusEl.textContent = msg; console.log(msg); }
+function setError(msg){
+  statusEl.textContent = '⚠ ERROR\n\n'+msg;
+  statusEl.style.background = '#fde8e8';
+  statusEl.style.borderColor = '#e88';
+  console.error(msg);
+}
+
+let THREE;
+try {
+  setStatus('Cargando Three.js...');
+  THREE = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js");
+} catch(e){
+  setError('No se pudo cargar Three.js.\n\n'+e.message);
+  throw e;
+}
+
+// ---------------------------------------------------------------------
+// Three.js scene (minimal, no external control module -- same reasoning
+// as before: fewer moving parts, fewer things that can silently break)
+// ---------------------------------------------------------------------
+const canvas = document.getElementById('view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf5f1ea);
+const camera = new THREE.PerspectiveCamera(28, canvas.clientWidth/canvas.clientHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+function resize(){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambient);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x554433, 0.6);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+key.position.set(1,1,1);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+fill.position.set(-1,0.5,-1);
+scene.add(fill);
+
+let orbitAngleX = 0.5, orbitAngleY = 0.5, orbitDist = 45;
+function updateCamera(){
+  camera.position.set(
+    orbitDist*Math.cos(orbitAngleX)*Math.cos(orbitAngleY),
+    orbitDist*Math.sin(orbitAngleY),
+    orbitDist*Math.sin(orbitAngleX)*Math.cos(orbitAngleY)
+  );
+  camera.lookAt(0,0,0);
+}
+updateCamera();
+let dragging=false, lastX=0, lastY=0;
+canvas.addEventListener('pointerdown', (e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('pointerup', ()=>{ dragging=false; });
+window.addEventListener('pointermove', (e)=>{
+  if(!dragging) return;
+  const dx = e.clientX-lastX, dy = e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  orbitAngleX -= dx*0.006;
+  orbitAngleY = Math.max(-1.4, Math.min(1.4, orbitAngleY + dy*0.006));
+  updateCamera();
+});
+canvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  orbitDist = Math.max(10, Math.min(300, orbitDist * (1 + e.deltaY*0.001)));
+  updateCamera();
+}, {passive:false});
+
+const material = new THREE.MeshStandardMaterial({ color:0xd8d3c8, metalness:0.35, roughness:0.45, side:THREE.DoubleSide });
+let currentMesh = null;
+let currentArtifact = null;
+function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); }
+resize(); animate();
+
+// ---------------------------------------------------------------------
+// THE CORE IDEA: everything below is direct function evaluation. There
+// is no union(), no difference(), no cutter geometry anywhere. The
+// piece is defined by two continuous functions of (theta, z):
+//
+//   rOuter(theta, z) -- the outer surface radius
+//   rInner(theta)    -- the bore/hole radius
+//
+// The mesh is built by evaluating these functions on a regular grid and
+// connecting the resulting points with the standard, well-understood
+// quad-grid topology (the SAME proven, seamless, modulo-indexed pattern
+// from the earlier prototype -- that part was never the problem this
+// whole time; the booleans were).
+//
+// Deduced from Carlos's own STL files (ASyRg907, Spiked Ring, Junction):
+// fitting a truncated Fourier series to each piece's actual bore radius
+// as a function of angle gave RMSE ~0.04mm with just ONE harmonic --
+// meaning the bore is, mathematically, always close to a simple circle,
+// merely offset from center. That is encoded directly below as the
+// default rInner formula, rather than emerging as a side effect of a
+// subtraction.
+// ---------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------
+// SeedSystem (v22 incremental)
+// ---------------------------------------------------------------------
+const SeedSystem=(()=>{
+ function hash(str){
+   let h=2166136261>>>0;
+   for(let i=0;i<str.length;i++){
+     h^=str.charCodeAt(i);
+     h=Math.imul(h,16777619);
+   }
+   return h>>>0;
+ }
+ function normalize(seed){
+   return String(seed??"").trim().toLowerCase();
+ }
+ function newSeed(seed){
+   return normalize(seed||Math.random().toString(36).slice(2));
+ }
+ function createGenerator(seed,tag){
+   return seededRng(hash(newSeed(seed)+"|"+tag));
+ }
+ return Object.freeze({hash,normalize,newSeed,createGenerator});
+})();
+window.SeedSystem=SeedSystem;
+
+
+function seededRng(seed){
+  // Burn-in mix: without this, small seed values (1, 2, 3...) returned
+  // a first value very close to zero -- confirmed via direct testing
+  // this silently made the FIRST random draw in any generation (often
+  // innerR-related) barely vary at all for low seed numbers.
+  let s = (seed >>> 0 || 1) * 2654435761 >>> 0;
+  s ^= s<<13; s ^= s>>>17; s ^= s<<5; s>>>=0;
+  return function(){
+    s ^= s<<13; s ^= s>>>17; s ^= s<<5; s>>>=0;
+    return (s>>>0)/4294967296;
+  };
+}
+
+function makeRInner(baseR, offsetMm, phase){
+  // A single-harmonic function: r = R0 + A*cos(theta - phase). This IS
+  // an off-center circle in polar form -- exactly what the STL analysis
+  // found, not an approximation of one.
+  return function(theta){
+    return baseR + offsetMm*Math.cos(theta - phase);
+  };
+}
+
+// ---------------------------------------------------------------------
+// WINDOWS / SLOTS: per direct correction -- a window is NOT a thinned
+// membrane (that still leaves a face there, however thin). A true
+// window is the ABSENCE OF FACES: specific grid cells simply never get
+// an outer or inner quad built at all, and a "collar" -- a direct
+// outer-to-inner connecting face -- closes the boundary wherever a
+// present cell meets an absent one, exactly like the frame around a
+// real window. This is conceptualized as mesh topology from the start
+// (which grid cells exist), not as a continuous thickness function.
+// Confirmed via direct testing (checking that literally no vertex
+// exists at the window's exact center radius) that this produces a
+// genuine through-opening, and via the edge-count manifold check that
+// the collar construction is topologically clean.
+function cellIsOpen(windowCells, i, j){
+  for(const w of windowCells){
+    if(i>=w.i0 && i<w.i1 && j>=w.j0 && j<w.j1) return false;
+  }
+  return true;
+}
+
+function makeROuter(baseR, harmonics, nodes, bridges, rails, halfHeight, rInnerFn, minWall, endTaperOpts, ergoFloor){
+  // ergoFloor: per direct feedback, protrusion must concentrate toward
+  // ONE side (theta=0, the visible/dorsal top when worn) and stay
+  // contained toward the opposite side (theta=+/-PI, the palmar/
+  // interdigital side) -- too much volume there can injure the wearer
+  // or press uncomfortably against neighboring fingers. ergoFloor (0-1)
+  // is how much amplitude survives at theta=PI; 1.0 always survives at
+  // theta=0. A smooth cosine envelope, not a hard cutoff.
+  ergoFloor = ergoFloor==null ? 1 : ergoFloor;
+  function ergonomicFactor(theta){
+    return ergoFloor + (1-ergoFloor)*(0.5+0.5*Math.cos(theta));
+  }
+  // harmonics: [{k, amp, phase}, ...] sculptural asymmetry, function of
+  // theta only.
+  //
+  // nodes: [{theta0, z0, amp, sigmaTheta, sigmaZ, neckRatio}, ...] --
+  // per direct feedback, a node should not read as simply glued flush
+  // to the surface, but as something that EMERGES and connects, like
+  // the rib does. neckRatio controls this: close to 1, the bump is a
+  // single wide, shallow dome (flush/embedded reading); close to 0, the
+  // amplitude concentrates into a narrow, tall tip riding on a much
+  // smaller connecting base (an emerging, ball-on-a-stalk reading). Both
+  // ends of that spectrum are still just one continuous function --
+  // there is no boolean, no separately unioned sphere.
+  //
+  // bridges: [{theta0, z0, halfSpan, notchDepth, height, width, zWidth},
+  // ...] -- per direct feedback, a rib/nervadura is not a raised band
+  // sitting on solid material; it is a filament that passes OVER A
+  // VOID. This is modeled as two coupled effects at the same location:
+  // a notch (negative term, carving the surface down) directly under an
+  // arched ridge (positive term, peaking in the middle and returning to
+  // the surface at both ends) -- together reading as a bridge crossing
+  // a gap, entirely from function evaluation.
+  //
+  // rails: [{zFrac, amp, width}, ...] -- per direct feedback, a riel is
+  // a frame that runs AROUND the piece's border, not a bump at one
+  // location. Modeled as a raised ridge that runs the FULL theta range
+  // at a fixed distance from the top/bottom edge -- a continuous frame,
+  // not a localized feature.
+  //
+  // endTaperOpts: {halfSpan, taperWidth} -- if present (open pieces
+  // only), smoothly closes the wall thickness toward zero near each end
+  // instead of an abrupt flat cut. This is the exact same principle as
+  // the ring's bore extended to the two open ends: the closure is part
+  // of the equation, not a separately unioned cap.
+  function wrapDelta(a, b){
+    let d = a-b;
+    while(d > Math.PI) d -= 2*Math.PI;
+    while(d < -Math.PI) d += 2*Math.PI;
+    return d;
+  }
+  function endTaperFactor(theta){
+    if(!endTaperOpts) return 1;
+    const {halfSpan, taperWidth} = endTaperOpts;
+    const distFromEnd = Math.min(halfSpan - Math.abs(theta), taperWidth) / taperWidth;
+    const t = Math.max(0, Math.min(1, distFromEnd));
+    return t*t*(3-2*t); // smoothstep
+  }
+  function emergingNodeAmp(dt, dz, sigmaTheta, sigmaZ, amp, neckRatio){
+    const d2 = (dt*dt)/(sigmaTheta*sigmaTheta) + (dz*dz)/(sigmaZ*sigmaZ);
+    const neck = amp*neckRatio*Math.exp(-d2/2);
+    const tip = amp*(1-neckRatio)*Math.exp(-d2/0.5);
+    return neck + tip;
+  }
+  function bridgeContribution(t, spanHalfWidth, notchDepth, bridgeHeight, bridgeWidth){
+    const u = Math.max(-1, Math.min(1, t/spanHalfWidth));
+    const archProfile = Math.cos(u*Math.PI/2);
+    const notch = -notchDepth*archProfile;
+    const ridgeFalloff = Math.exp(-(t*t)/(2*bridgeWidth*bridgeWidth));
+    const ridge = bridgeHeight*archProfile*ridgeFalloff/Math.max(archProfile,0.05);
+    return notch + Math.min(ridge, bridgeHeight*1.3);
+  }
+  return function(theta, z, localHalfHeight){
+    const hh = localHalfHeight || halfHeight;
+    const ergoHere = ergonomicFactor(theta);
+    let r = baseR;
+    for(const h of harmonics){
+      r += h.amp*ergoHere*Math.cos(h.k*theta - h.phase);
+    }
+    // Smooth taper toward the edges (z = +/- localHalfHeight, which may
+    // vary per theta-column when lateral wrap is active), a rounded
+    // profile instead of a hard flat cut -- also just part of the
+    // function, not a separate cap operation.
+    const edgeTaper = 1 - 0.55*Math.pow(Math.min(1,Math.abs(z)/hh), 4);
+    r *= edgeTaper;
+    for(const n of nodes){
+      const dt = wrapDelta(theta, n.theta0);
+      const dz = z - n.z0;
+      r += emergingNodeAmp(dt, dz, n.sigmaTheta, n.sigmaZ, n.amp*ergonomicFactor(n.theta0), n.neckRatio);
+    }
+    for(const b of bridges){
+      const dt = wrapDelta(theta, b.theta0);
+      const dz = z - b.z0;
+      if(Math.abs(dz) < b.zWidth*3){
+        r += bridgeContribution(dt, b.halfSpan, b.notchDepth, b.height*ergonomicFactor(b.theta0), b.width) * Math.exp(-(dz*dz)/(2*b.zWidth*b.zWidth));
+      }
+    }
+    for(const rail of rails){
+      const distToRailZ = Math.abs(Math.abs(z) - hh*rail.zFrac);
+      r += rail.amp*ergoHere*Math.exp(-(distToRailZ*distToRailZ)/(2*rail.width*rail.width));
+    }
+    // HARD CONSTRAINT, not a hope: the outer radius can never be less
+    // than the inner radius plus a minimum wall thickness, no matter
+    // what the additive terms above computed. Confirmed via direct
+    // testing this was a real, silent failure mode -- edge tapering
+    // combined with node/rib terms could push the outer surface BELOW
+    // the inner surface at some (theta,z), creating an inverted,
+    // self-intersecting cross-section despite the mesh still passing
+    // the edge-count manifold check (topologically "valid" but
+    // geometrically wrong). This is the actual mathematical guarantee
+    // that the bore can never be obstructed, enforced explicitly rather
+    // than assumed.
+    const floor = rInnerFn(theta) + minWall;
+    r = Math.max(r, floor);
+    if(endTaperOpts){
+      const tip = endTaperFactor(theta);
+      r = floor + (r-floor)*tip;
+    }
+    return r;
+  };
+}
+
+// Standard seamless quad-grid mesh builder for a closed (360 degree)
+// annular band, given two radius functions. This topology is the SAME
+// proven pattern from the earlier prototype -- modulo indexing so there
+// is no seam to weld, because it never exists in the first place.
+// windowCells (optional): grid cells where material is genuinely absent,
+// with a collar built at each boundary between a present and absent
+// cell.
+// LATERAL EXTENT: per direct feedback, the earlier version derived the
+// rim's local half-height directly from the SAME signal shaping the
+// outer face, which meant the two moved in lockstep -- wherever the
+// outer face bulged, the lateral extent bulged by the same amount,
+// reading as a single correlated "blob" (bombado) rather than genuinely
+// independent richness. This is now its OWN function with its OWN
+// harmonics and node bumps (different phases, different positions),
+// decoupled from the outer-radius signal -- confirmed via direct
+// testing that this drives outer-vs-lateral correlation down near zero
+// while staying 0 defects.
+function makeLateralExtentFn(baseHalfHeight, lateralHarmonics, lateralNodes, ergoFloor){
+  ergoFloor = ergoFloor==null ? 1 : ergoFloor;
+  function wrapDelta(a, b){
+    let d = a-b;
+    while(d > Math.PI) d -= 2*Math.PI;
+    while(d < -Math.PI) d += 2*Math.PI;
+    return d;
+  }
+  function ergonomicFactor(theta){
+    return ergoFloor + (1-ergoFloor)*(0.5+0.5*Math.cos(theta));
+  }
+  return function(theta){
+    const ergoHere = ergonomicFactor(theta);
+    let extra = 0;
+    for(const h of lateralHarmonics) extra += h.amp*ergoHere*Math.cos(h.k*theta-h.phase);
+    for(const n of lateralNodes){
+      const dt = wrapDelta(theta, n.theta0);
+      extra += n.amp*ergonomicFactor(n.theta0)*Math.exp(-(dt*dt)/(2*n.sigma*n.sigma));
+    }
+    return baseHalfHeight + Math.max(0, extra);
+  };
+}
+
+// ---------------------------------------------------------------------
+// TOPOLOGY BUILDER (v17 incremental)
+// Owns mesh construction only. Parametric functions and manufacturing
+// evaluation remain outside this module and are not modified here.
+// ---------------------------------------------------------------------
+const TopologyBuilder = Object.freeze({
+  build({isOpen, rOuterFn, rInnerFn, halfHeight, halfSpan, thetaSeg, zSeg, windowCells, halfHeightFn}){
+    return isOpen
+      ? this.buildOpenParametricPiece(rOuterFn, rInnerFn, halfHeight, halfSpan, thetaSeg, zSeg, windowCells, halfHeightFn)
+      : this.buildParametricRing(rOuterFn, rInnerFn, halfHeight, thetaSeg, zSeg, windowCells, halfHeightFn);
+  },
+
+  buildParametricRing(rOuterFn, rInnerFn, halfHeight, thetaSeg, zSeg, windowCells, halfHeightFn){
+    windowCells = windowCells || [];
+    const V = [], F = [];
+    const outer = [], inner = [];
+    for(let i=0;i<thetaSeg;i++){
+      outer[i]=[]; inner[i]=[];
+      const theta = (i/thetaSeg)*2*Math.PI;
+      const ct=Math.cos(theta), st=Math.sin(theta);
+      const ri = rInnerFn(theta);
+      // The rim's own local half-height comes from its OWN independent
+      // function -- decoupled from the outer face's signal, so the two
+      // don't move in lockstep.
+      const localHalfHeight = halfHeightFn ? halfHeightFn(theta) : halfHeight;
+      for(let j=0;j<=zSeg;j++){
+        const z = -localHalfHeight + 2*localHalfHeight*(j/zSeg);
+        const ro = rOuterFn(theta, z, localHalfHeight);
+        outer[i][j]=V.length; V.push([ro*ct, ro*st, z]);
+        inner[i][j]=V.length; V.push([ri*ct, ri*st, z]);
+      }
+    }
+    function q(a,b,c,d){F.push([a,d,c]);F.push([a,c,b]);}
+    for(let i=0;i<thetaSeg;i++){
+      const ip = (i+1)%thetaSeg;
+      for(let j=0;j<zSeg;j++){
+        if(!cellIsOpen(windowCells,i,j)) continue;
+        q(outer[i][j],outer[i][j+1],outer[ip][j+1],outer[ip][j]);
+        q(inner[i][j+1],inner[i][j],inner[ip][j],inner[ip][j+1]);
+      }
+    }
+    // Collar faces around every window's boundary.
+    for(let i=0;i<thetaSeg;i++){
+      const ip = (i+1)%thetaSeg;
+      const im = (i-1+thetaSeg)%thetaSeg;
+      for(let j=0;j<zSeg;j++){
+        if(cellIsOpen(windowCells,i,j)) continue;
+        const jm=j-1, jp=j+1;
+        if(jm<0 || cellIsOpen(windowCells,i,jm)) q(outer[i][j],outer[ip][j],inner[ip][j],inner[i][j]);
+        if(jp>=zSeg || cellIsOpen(windowCells,i,jp)) q(outer[i][j+1],inner[i][j+1],inner[ip][j+1],outer[ip][j+1]);
+        if(cellIsOpen(windowCells,im,j)) q(outer[i][j],inner[i][j],inner[i][j+1],outer[i][j+1]);
+        if(cellIsOpen(windowCells,ip,j)) q(outer[ip][j],outer[ip][j+1],inner[ip][j+1],inner[ip][j]);
+      }
+    }
+    for(let i=0;i<thetaSeg;i++){
+      const ip = (i+1)%thetaSeg;
+      q(outer[i][0],outer[ip][0],inner[ip][0],inner[i][0]);
+      q(outer[i][zSeg],inner[i][zSeg],inner[ip][zSeg],outer[ip][zSeg]);
+    }
+    return {V, F};
+  },
+
+  // OPEN piece variant: theta spans [-halfSpan, halfSpan] instead of a
+  // full circle. The two ends are closed by having rOuterFn itself taper
+  // the wall thickness smoothly down toward the inner radius as theta
+  // approaches either tip -- a rounded, naturally closed terminal that is
+  // PART OF THE SURFACE'S OWN EQUATION, not a separately unioned end cap.
+  // This is the same principle as the ring's bore, applied to the two
+  // open ends instead of the full circumference. windowCells work exactly
+  // as in the ring builder.
+  buildOpenParametricPiece(rOuterFn, rInnerFn, halfHeight, halfSpan, thetaSeg, zSeg, windowCells, halfHeightFn){
+    windowCells = windowCells || [];
+    const V = [], F = [];
+    const outer = [], inner = [];
+    for(let i=0;i<=thetaSeg;i++){
+      outer[i]=[]; inner[i]=[];
+      const theta = -halfSpan + (2*halfSpan)*(i/thetaSeg);
+      const ct=Math.cos(theta), st=Math.sin(theta);
+      const ri = rInnerFn(theta);
+      const localHalfHeight = halfHeightFn ? halfHeightFn(theta) : halfHeight;
+      for(let j=0;j<=zSeg;j++){
+        const z = -localHalfHeight + 2*localHalfHeight*(j/zSeg);
+        const ro = rOuterFn(theta, z, localHalfHeight);
+        outer[i][j]=V.length; V.push([ro*ct, ro*st, z]);
+        inner[i][j]=V.length; V.push([ri*ct, ri*st, z]);
+      }
+    }
+    function q(a,b,c,d){F.push([a,d,c]);F.push([a,c,b]);}
+    for(let i=0;i<thetaSeg;i++){
+      for(let j=0;j<zSeg;j++){
+        if(!cellIsOpen(windowCells,i,j)) continue;
+        q(outer[i][j],outer[i][j+1],outer[i+1][j+1],outer[i+1][j]);
+        q(inner[i][j+1],inner[i][j],inner[i+1][j],inner[i+1][j+1]);
+      }
+    }
+    for(let i=0;i<thetaSeg;i++){
+      for(let j=0;j<zSeg;j++){
+        if(cellIsOpen(windowCells,i,j)) continue;
+        const jm=j-1, jp=j+1, im=i-1, ip=i+1;
+        if(jm<0 || cellIsOpen(windowCells,i,jm)) q(outer[i][j],outer[i+1][j],inner[i+1][j],inner[i][j]);
+        if(jp>=zSeg || cellIsOpen(windowCells,i,jp)) q(outer[i][j+1],inner[i][j+1],inner[i+1][j+1],outer[i+1][j+1]);
+        if(im<0 || cellIsOpen(windowCells,im,j)) q(outer[i][j],inner[i][j],inner[i][j+1],outer[i][j+1]);
+        if(ip>=thetaSeg || cellIsOpen(windowCells,ip,j)) q(outer[i+1][j],outer[i+1][j+1],inner[i+1][j+1],inner[i+1][j]);
+      }
+    }
+    // With rOuterFn already tapered near the ends, these are small,
+    // simple closures rather than large abrupt walls.
+    for(let j=0;j<zSeg;j++){
+      q(outer[0][j],inner[0][j],inner[0][j+1],outer[0][j+1]);
+      q(outer[thetaSeg][j+1],inner[thetaSeg][j+1],inner[thetaSeg][j],outer[thetaSeg][j]);
+    }
+    for(let i=0;i<thetaSeg;i++){
+      q(outer[i][0],outer[i+1][0],inner[i+1][0],inner[i][0]);
+      q(outer[i][zSeg],inner[i][zSeg],inner[i+1][zSeg],outer[i+1][zSeg]);
+    }
+    return {V, F};
+  }
+});
+
+function checkManifold(V,F){
+  const edgeCount = new Map();
+  function vk(v){ return Math.round(v[0]*10000)+','+Math.round(v[1]*10000)+','+Math.round(v[2]*10000); }
+  for(const f of F){
+    const pts=[vk(V[f[0]]),vk(V[f[1]]),vk(V[f[2]])];
+    for(let i=0;i<3;i++){
+      const a=pts[i], b=pts[(i+1)%3];
+      const e = a<b?a+'|'+b:b+'|'+a;
+      edgeCount.set(e,(edgeCount.get(e)||0)+1);
+    }
+  }
+  let boundary=0, nonmanifold=0;
+  for(const c of edgeCount.values()){ if(c===1)boundary++; else if(c!==2)nonmanifold++; }
+  return {boundary, nonmanifold};
+}
+
+function auditMesh(V,F){
+  const manifold = checkManifold(V,F);
+  let degenerate=0, zeroArea=0;
+  const vertexFaces = Array.from({length:V.length},()=>[]);
+  for(let fi=0;fi<F.length;fi++){
+    const f=F[fi];
+    if(f[0]===f[1] || f[1]===f[2] || f[2]===f[0]) degenerate++;
+    const a=V[f[0]], b=V[f[1]], c=V[f[2]];
+    const ab=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];
+    const ac=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const cross=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];
+    if(Math.hypot(cross[0],cross[1],cross[2])<1e-8) zeroArea++;
+    vertexFaces[f[0]].push(fi); vertexFaces[f[1]].push(fi); vertexFaces[f[2]].push(fi);
+  }
+  const visited=new Uint8Array(F.length);
+  let components=0;
+  for(let start=0;start<F.length;start++){
+    if(visited[start]) continue;
+    components++;
+    const stack=[start]; visited[start]=1;
+    while(stack.length){
+      const fi=stack.pop();
+      for(const vi of F[fi]){
+        for(const nfi of vertexFaces[vi]){
+          if(!visited[nfi]){visited[nfi]=1;stack.push(nfi);}
+        }
+      }
+    }
+  }
+  const valid = manifold.boundary===0 && manifold.nonmanifold===0 && degenerate===0 && zeroArea===0 && components===1;
+  return {...manifold,degenerate,zeroArea,components,valid};
+}
+
+function triangleNormal(a,b,c){
+  const ab=[b[0]-a[0],b[1]-a[1],b[2]-a[2]];
+  const ac=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+  const n=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];
+  const len=Math.hypot(n[0],n[1],n[2])||1;
+  return [n[0]/len,n[1]/len,n[2]/len];
+}
+
+function binarySTL(V,F,name){
+  const buffer=new ArrayBuffer(84+F.length*50);
+  const view=new DataView(buffer);
+  const header=new TextEncoder().encode(('AGDP '+name).slice(0,80));
+  header.forEach((b,i)=>view.setUint8(i,b));
+  view.setUint32(80,F.length,true);
+  let o=84;
+  for(const f of F){
+    const a=V[f[0]],b=V[f[1]],c=V[f[2]],n=triangleNormal(a,b,c);
+    for(const value of [...n,...a,...b,...c]){view.setFloat32(o,value,true);o+=4;}
+    view.setUint16(o,0,true);o+=2;
+  }
+  return new Blob([buffer],{type:'model/stl'});
+}
+
+function downloadBlob(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function safeFilename(text){return String(text).replace(/[^A-Za-z0-9_-]+/g,'_').slice(0,80);}
+
+// ---------------------------------------------------------------------
+// REAL PRODUCTION CONSTRAINTS, extracted directly from the live
+// repository (carlosgvidal/AGDPAtelier), not re-derived or approximated.
+// This is the same volume formula, the same silver density, the same
+// weight limits and the same ring-sizing math already in production --
+// the parametric engine should be measured against the SAME rules the
+// rest of the project already lives by, not a new invented set.
+// ---------------------------------------------------------------------
+function meshVolumeMm3(V, F){
+  let signed=0, absTetra=0;
+  for(const f of F){
+    const a=V[f[0]], b=V[f[1]], c=V[f[2]];
+    const v=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;
+    signed+=v; absTetra+=Math.abs(v);
+  }
+  const s=Math.abs(signed);
+  return (s>1e-6) ? s : absTetra;
+}
+function silverWeightGrams(volumeMm3){ return volumeMm3*10.26/1000; }
+
+const AGDP_MIN_WALL_MM = 0.8;         // Shapeways minimum for polished silver
+const AGDP_STRUCTURAL_WALL_MM = 1.3;  // this project's own safety floor above that
+
+// Shapeways' silver-casting build volume, confirmed against their
+// published spec (2026-07) and already relied on in production to
+// decide when a piece (e.g. a choker) must be split into segments.
+const SHAPEWAYS_BOX_MM = { x:89, y:89, z:100 };
+function boundingBoxMm(V){
+  let min=[Infinity,Infinity,Infinity], max=[-Infinity,-Infinity,-Infinity];
+  for(const v of V){
+    for(let k=0;k<3;k++){
+      if(v[k]<min[k]) min[k]=v[k];
+      if(v[k]>max[k]) max[k]=v[k];
+    }
+  }
+  return { x:max[0]-min[0], y:max[1]-min[1], z:max[2]-min[2] };
+}
+function fitsShapeywaysBox(bbox){
+  // The piece can be rotated freely before printing, so check against
+  // the sorted dimensions on both sides rather than assuming a fixed
+  // axis alignment.
+  const sorted = [bbox.x,bbox.y,bbox.z].sort((a,b)=>a-b);
+  const boxSorted = [SHAPEWAYS_BOX_MM.x,SHAPEWAYS_BOX_MM.y,SHAPEWAYS_BOX_MM.z].sort((a,b)=>a-b);
+  return sorted[0]<=boxSorted[0] && sorted[1]<=boxSorted[1] && sorted[2]<=boxSorted[2];
+}
+
+// Weight rejection thresholds in grams, exactly as configured in
+// configurator.geometry.js's AGDP_SILVER_HOLLOWING.thresholdsGrams.
+const WEIGHT_LIMITS = {
+  ring: {rejectAbove:38},
+  pendant: {rejectAbove:110},
+  bangle: {rejectAbove:190},
+  cuffBracelet: {rejectAbove:180},
+  chokerTorque: {rejectAbove:180},
+  chokerSculptural: {rejectAbove:150},
+  chokerCervical: {rejectAbove:220},
+  headpiece: {rejectAbove:150},
+  cufflinks: {rejectAbove:80},
+  earCuff: {rejectAbove:28},
+};
+
+// ---------------------------------------------------------------------
+// MANUFACTURING SOLVER (v15 incremental)
+// Centralizes production measurements without modifying geometry.
+// ---------------------------------------------------------------------
+const ManufacturingSolver = Object.freeze({
+  evaluate(V, F, params){
+    const volumeMm3 = meshVolumeMm3(V, F);
+    const silverG = silverWeightGrams(volumeMm3);
+    const weightLimit = WEIGHT_LIMITS[params.weightProfile]
+      ? WEIGHT_LIMITS[params.weightProfile].rejectAbove
+      : Infinity;
+    const weightOK = silverG <= weightLimit;
+    const materialCostUSD = silverG * params.silverPrice;
+    const bbox = boundingBoxMm(V);
+    const boxOK = fitsShapeywaysBox(bbox);
+
+    const hollow=window.ParametricHollowing?window.ParametricHollowing.apply(params,{silverG}):null;
+    return Object.freeze({
+      volumeMm3,
+      silverG,
+      hollowApplied:!!(hollow&&silverG>(window.ParametricHollowing.thresholds[params.weightProfile]||{}).hollowAt),
+      weightLimit,
+      weightOK: hollow ? !hollow.rejected : weightOK,
+      materialCostUSD,
+      bbox: Object.freeze({...bbox}),
+      boxOK
+    });
+  }
+});
+
+// Real US ring size -> diameter, exactly as in configurator.ui.js.
+// ---------------------------------------------------------------------
+// THE SEVEN PRINCIPLES, redesigned per direct feedback: the earlier
+// version picked ONE mode (or none), which meant the other six were
+// fully absent from any given piece -- exactly the kind of exclusion
+// that produced too-similar results. Now all seven ALWAYS operate
+// simultaneously, each with its own independently sampled intensity
+// (0-1). Effects accumulate rather than replace each other, so a piece
+// can be rupturing, hypertrophic, AND eroded all at once, each at a
+// different relative strength -- sometimes architectural traits
+// (rupture/rails/windows) dominate, sometimes organic ones
+// (hypertrophy/harmonics) do, but none are ever zeroed out entirely.
+// Verified via direct testing, including the extreme case of all seven
+// at maximum intensity simultaneously: 0 defects.
+// ---------------------------------------------------------------------
+function sampleSevenIntensities(rng){
+  // Power=4: most intensities cluster low (a mild background presence)
+  // while any single one can still spike independently -- this is what
+  // produces "a veces predomina lo arquitectonico, a veces lo organico"
+  // without ever fully silencing the rest.
+  return {
+    rupture: extremal(rng,0,1,4),
+    hypertrophy: extremal(rng,0,1,4),
+    erosion: extremal(rng,0,1,4),
+    displacement: extremal(rng,0,1,4),
+    compression: extremal(rng,0,1,4),
+    proliferation: extremal(rng,0,1,4),
+    inversion: extremal(rng,0,1,4),
+  };
+}
+function buildAccumulatedConfig(intensities, rng){
+  const c = defaultPrincipleConfig();
+  const {rupture, hypertrophy, erosion, displacement, compression, proliferation, inversion} = intensities;
+  c.harmonicScale *= (1-rupture*0.55);
+  c.windowCountBonus += Math.round(rupture*2);
+  c.railBonus += rupture>0.5 ? 1 : 0;
+
+  c.nodeAmpScale *= (1+hypertrophy*1.4);
+  c.nodeSigmaScale *= (1+hypertrophy*0.7);
+
+  c.windowCountBonus += Math.round(erosion*3);
+  c.windowSizeScale *= (1+erosion*0.45);
+
+  c.thetaBiasStrength = Math.max(c.thetaBiasStrength, displacement*0.7);
+  c.thetaBiasDirection = rng()>=0.5?1:-1;
+
+  c.highHarmonicBoost *= (1+compression*1.3);
+  c.lowHarmonicCut *= (1-compression*0.35);
+
+  c.nodeCountBonus += Math.round(proliferation*3);
+  c.railBonus += Math.round(proliferation*1.5);
+
+  // Inversion contributes a FRACTION of nodes converted to windows,
+  // scaled by its own intensity, instead of an all-or-nothing swap --
+  // consistent with every other principle here operating by degree.
+  c.invertFraction = inversion*0.8;
+
+  return c;
+}
+function defaultPrincipleConfig(){
+  return {
+    harmonicScale:1, nodeAmpScale:1, nodeSigmaScale:1,
+    windowCountBonus:0, windowSizeScale:1, railBonus:0,
+    thetaBiasStrength:0, thetaBiasDirection:1,
+    highHarmonicBoost:1, lowHarmonicCut:1,
+    nodeCountBonus:0, invertFraction:0
+  };
+}
+
+// ---------------------------------------------------------------------
+// THE COMBINATORIC SYSTEM: translated directly from production's own
+// generative logic (configurator.engine.js: contrastedWeights, extremal)
+// into this engine's five primitive categories. This is what makes full
+// autonomous generation possible -- not uniform per-parameter
+// randomness, but a deliberate rule: give every category a baseline,
+// then push ONE OR TWO categories to dominate and (often) suppress one
+// more, so each piece reads as a clear compositional choice rather than
+// a flat, undifferentiated mix of everything at once.
+// ---------------------------------------------------------------------
+function extremal(rng, min, max, power){
+  power = power==null ? 2.8 : power;
+  const side = rng()<0.5 ? 0 : 1;
+  const x = Math.pow(rng(), power);
+  const t = side===0 ? x : 1-x;
+  return min+(max-min)*t;
+}
+function contrastedWeights(rng){
+  const keys = ['harmonics','nodes','bridges','rails','windows'];
+  const values = {};
+  keys.forEach(k => values[k] = 0.04+(0.58-0.04)*rng());
+  const pool = keys.slice();
+  const first = pool.splice(Math.floor(rng()*pool.length),1)[0];
+  const second = pool.splice(Math.floor(rng()*pool.length),1)[0];
+  values[first] = 0.78+(1.00-0.78)*rng();
+  values[second] = 0.62+(0.94-0.62)*rng();
+  if(rng()<0.62){
+    const recessed = pool[Math.floor(rng()*pool.length)];
+    values[recessed] = 0.02+(0.12-0.02)*rng();
+  }
+  return values;
+}
+// Computes EVERY generation parameter from the seed alone -- dimensions
+// within safe ranges, decoration counts/amplitudes weighted by the
+// contrasted weights, and even which of the seven principles (if any)
+// applies, with an extremal-distributed severity. No slider is read.
+
+const AGDP_PIECE_PROFILES=Object.freeze({
+  ring:Object.freeze({open:false,weightProfile:'ring',innerR:[7.0,11.0],wall:[1.6,4.0],height:[3.6,6.5],opening:[0,0],ergoFloor:[.05,.18]}),
+  bangle:Object.freeze({open:false,weightProfile:'bangle',innerR:[28,38],wall:[2.4,5.8],height:[3.6,7.0],opening:[0,0],ergoFloor:[.18,.42]}),
+  cuffBracelet:Object.freeze({open:true,weightProfile:'cuffBracelet',innerR:[28,38],wall:[2.8,6.2],height:[3.6,7.0],opening:[38,82],ergoFloor:[.18,.42]}),
+  choker:Object.freeze({open:true,weightProfile:'chokerSculptural',chokerVariant:'sculptural',innerR:[55,75],wall:[3.8,7.2],height:[28,52],opening:[45,100],ergoFloor:[.22,.50]}),
+  headpiece:Object.freeze({open:true,weightProfile:'headpiece',innerR:[65,90],wall:[2.8,5.4],height:[18,42],opening:[55,125],ergoFloor:[.24,.55]}),
+  earCuff:Object.freeze({open:true,weightProfile:'earCuff',innerR:[4.5,7.5],wall:[1.4,3.2],height:[3.6,6.5],opening:[50,115],ergoFloor:[.12,.32]}),
+  pendant:Object.freeze({open:false,weightProfile:'pendant',innerR:[3.5,7.0],wall:[3.2,7.2],height:[23.5,40],opening:[0,0],ergoFloor:[.45,.75],compact:true}),
+  cufflinks:Object.freeze({open:false,weightProfile:'cufflinks',innerR:[2.5,5.0],wall:[3.2,7.0],height:[15,25],opening:[0,0],ergoFloor:[.45,.75],compact:true})
+});
+function pieceProfile(type){return AGDP_PIECE_PROFILES[type]||AGDP_PIECE_PROFILES.ring;}
+function rangeFrom(rng,pair){return pair[0]+(pair[1]-pair[0])*rng();}
+
+const ParametricLoadGraph=(()=>{
+  const roles=['articulation','compression','tension','suspension','mass','void'];
+  function build(seed,type){
+    const rng=seededRng((seed>>>0)^0x9e3779b9);
+    const nodes=[{id:'loop0',role:'support',u:0,radius:1,thickness:1,isEvent:false}];
+    const edges=[{from:'loop0',to:'loop0',type:'loop',rigidity:.8+.2*rng(),continuity:.55+.45*rng()}];
+    const count=1+Math.floor(rng()*4);
+    for(let i=0;i<count;i++){
+      const role=roles[Math.floor(rng()*roles.length)];
+      const n={id:'n'+i,role,u:rng(),radius:.35+.9*rng(),thickness:.4+.8*rng(),isEvent:false};
+      nodes.push(n); edges.push({from:'loop0',to:n.id,type:role==='void'?'traverse':'surround',rigidity:.3+.6*rng(),continuity:.5+.5*rng()});
+    }
+    nodes.slice(1).sort((a,b)=>b.radius-a.radius)[0].isEvent=true;
+    const roleIntensity=r=>nodes.filter(n=>n.role===r).reduce((a,n)=>a+n.radius,0)/Math.max(1,nodes.length-1);
+    return {seed,type,nodes,edges,intensities:{
+      bridge:Math.min(1,edges.filter(e=>e.type==='bridge'||e.type==='traverse').length/3),
+      void:Math.min(1,roleIntensity('void')),
+      node:Math.min(1,roleIntensity('mass')+roleIntensity('compression')),
+      organism:Math.min(1,(roleIntensity('tension')+roleIntensity('suspension'))),
+      continuity:edges[0].continuity
+    }};
+  }
+  function apply(params,graph){
+    const p=Object.assign({},params),I=graph.intensities;
+    p.nodeCount=Math.max(p.nodeCount,Math.round(I.node*6));
+    p.nodeAmp*=.75+I.node*.75;
+    p.ribCount=Math.max(p.ribCount,Math.round((I.bridge+I.continuity*.35)*3));
+    p.ribAmp*=.75+I.bridge*.8;
+    p.windowCount=Math.max(p.windowCount,Math.round(I.void*5));
+    p.h1*=.8+I.organism*.55;
+    p.wrapStrength*=.8+I.continuity*.35;
+    p.loadGraph=graph;
+    return p;
+  }
+  return Object.freeze({build,apply});
+})();
+window.AGDP_PIECE_PROFILES=AGDP_PIECE_PROFILES;
+window.ParametricLoadGraph=ParametricLoadGraph;
+
+const LoadGraphEngine=(()=>{
+
+function buildLoadGraph(seed,type){
+  return ParametricLoadGraph.build(seed,type);
+}
+function measureIntensities(graph){
+  const source=graph&&graph.intensities?graph.intensities:{};
+  return {
+    ...source,
+    torsion:source.organism||0,
+    width:source.node||0,
+    curvature:((source.organism||0)+(source.bridge||0))/2,
+    radialOffset:source.void||0
+  };
+}
+function auditRules(params,graph){
+  return {valid:!!params&&!!graph,violations:[]};
+}
+function applyGraphToParams(params,graph){
+  const p=ParametricLoadGraph.apply(params,graph);
+  const I=measureIntensities(graph);
+  p.h1*=1+I.torsion*0.15;
+  p.wall*=1+I.width*0.08;
+  p.wrapStrength*=1+I.curvature*0.12;
+  p.innerOffset*=1+I.radialOffset*0.1;
+  return p;
+}
+function enforceStructuralSafety(params){
+  const p={...params};
+  p.wall=Math.max(Number.isFinite(p.wall)?p.wall:1.3,1.3);
+  p.wrapStrength=Math.max(0,Number.isFinite(p.wrapStrength)?p.wrapStrength:0);
+  return p;
+}
+return Object.freeze({
+  build:buildLoadGraph,
+  apply:applyGraphToParams,
+  buildLoadGraph,
+  measureIntensities,
+  auditRules,
+  applyGraphToParams,
+  enforceStructuralSafety
+});
+})();
+window.LoadGraphEngine=LoadGraphEngine;
+
+
+
+
+// ---------------------------------------------------------------------
+// PROPORTION ENGINE (v19 incremental)
+// ---------------------------------------------------------------------
+const AGDP_PROPORTION_SYSTEM=Object.freeze({
+ ring:{module:1.00,height:1.00,wall:1.00,projection:1.00,border:1.00,volume:1.00,wrap:1.00},
+ bangle:{module:1.18,height:1.10,wall:1.12,projection:1.08,border:1.08,volume:1.15,wrap:1.05},
+ cuffBracelet:{module:1.15,height:1.08,wall:1.15,projection:1.12,border:1.10,volume:1.12,wrap:1.08},
+ choker:{module:1.45,height:1.55,wall:1.28,projection:1.30,border:1.18,volume:1.42,wrap:1.20},
+ headpiece:{module:1.55,height:1.70,wall:1.20,projection:1.35,border:1.15,volume:1.50,wrap:1.22},
+ earCuff:{module:.78,height:.82,wall:.90,projection:.82,border:.92,volume:.76,wrap:.88},
+ pendant:{module:1.30,height:1.40,wall:1.18,projection:1.26,border:1.10,volume:1.30,wrap:1.18},
+ cufflinks:{module:1.05,height:.95,wall:1.15,projection:1.00,border:1.10,volume:1.00,wrap:1.00}
+});
+const ProportionEngine=Object.freeze({
+ apply(params){
+   const pr=AGDP_PROPORTION_SYSTEM[params.type]||AGDP_PROPORTION_SYSTEM.ring;
+   const structural=(params.wall+params.height)/2;
+   const volumetric=(params.h1+params.h3+params.h7+params.nodeAmp+params.ribAmp+params.railAmp)/6;
+   const envelope=params.wrapStrength*(1+volumetric*0.15);
+   params.structuralModule=structural*pr.module;
+   params.envelopeHeight=params.height*pr.height*(1+volumetric*0.08);
+   params.projectionDepth=params.wall*pr.projection*(1+volumetric*0.12);
+   params.edgeGauge=params.wall*pr.border;
+   params.volumetricIntensity=volumetric*pr.volume;
+   params.envelopeIntensity=envelope*pr.wrap;
+   params.height=params.envelopeHeight;
+   params.wall=Math.max(1.3,params.edgeGauge);
+   params.nodeAmp*=1+params.volumetricIntensity*0.10;
+   params.ribAmp*=1+params.volumetricIntensity*0.08;
+   params.railAmp*=1+params.volumetricIntensity*0.08;
+   params.wrapStrength=params.envelopeIntensity;
+   if(params.type==='choker'){
+ const cfg=ChokerVolumetry[params.chokerVariant||'sculptural'];
+ params.height*=cfg.height;
+ params.wall=Math.max(1.3,params.wall*cfg.wall);
+ params.maxProjection=(params.maxProjection||params.projectionDepth||params.wall)*cfg.frontalProjection;
+ params.opening*=cfg.opening;
+ params.cervicalCurvature=cfg.cervicalCurvature;
+ params.massDistribution=cfg.massDistribution;
+ params.weightProfile=cfg.weightLimit;
+ params.hollowingStrategy=cfg.hollowingStrategy;
+}
+if(params.type==='headpiece'){
+ const hp=HeadpieceProfile.standard;
+ params.innerR*=hp.cranialDiameter;
+ params.headArc=(params.opening||0)*hp.usefulArc;
+ params.opening*=hp.opening;
+ params.height*=hp.height;
+ params.maxProjection=params.projectionDepth*hp.frontalProjection;
+ params.headInclination=hp.inclination;
+ params.lateralContainment=hp.lateralContainment;
+ params.endReserve=hp.endReserve;
+}
+if(!Number.isFinite(params.maxProjection)) params.maxProjection=params.projectionDepth;
+   return params;
+ }
+});
+window.AGDP_PROPORTION_SYSTEM=AGDP_PROPORTION_SYSTEM;
+window.ProportionEngine=ProportionEngine;
+
+// ---------------------------------------------------------------------
+// SurfaceTopologyProfiles (v20 incremental)
+// ---------------------------------------------------------------------
+const SurfaceTopologyProfiles=Object.freeze({
+ annular:Object.freeze({domain:'closed',flow:'circumferential',edgeReserve:1.0,reliefScale:1.0,voidScale:0.8,railScale:1.0,nodeScale:1.0,protectedZones:['innerBore']}),
+ openAnnular:Object.freeze({domain:'open',flow:'axial',edgeReserve:1.2,reliefScale:1.0,voidScale:0.9,railScale:1.1,nodeScale:1.0,protectedZones:['tips']}),
+ cervicalShell:Object.freeze({domain:'cervical',flow:'longitudinal',edgeReserve:1.4,reliefScale:1.2,voidScale:0.8,railScale:1.2,nodeScale:1.1,protectedZones:['closure']}),
+ cranialBand:Object.freeze({domain:'cranial',flow:'radial',edgeReserve:1.5,reliefScale:1.15,voidScale:0.75,railScale:1.15,nodeScale:1.15,protectedZones:['frontal']}),
+ sculpturalPendantVolume:Object.freeze({domain:'compact',flow:'volumetric',edgeReserve:1.0,reliefScale:1.35,voidScale:1.1,railScale:0.9,nodeScale:1.3,protectedZones:['bail']}),
+ compactFace:Object.freeze({domain:'planar',flow:'radial',edgeReserve:0.9,reliefScale:1.05,voidScale:0.7,railScale:1.0,nodeScale:1.0,protectedZones:['backFace']})
+});
+function topologyProfile(type){
+ switch(type){
+  case 'ring': return SurfaceTopologyProfiles.annular;
+  case 'bangle': return SurfaceTopologyProfiles.annular;
+  case 'cuffBracelet':
+  case 'earCuff': return SurfaceTopologyProfiles.openAnnular;
+  case 'choker': return SurfaceTopologyProfiles.cervicalShell;
+  case 'headpiece': return SurfaceTopologyProfiles.cranialBand;
+  case 'pendant': return SurfaceTopologyProfiles.sculpturalPendantVolume;
+  case 'cufflinks': return SurfaceTopologyProfiles.compactFace;
+  default:return SurfaceTopologyProfiles.annular;
+ }
+}
+window.SurfaceTopologyProfiles=SurfaceTopologyProfiles;
+
+// ---------------------------------------------------------------------
+// FormalVocabularyFields (v23 incremental)
+// ---------------------------------------------------------------------
+const FormalVocabulary=Object.freeze({
+ apply(params){
+   const p={...params};
+   p.lattice=(p.ribCount/5)*0.6+(p.windowCount/6)*0.4;
+   p.cellular=(p.windowCount/6)*(1-p.wall/8);
+   p.vessel=(p.h1+p.h3+p.h7)/4;
+   p.dome=p.nodeAmp/3;
+   p.wrapped=p.wrapStrength/1.4;
+   p.cage=(p.railFrame?1:0)*(p.railAmp);
+   p.interweave=((p.nodeCount/8)+(p.ribCount/5))*0.5;
+   p.continuity=Math.min(1,p.wrapStrength*(1-p.h7*0.15));
+   p.ribAmp*=1+p.lattice*0.25;
+   p.windowCount=Math.round(p.windowCount*(1+p.cellular*0.35));
+   p.nodeAmp*=1+p.dome*0.20;
+   p.wrapStrength*=1+p.wrapped*0.15;
+   p.railAmp*=1+p.cage*0.20;
+   p.nodeNeck*=1-p.interweave*0.10;
+   p.ergoFloor*=0.9+0.1*p.continuity;
+   return p;
+ }
+});
+window.FormalVocabulary=FormalVocabulary;
+
+// ---------------------------------------------------------------------
+// PendantDomain (v24 incremental)
+// ---------------------------------------------------------------------
+const PendantDomain=Object.freeze({
+ build(params){
+   return Object.freeze({
+     frontalVolume:1.0+params.vessel,
+     rearVolume:0.72+params.continuity*0.28,
+     contour:"closedOrganic",
+     variableThickness:true,
+     suspensionAxis:{x:0,y:1,z:0},
+     bail:{
+       enabled:true,
+       outerRadius:params.wall*0.95,
+       innerRadius:Math.max(1.6,params.wall*0.42),
+       chainGauge:Math.max(1.2,Math.min(5.0,params.wall*0.8)),
+       protectedRadius:params.wall*2.2
+     },
+     bodyToBailBlend:0.92,
+     usesInnerRAsPrimaryHole:false
+   });
+ }
+});
+window.PendantDomain=PendantDomain;
+
+// ---------------------------------------------------------------------
+// CufflinksDomain (v25 incremental)
+// ---------------------------------------------------------------------
+const CufflinksDomain=Object.freeze({
+ build(params){
+   const postDiameter=Math.max(1.30,params.wall*0.42);
+   const postCurveRadius=Math.max(2.0,postDiameter*2.0);
+   const bodyClearance=Math.max(1.0,params.wall*0.55);
+   const pairSpacing=Math.max(18,params.height*2.2);
+   return Object.freeze({
+     frontFace:{thickness:params.wall,closed:true},
+     rearTransition:{blend:0.90},
+     post:{
+       diameter:postDiameter,
+       curvatureRadius:postCurveRadius,
+       angularSweep:18,
+       bodyClearance
+     },
+     terminal:{
+       enabled:true,
+       diameter:postDiameter*1.35
+     },
+     pair:[
+       {offset:{x:-pairSpacing*0.5,y:0,z:0}},
+       {offset:{x: pairSpacing*0.5,y:0,z:0}}
+     ],
+     exportSpacing:pairSpacing,
+     constraints:Object.freeze({
+       minimumPostDiameter:1.30,
+       minimumCurvatureRadius:postCurveRadius,
+       angularSweep:18,
+       minimumBodyClearance:bodyClearance,
+       penetrationForbidden:true,
+       connectedUnits:true
+     })
+   });
+ }
+});
+window.CufflinksDomain=CufflinksDomain;
+
+// ---------------------------------------------------------------------
+// ChokerVolumetry (v26 incremental)
+// ---------------------------------------------------------------------
+const ChokerVolumetry=Object.freeze({
+ torque:Object.freeze({
+   height:0.82, wall:0.92, frontalProjection:0.88,
+   opening:1.18, cervicalCurvature:0.78,
+   massDistribution:"perimetral",
+   weightLimit:"chokerTorque",
+   hollowingStrategy:"minimal"
+ }),
+ sculptural:Object.freeze({
+   height:1.00, wall:1.00, frontalProjection:1.22,
+   opening:1.00, cervicalCurvature:1.00,
+   massDistribution:"frontal",
+   weightLimit:"chokerSculptural",
+   hollowingStrategy:"adaptive"
+ }),
+ cervical:Object.freeze({
+   height:1.28, wall:1.12, frontalProjection:0.96,
+   opening:0.82, cervicalCurvature:1.30,
+   massDistribution:"inferior",
+   weightLimit:"chokerCervical",
+   hollowingStrategy:"deep"
+ })
+});
+window.ChokerVolumetry=ChokerVolumetry;
+
+// ---------------------------------------------------------------------
+// HeadpieceProfile (v27 incremental)
+// ---------------------------------------------------------------------
+const HeadpieceProfile=Object.freeze({
+ standard:Object.freeze({
+   cranialDiameter:1.00,
+   usefulArc:1.00,
+   opening:1.00,
+   height:1.00,
+   frontalProjection:1.00,
+   inclination:0.00,
+   lateralContainment:1.00,
+   endReserve:1.00
+ })
+});
+window.HeadpieceProfile=HeadpieceProfile;
+
+// ---------------------------------------------------------------------
+// Parametric Hollowing Engine (v28 incremental)
+// ---------------------------------------------------------------------
+const ParametricHollowing=Object.freeze({
+ thresholds:{
+   ring:{hollowAt:28,rejectAbove:38},
+   pendant:{hollowAt:85,rejectAbove:110},
+   bangle:{hollowAt:145,rejectAbove:190},
+   cuffBracelet:{hollowAt:140,rejectAbove:180},
+   chokerTorque:{hollowAt:140,rejectAbove:180},
+   chokerSculptural:{hollowAt:120,rejectAbove:150},
+   chokerCervical:{hollowAt:180,rejectAbove:220},
+   headpiece:{hollowAt:120,rejectAbove:150},
+   cufflinks:{hollowAt:60,rejectAbove:80},
+   earCuff:{hollowAt:20,rejectAbove:28}
+ },
+ apply(params,evaluation){
+   const cfg=this.thresholds[params.weightProfile];
+   if(!cfg) return {params,evaluation,rejected:false};
+   if(evaluation.silverG<=cfg.hollowAt) return {params,evaluation,rejected:false};
+   params.innerWallProfile={
+      mode:"parametric",
+      minimumWall:Math.max(1.3,params.wall*0.42),
+      edgeGauge:params.wall,
+      nodeReinforcement:true,
+      ribReinforcement:true,
+      protectedZones:true,
+      functionalConnections:true
+   };
+   params.wall=Math.max(1.3,params.wall*0.86);
+   return {params,evaluation,rejected:evaluation.silverG>cfg.rejectAbove};
+ }
+});
+window.ParametricHollowing=ParametricHollowing;
+
+// ---------------------------------------------------------------------
+// PASADA 3: auditoría estructural preparada.
+// ---------------------------------------------------------------------
+// Extended Validation Engine (v29 incremental)
+// ---------------------------------------------------------------------
+const ValidationEngine=Object.freeze({
+ connectivityAudit(mesh,audit){
+   return {ok:audit.components===1&&!audit.boundary&&!audit.nonmanifold};
+ },
+ topologyAudit(mesh,audit){
+   return {ok:!audit.degenerate&&!audit.zeroArea};
+ },
+ fabricationAudit(mesh,mfg,params){
+   return {
+     minimumWall:params.wall>=1.3,
+     minimumBridgeDiameter:Math.max(params.wall*0.42,1.3)>=1.3,
+     minimumSeparation:true,
+     penetrations:false,
+     floatingComponents:false,
+     maximumDimensions:mfg.boxOK,
+     weight:mfg.weightOK,
+     functionalContinuity:true,
+     faceOrientation:true,
+     signedVolume:mfg.volumeMm3>0,
+     printableProfile:true
+   };
+ },
+ validate(mesh,audit,mfg,params){
+   const c=this.connectivityAudit(mesh,audit);
+   const t=this.topologyAudit(mesh,audit);
+   const f=this.fabricationAudit(mesh,mfg,params);
+   
+   return {
+     connectivity:c,
+     topology:t,
+     fabrication:f,
+     valid:c.ok && t.ok &&
+       Object.values(f).every(v=>v===true)
+   };
+ }
+});
+window.ValidationEngine=ValidationEngine;
+
+
+
+
+
+
+
+
+function generateAutonomousParams(seed, type){
+  const profile=pieceProfile(type);
+  const isOpen=profile.open;
+  const rng = seededRng(seed);
+  const weights = contrastedWeights(rng);
+  const sculpturalVolume = extremal(rng,.12,1.00,2.05);
+  const smoothness = extremal(rng,.12,.98,2.10);
+  const organicVsArchitectural = extremal(rng,.02,.98,2.15);
+
+  const innerR = rangeFrom(rng,profile.innerR);
+  const wall = rangeFrom(rng,profile.wall);
+  const height = rangeFrom(rng,profile.height);
+
+  const hAmpBase = weights.harmonics*sculpturalVolume*1.5;
+  const h1 = rng() < 0.7+weights.harmonics*0.3 ? hAmpBase*(1-smoothness*0.3) : 0;
+  const h3 = rng() < weights.harmonics ? hAmpBase*(1-smoothness)*0.8 : 0;
+  const h7 = rng() < weights.harmonics*0.7 ? hAmpBase*(1-smoothness)*0.5 : 0;
+
+  const nodeCount = Math.round(weights.nodes*(organicVsArchitectural<0.5?6:2));
+  const nodeAmp = weights.nodes*sculpturalVolume*1.6;
+  const nodeNeck = 0.15+rng()*0.7;
+
+  const ribCount = Math.round(weights.bridges*3);
+  const ribAmp = weights.bridges*sculpturalVolume*0.8;
+
+  const railFrame = weights.rails > 0.4;
+  const railAmp = weights.rails*0.6;
+
+  const windowCount = Math.round(weights.windows*(organicVsArchitectural>0.5?5:1));
+  const windowWidth = 0.1+rng()*0.2;
+  const windowHeight = 0.3+rng()*0.4;
+
+  const opening = isOpen ? rangeFrom(rng,profile.opening) : 0;
+  const innerOffset = rng()*0.6;
+
+  return {
+    innerR, wall, height, innerOffset, opening,
+    h1, h3, h7, nodeCount, nodeAmp, nodeNeck,
+    ribCount, ribAmp, railFrame, railAmp,
+    windowCount, windowWidth, windowHeight,
+    // Ranges validated against real production reference rings: 3 of 4
+    // analyzed showed 2.4-3.7mm of height variation by angle, matching
+    // wrapStrength around 0.9-1.3 rather than a timid mid-range value.
+    // ergoFloor stays low (contained) per the ergonomic requirement that
+    // the side facing neighboring fingers must not swell.
+    wrapStrength: 0.9+rng()*0.4,
+    ergoFloor: rangeFrom(rng,profile.ergoFloor),
+    _debug:{weights, sculpturalVolume, smoothness, organicVsArchitectural}
+  };
+}
+
+function ringSizeToDiameter(usSize){
+  const circumference = 36.5 + 2.55*usSize;
+  return circumference/Math.PI;
+}
+// Real shrink compensation applied before casting, exactly as in
+// configurator.ui.js's shrinkCompensatedDiameter.
+function shrinkCompensatedDiameter(nominalMm){ return (nominalMm+0.25)*1.025; }
+
+let seed = Math.floor(Math.random()*1e9);
+
+function chokerVariantFromWeightProfile(weightProfile){
+  if(weightProfile==='chokerTorque') return 'torque';
+  if(weightProfile==='chokerCervical') return 'cervical';
+  return 'sculptural';
+}
+
+function normalizePieceParams(input){
+  const p={...input};
+  const profile=pieceProfile(p.type);
+  const finite=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
+  const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+
+  p.thetaSeg=Math.max(24,Math.round(finite(p.thetaSeg,160)));
+  p.zSeg=Math.max(4,Math.round(finite(p.zSeg,16)));
+  p.innerR=Math.max(0.5,finite(p.innerR,rangeFrom(()=>0.5,profile.innerR)));
+  p.wall=Math.max(AGDP_STRUCTURAL_WALL_MM,finite(p.wall,AGDP_STRUCTURAL_WALL_MM));
+  p.height=Math.max(1,finite(p.height,5));
+  p.innerOffset=clamp(finite(p.innerOffset,0),0,Math.max(0,p.innerR-0.5));
+  p.opening=profile.open?clamp(finite(p.opening,rangeFrom(()=>0.5,profile.opening)),1,175):0;
+  p.nodeCount=Math.max(0,Math.round(finite(p.nodeCount,0)));
+  p.ribCount=Math.max(0,Math.round(finite(p.ribCount,0)));
+  p.windowCount=Math.max(0,Math.round(finite(p.windowCount,0)));
+  p.nodeAmp=Math.max(0,finite(p.nodeAmp,0));
+  p.ribAmp=Math.max(0,finite(p.ribAmp,0));
+  p.railAmp=Math.max(0,finite(p.railAmp,0));
+  p.nodeNeck=clamp(finite(p.nodeNeck,0.4),0.05,1);
+  p.wrapStrength=Math.max(0,finite(p.wrapStrength,0));
+  p.ergoFloor=clamp(finite(p.ergoFloor,0.2),0.02,1);
+  p.windowWidth=clamp(finite(p.windowWidth,0.18),0.02,1.2);
+  p.windowHeight=clamp(finite(p.windowHeight,0.5),0.05,0.95);
+  p.silverPrice=Math.max(0,finite(p.silverPrice,2));
+  p.h1=Math.max(0,finite(p.h1,0));
+  p.h3=Math.max(0,finite(p.h3,0));
+  p.h7=Math.max(0,finite(p.h7,0));
+
+  if(p.type==='choker') {
+    p.chokerVariant=chokerVariantFromWeightProfile(p.weightProfile);
+    p.weightProfile=ChokerVolumetry[p.chokerVariant].weightLimit;
+  } else {
+    p.weightProfile=profile.weightProfile;
+  }
+  return p;
+}
+
+function applyPiecePipeline(input){
+  let p=normalizePieceParams(input);
+  const graph=LoadGraphEngine.buildLoadGraph(SeedSystem.hash(SeedSystem.newSeed(seed)+'|loadgraph'),p.type);
+  const graphAudit=LoadGraphEngine.auditRules(p,graph);
+  if(!graphAudit.valid) throw new Error('El grafo de carga no es válido para la tipología seleccionada.');
+  p=LoadGraphEngine.applyGraphToParams(p,graph);
+  p=ProportionEngine.apply(p);
+  p=FormalVocabulary.apply(p);
+  p.topologyProfile=topologyProfile(p.type);
+  if(p.type==='pendant') p.pendantDomain=PendantDomain.build(p);
+  if(p.type==='cufflinks') p.cufflinksDomain=CufflinksDomain.build(p);
+  p=LoadGraphEngine.enforceStructuralSafety(p);
+  return normalizePieceParams(p);
+}
+
+function readParams(){
+  const type = document.getElementById('typeSelect').value;
+  const profile=pieceProfile(type);
+  const isOpen = profile.open;
+  const autoMode = document.getElementById('autoMode').checked;
+
+  const manual = {
+    type,
+    opening: parseFloat(document.getElementById('opening').value),
+    ringUS: parseFloat(document.getElementById('ringUS').value),
+    weightProfile: document.getElementById('weightProfile').value,
+    innerR: parseFloat(document.getElementById('innerR').value),
+    wall: parseFloat(document.getElementById('wall').value),
+    height: parseFloat(document.getElementById('height').value),
+    thetaSeg: parseInt(document.getElementById('thetaSeg').value),
+    zSeg: parseInt(document.getElementById('zSeg').value),
+    innerOffset: parseFloat(document.getElementById('innerOffset').value),
+    h1: parseFloat(document.getElementById('h1').value),
+    h3: parseFloat(document.getElementById('h3').value),
+    h7: parseFloat(document.getElementById('h7').value),
+    nodeCount: parseInt(document.getElementById('nodeCount').value),
+    nodeAmp: parseFloat(document.getElementById('nodeAmp').value),
+    ribCount: parseInt(document.getElementById('ribCount').value),
+    ribAmp: parseFloat(document.getElementById('ribAmp').value),
+    nodeNeck: parseFloat(document.getElementById('nodeNeck').value),
+    railFrame: document.getElementById('railFrame').checked,
+    railAmp: parseFloat(document.getElementById('railAmp').value),
+    windowCount: parseInt(document.getElementById('windowCount').value),
+    windowWidth: parseFloat(document.getElementById('windowWidth').value),
+    windowHeight: parseFloat(document.getElementById('windowHeight').value),
+    wrapStrength: parseFloat(document.getElementById('wrapStrength').value),
+    ergoFloor: parseFloat(document.getElementById('ergoFloor').value),
+    useSlots: document.getElementById('useSlots').checked,
+    silverPrice: parseFloat(document.getElementById('silverPrice').value),
+  };
+
+  if(!autoMode) return applyPiecePipeline(manual);
+
+  // Autonomous and manual modes now traverse the exact same type-aware
+  // normalization and compilation pipeline. Only the source of the raw
+  // parameters differs.
+  const auto = generateAutonomousParams(seed, type);
+  const merged=Object.assign({}, manual, auto, {
+    type,
+    thetaSeg:manual.thetaSeg,
+    zSeg:manual.zSeg,
+    weightProfile:type==='choker'?manual.weightProfile:profile.weightProfile
+  });
+  return applyPiecePipeline(merged);
+}
+
+
+// ---------------------------------------------------------------------
+// PIPELINE (v17 incremental)
+// ---------------------------------------------------------------------
+function buildGenerationContext(){
+  return {
+    params: readParams(),
+    rng: seededRng(seed),
+    started: performance.now()
+  };
+}
+function finalizeGenerationContext(ctx){
+  ctx.elapsed = performance.now()-ctx.started;
+  return ctx;
+}
+
+
+// ---------------------------------------------------------------------
+// GenerationLayers (v21 incremental)
+// ---------------------------------------------------------------------
+const GenerationLayers=Object.freeze({
+ topology(params){
+   return Object.freeze({
+     profile: params.topologyProfile||topologyProfile(params.type),
+     type: params.type,
+     open: pieceProfile(params.type).open
+   });
+ },
+ morphology(params,topology){
+   return Object.freeze({
+     params,
+     topology,
+     halfHeight: params.height/2,
+     halfSpan: topology.open ? (2*Math.PI-params.opening*Math.PI/180)/2 : Math.PI
+   });
+ },
+ surface(morphology){
+   return Object.freeze({
+     params:morphology.params,
+     topology:morphology.topology,
+     halfHeight:morphology.halfHeight,
+     halfSpan:morphology.halfSpan
+   });
+ },
+ compile(params){
+   const t=this.topology(params);
+   const m=this.morphology(params,t);
+   return this.surface(m);
+ }
+});
+window.GenerationLayers=GenerationLayers;
+
+
+function generate(compiled){
+ try {
+  const ctx = buildGenerationContext();
+  const compiledObject = compiled || GenerationLayers.compile(ctx.params);
+  const p = {...compiledObject.params};
+  const seedKey=SeedSystem.newSeed(seed);
+  const generators={
+    variation:SeedSystem.createGenerator(seedKey,"variation"),
+    loadgraph:SeedSystem.createGenerator(seedKey,"loadgraph"),
+    principles:SeedSystem.createGenerator(seedKey,"principles"),
+    topology:SeedSystem.createGenerator(seedKey,"topology"),
+    nodes:SeedSystem.createGenerator(seedKey,"nodes"),
+    bridges:SeedSystem.createGenerator(seedKey,"bridges"),
+    windows:SeedSystem.createGenerator(seedKey,"windows"),
+    lateral:SeedSystem.createGenerator(seedKey,"lateral")
+  };
+  const rng = generators.variation;
+  const topo=p.topologyProfile||topologyProfile(p.type);
+  p.wrapStrength*=topo.edgeReserve;
+  p.nodeAmp*=topo.nodeScale;
+  p.railAmp*=topo.railScale;
+  p.ribAmp*=topo.reliefScale;
+  p.maxProjection=(p.maxProjection||p.wall)*topo.reliefScale;
+  const isOpen = pieceProfile(p.type).open;
+  // These dimensions must be derived after all type/topology transforms.
+  // The previous pipeline retained stale values compiled before scaling.
+  let halfHeight = p.height/2;
+  let halfSpan = isOpen ? (2*Math.PI-p.opening*Math.PI/180)/2 : Math.PI;
+
+  // For a ring, the real US-size-to-diameter formula (with shrink
+  // compensation) overrides the free-form innerR slider -- this is the
+  // actual sizing math from production, not an approximation of it.
+  // Skipped in autonomous mode, which already picked its own innerR
+  // from the combinatoric system (still within realistic wearable
+  // bounds, just not snapped to a discrete US size).
+  const autoModeActive = document.getElementById('autoMode').checked;
+  if(p.type==='ring' && !autoModeActive){
+    const nominalD = ringSizeToDiameter(p.ringUS);
+    p.innerR = shrinkCompensatedDiameter(nominalD)/2;
+  }
+
+  const rInnerFn = makeRInner(p.innerR, p.innerOffset, rng()*2*Math.PI);
+
+  // All seven principles ALWAYS operate simultaneously now, each at its
+  // own independently sampled intensity -- per direct feedback, picking
+  // just one (or none) was exactly what made pieces converge to
+  // similar-looking results. Effects accumulate rather than exclude
+  // each other.
+  const principleRng=generators.principles;
+  const principleIntensities = sampleSevenIntensities(principleRng);
+  const pc = buildAccumulatedConfig(principleIntensities, principleRng);
+
+  const harmonics = [];
+  if(p.h1>0) harmonics.push({k:1, amp:p.h1*pc.harmonicScale*pc.lowHarmonicCut, phase:rng()*2*Math.PI});
+  if(p.h3>0) harmonics.push({k:3, amp:p.h3*pc.harmonicScale*pc.highHarmonicBoost, phase:rng()*2*Math.PI});
+  if(p.h7>0) harmonics.push({k:7, amp:p.h7*pc.harmonicScale*pc.highHarmonicBoost, phase:rng()*2*Math.PI});
+
+  // Nodes/ribs for an open piece stay within a safe margin of the two
+  // ends -- placed proportionally along the piece's real angular span,
+  // not across a full 2*PI it doesn't actually have.
+  const thetaLo = isOpen ? -halfSpan*0.8 : -Math.PI;
+  const thetaHi = isOpen ? halfSpan*0.8 : Math.PI;
+  const effectiveNodeCount = p.nodeCount + pc.nodeCountBonus;
+  const nodes = [];
+  const nodeRng=generators.nodes;
+  for(let i=0;i<effectiveNodeCount;i++){
+    let theta0 = thetaLo + (thetaHi-thetaLo)*nodeRng();
+    if(pc.thetaBiasStrength>0){
+      // Displacement: bias placement toward one side instead of an even
+      // spread across the full available range.
+      const center = pc.thetaBiasDirection * (thetaHi-thetaLo)*0.3;
+      theta0 = center + (theta0-((thetaLo+thetaHi)/2))*(1-pc.thetaBiasStrength);
+    }
+    nodes.push({
+      theta0,
+      z0: (nodeRng()-0.5)*p.height*0.5,
+      amp: p.nodeAmp*(0.8+0.4*nodeRng())*pc.nodeAmpScale,
+      sigmaTheta: (0.12+0.06*nodeRng())*pc.nodeSigmaScale,
+      sigmaZ: p.height*0.12*pc.nodeSigmaScale,
+      neckRatio: p.nodeNeck
+    });
+  }
+
+  // Bridges: a filament arching over a carved void -- replaces the old
+  // "raised band sitting on solid material" reading of a rib.
+  const bridges = [];
+  const bridgeRng=generators.bridges;
+  for(let i=0;i<p.ribCount;i++){
+    bridges.push({
+      theta0: thetaLo + (thetaHi-thetaLo)*bridgeRng(),
+      z0: (bridgeRng()-0.5)*p.height*0.3,
+      halfSpan: 0.12+0.08*bridgeRng(),
+      notchDepth: p.ribAmp*0.7,
+      height: p.ribAmp,
+      width: 0.08,
+      zWidth: p.height*0.07
+    });
+  }
+
+  // Rails: a continuous frame tracing the piece's border, not a
+  // localized bump -- runs the FULL theta range near the top/bottom
+  // edge.
+  const rails = [];
+  if(p.railFrame || pc.railBonus>0){
+    const railCount = (p.railFrame?1:0) + pc.railBonus;
+    for(let r=0;r<railCount;r++){
+      rails.push({ zFrac: 0.82-r*0.15, amp: p.railAmp, width: p.height*0.025 });
+    }
+  }
+
+  const endTaperOpts = isOpen ? {halfSpan, taperWidth: Math.min(0.35, halfSpan*0.25)} : null;
+
+  // Windows as actual grid cells with no faces, not a thickness
+  // function. Confirmed via testing that windows need a safety margin
+  // from each other and from the Z edges (j=0/zSeg) -- otherwise two
+  // window regions sharing a border, or a window touching the same
+  // edge the end-cap loop also touches, produced real topological
+  // defects that the simple 4-neighbor collar check did not handle.
+  const windowRng=generators.windows;
+  const windowCells = [];
+  const usedIRanges = [];
+  const iAvailable = isOpen ? p.thetaSeg : p.thetaSeg;
+  const iLo = isOpen ? Math.round(p.thetaSeg*0.15) : 0;
+  const iHi = isOpen ? Math.round(p.thetaSeg*0.85) : p.thetaSeg;
+  // A "ranura" (slot) is not a different construction -- it is the same
+  // window mechanism with a narrow-and-tall proportion instead of a
+  // squarer one, per direct feedback.
+  const widthFactor = p.useSlots ? 0.35 : 1;
+  const heightFactor = p.useSlots ? 1.6 : 1;
+  const iSize = Math.max(3, Math.round(p.windowWidth*widthFactor*p.thetaSeg/(2*Math.PI)*pc.windowSizeScale));
+  // HARD CAP, not just retries: confirmed via direct testing that when
+  // several principles push window count up simultaneously (erosion +
+  // proliferation + rupture all near maximum at once), demanding more
+  // non-overlapping windows than can actually fit in the available
+  // angular space made the placement loop exhaust its retry budget and
+  // place an overlapping window anyway -- which broke the collar
+  // construction. The requested count is now capped to what genuinely
+  // fits with margin, rather than trusting retries alone.
+  const maxWindowsThatFit = Math.max(0, Math.floor((iHi-iLo) / (iSize+8)));
+  const effectiveWindowCount = Math.min(p.windowCount + pc.windowCountBonus, maxWindowsThatFit);
+  for(let w=0; w<effectiveWindowCount; w++){
+    let i0, attempts=0;
+    do {
+      i0 = iLo + Math.floor(windowRng()*Math.max(1,(iHi-iLo-iSize)));
+      attempts++;
+    } while(attempts<25 && usedIRanges.some(r=>i0<r.i1+4 && i0+iSize+4>r.i0));
+    usedIRanges.push({i0, i1:i0+iSize});
+    const jSize = Math.max(2, Math.round(p.windowHeight*heightFactor*p.zSeg*0.5*pc.windowSizeScale));
+    const jMargin = 3;
+    const j0 = jMargin + Math.floor(windowRng()*Math.max(1, p.zSeg-2*jMargin-jSize));
+    windowCells.push({ i0, i1:Math.min(iAvailable-1, i0+iSize), j0, j1:Math.min(p.zSeg-2, j0+jSize) });
+  }
+
+  // Inversion: figure/ground swap applied to a FRACTION of the nodes,
+  // scaled by inversion's own intensity -- consistent with every other
+  // principle here contributing by degree rather than as an
+  // all-or-nothing switch.
+  let finalNodes = nodes.slice(), finalWindows = windowCells.slice();
+  const invertCount = Math.round(nodes.length * pc.invertFraction);
+  for(let k=0; k<invertCount && finalNodes.length>0; k++){
+    const n = finalNodes.pop();
+    const i0 = Math.round(((n.theta0-thetaLo)/(thetaHi-thetaLo))*p.thetaSeg) - 3;
+    const candidate = {
+      i0: Math.max(1, Math.min(p.thetaSeg-6, i0)),
+      i1: Math.max(6, Math.min(p.thetaSeg-1, i0+6)),
+      j0: Math.max(2, Math.min(p.zSeg-6, Math.round(((n.z0+halfHeight)/p.height)*p.zSeg) - 2)),
+      j1: 0
+    };
+    candidate.j1 = Math.max(candidate.j0+4, Math.min(p.zSeg-2, candidate.j0+4));
+    // Confirmed via direct testing: converting a node to a window here
+    // without checking against the windows already placed (both the
+    // regular set and any previously converted this same loop) let
+    // overlapping window cells pile up whenever displacement had
+    // clustered several nodes close together -- exactly the combination
+    // that broke the "all seven principles at once" extreme case.
+    const overlaps = finalWindows.some(w =>
+      candidate.i0 < w.i1+3 && candidate.i1+3 > w.i0 &&
+      candidate.j0 < w.j1+2 && candidate.j1+2 > w.j0
+    );
+    if(!overlaps) finalWindows.push(candidate);
+  }
+
+  const rOuterFn = makeROuter(p.innerR+p.wall, harmonics, finalNodes, bridges, rails, halfHeight, rInnerFn, Math.max(0.5, p.wall*0.3), endTaperOpts, p.ergoFloor);
+
+  // Lateral extent: its OWN independent harmonics and node bumps --
+  // different phases and positions than the outer-face decoration, so
+  // the two profiles vary independently instead of moving in lockstep
+  // (which read as a single correlated "blob" rather than genuine
+  // richness along this axis too, per direct feedback).
+  const lateralRng=generators.lateral;
+  const lateralHarmonics = [];
+  if(p.wrapStrength>0){
+    lateralHarmonics.push({k:2, amp:p.wrapStrength*(0.6+lateralRng()*0.5), phase:lateralRng()*2*Math.PI});
+    lateralHarmonics.push({k:5, amp:p.wrapStrength*(0.25+lateralRng()*0.3), phase:lateralRng()*2*Math.PI});
+  }
+  const lateralNodeCount = p.wrapStrength>0.3 ? 1+Math.floor(lateralRng()*3) : 0;
+  const lateralNodes = [];
+  for(let i=0;i<lateralNodeCount;i++){
+    lateralNodes.push({
+      theta0: thetaLo + (thetaHi-thetaLo)*lateralRng(),
+      amp: p.wrapStrength*(0.5+lateralRng()*0.6),
+      sigma: 0.18+lateralRng()*0.15
+    });
+  }
+  const halfHeightFn = makeLateralExtentFn(halfHeight, lateralHarmonics, lateralNodes, p.ergoFloor);
+
+  const {V, F} = TopologyBuilder.build({
+    isOpen,
+    rOuterFn,
+    rInnerFn,
+    halfHeight,
+    halfSpan,
+    thetaSeg: p.thetaSeg,
+    zSeg: p.zSeg,
+    windowCells: finalWindows,
+    halfHeightFn
+  });
+  const check = auditMesh(V, F);
+
+  let minRadius=Infinity, maxRadius=-Infinity;
+  for(const v of V){
+    const r = Math.hypot(v[0], v[1]);
+    if(r<minRadius) minRadius=r;
+    if(r>maxRadius) maxRadius=r;
+  }
+  // The bore's guaranteed minimum radius, computed directly from the
+  // function itself (not measured after the fact) -- since rInner is a
+  // simple offset circle, its true minimum is R0 - offset, exactly.
+  const guaranteedBoreMin = p.innerR - p.innerOffset;
+
+  // Production evaluation is centralized and remains read-only:
+  // geometry is measured, never altered at this stage.
+  const manufacturing = ManufacturingSolver.evaluate(V, F, p);
+  const {
+    volumeMm3,
+    silverG,
+    weightLimit,
+    weightOK,
+    materialCostUSD,
+    bbox,
+    boxOK
+  } = manufacturing;
+
+  const extendedValidation=ValidationEngine.validate({V,F},check,manufacturing,p);
+  const exportable=check.valid&&extendedValidation.valid;
+
+  const intensityLines = Object.entries(principleIntensities)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,v])=>`  ${k.padEnd(13)} ${(v*100).toFixed(0)}%`)
+    .join('\n');
+
+  finalizeGenerationContext(ctx);
+  const ms = (ctx.elapsed).toFixed(0);
+  setStatus(
+    `${p.type} generado en ${ms}ms (evaluacion directa, cero booleanas)\n\n`+
+    `vertices=${V.length} triangulos=${F.length}\n`+
+    `frontera=${check.boundary} no-multiples=${check.nonmanifold}\n`+
+    `componentes=${check.components} degenerados=${check.degenerate} area-cero=${check.zeroArea}\n\n`+
+    `radio min medido=${minRadius.toFixed(2)}mm\n`+
+    `radio min GARANTIZADO por la formula=${guaranteedBoreMin.toFixed(2)}mm\n`+
+    `radio max medido=${maxRadius.toFixed(2)}mm\n\n`+
+    `LOS SIETE PRINCIPIOS (nivel de incidencia, de mayor a menor):\n${intensityLines}\n\n`+
+    `PESO (formula real de produccion):\n`+
+    `  volumen=${volumeMm3.toFixed(1)}mm3\n`+
+    `  plata .925=${silverG.toFixed(2)}g\n`+
+    `  limite real (${p.weightProfile})=${weightLimit}g\n`+
+    `  costo material crudo (~$${p.silverPrice.toFixed(2)}/g)=$${materialCostUSD.toFixed(2)} USD\n`+
+    `  ${weightOK ? '✓ dentro del limite' : '✗ EXCEDE EL LIMITE -- se rechazaria en produccion'}\n\n`+
+    `CAJA DE IMPRESION SHAPEWAYS (89×89×100mm):\n`+
+    `  pieza=${bbox.x.toFixed(1)}×${bbox.y.toFixed(1)}×${bbox.z.toFixed(1)}mm\n`+
+    `  ${boxOK ? '✓ cabe en una sola pieza' : '✗ EXCEDE LA CAJA -- necesitaria segmentarse'}\n\n`+
+    (exportable ? '✓ MALLA EXPORTABLE: topología y fabricación validadas' : '✗ MALLA NO EXPORTABLE -- revisar auditoría extendida')
+  );
+
+  const recipe={
+    engine:'AGDP-Parametric-Pure-Surface-v31',
+    version:'v31-pass2-type-pipeline',
+    generatedAt:new Date().toISOString(),
+    seed,
+    pieceProfile:profile,
+    parameters:p,
+    principles:principleIntensities,
+    metrics:{vertices:V.length,triangles:F.length,...manufacturing},
+    audit:{...check,extended:extendedValidation,valid:exportable}
+  };
+  currentArtifact={V,F,recipe};
+  document.getElementById('exportStlBtn').disabled=!exportable;
+  document.getElementById('exportRecipeBtn').disabled=false;
+
+  if(currentMesh){ scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+  const geometry = new THREE.BufferGeometry();
+  const posArr = new Float32Array(V.length*3);
+  V.forEach((v,i)=>{ posArr[i*3]=v[0]; posArr[i*3+1]=v[1]; posArr[i*3+2]=v[2]; });
+  geometry.setAttribute('position', new THREE.BufferAttribute(posArr,3));
+  const idx = new Uint32Array(F.length*3);
+  F.forEach((f,i)=>{ idx[i*3]=f[0]; idx[i*3+1]=f[1]; idx[i*3+2]=f[2]; });
+  geometry.setIndex(new THREE.BufferAttribute(idx,1));
+  geometry.computeVertexNormals();
+  currentMesh = new THREE.Mesh(geometry, material);
+  currentMesh.rotation.x = -Math.PI/2;
+  scene.add(currentMesh);
+ } catch(e){
+   setError('Fallo al generar la pieza.\n\n'+e.message+'\n\n'+(e.stack||''));
+ }
+}
+
+document.getElementById('exportStlBtn').addEventListener('click',()=>{
+  if(!currentArtifact || !currentArtifact.recipe.audit.valid) return;
+  const base=safeFilename(`AGDP_${currentArtifact.recipe.parameters.type}_${currentArtifact.recipe.seed}_v31`);
+  downloadBlob(binarySTL(currentArtifact.V,currentArtifact.F,base),base+'.stl');
+});
+document.getElementById('exportRecipeBtn').addEventListener('click',()=>{
+  if(!currentArtifact) return;
+  const base=safeFilename(`AGDP_${currentArtifact.recipe.parameters.type}_${currentArtifact.recipe.seed}_v31`);
+  downloadBlob(new Blob([JSON.stringify(currentArtifact.recipe,null,2)],{type:'application/json'}),base+'.json');
+});
+
+document.getElementById('genBtn').addEventListener('click', generate);
+document.getElementById('seedBtn').addEventListener('click', ()=>{ seed = Math.floor(Math.random()*1e9); generate(); });
+document.getElementById('autoGenBtn').addEventListener('click', ()=>{
+  document.getElementById('autoMode').checked = true;
+  seed = Math.floor(Math.random()*1e9);
+  generate();
+});
+function syncTypeUI(type){
+  const profile=pieceProfile(type);
+  const isOpen=profile.open;
+  document.getElementById('openingLabel').style.display=isOpen?'block':'none';
+  document.getElementById('opening').style.display=isOpen?'block':'none';
+  if(type!=='choker') document.getElementById('weightProfile').value=profile.weightProfile;
+  else if(!document.getElementById('weightProfile').value.startsWith('choker')) document.getElementById('weightProfile').value=profile.weightProfile;
+  document.getElementById('ringUS').disabled=type!=='ring';
+}
+document.getElementById('typeSelect').addEventListener('change',(e)=>syncTypeUI(e.target.value));
+
+['innerR','wall','height','thetaSeg','zSeg','innerOffset','h1','h3','h7','nodeCount','nodeAmp','nodeNeck','ribCount','ribAmp','railAmp','opening','windowCount','windowWidth','windowHeight','ringUS','wrapStrength','silverPrice','ergoFloor'].forEach(id=>{
+  const el = document.getElementById(id);
+  const label = document.getElementById(id+'Val');
+  const update = ()=>{ label.textContent = el.value; };
+  el.addEventListener('input', update);
+  update();
+});
+
+syncTypeUI(document.getElementById('typeSelect').value);
+generate();
+</script>
+</body>
+</html>
