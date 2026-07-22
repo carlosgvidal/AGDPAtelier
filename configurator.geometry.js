@@ -1058,7 +1058,13 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const ct=Math.cos(te), st=Math.sin(te);
       const wallHere = localSurfaceRZ(te,0)-innerR;
       const ballR = Math.max(AGDP_MIN_WALL_MM*1.1, wallHere*0.62);
-      const rCenter = innerR+ballR;
+      // Shifted outward by an extra 0.15*ballR: the ball's innermost point
+      // used to sit at EXACTLY innerR (tangent to the bore surface, not
+      // overlapping past it) -- the same coincident-surface condition
+      // confirmed to cause degenerate CSG results in the hallmark bug.
+      // This guarantees genuine volumetric overlap with the solid band
+      // instead of an ambiguous tangent touch.
+      const rCenter = innerR+ballR*1.15;
       decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 8));
     });
   }
@@ -2087,14 +2093,14 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
     const p0=[embedded*Math.cos(t),embedded*Math.sin(t),zBase+lift];
     anchors.push(p0);
     anchorU.push(u);
-    parts.push(flattenedNodeAt(wasm,p0,rr*(1.05+.45*vessel),rr*(.78+.22*wrapped),rr*(.92+.48*dome),20));
+    parts.push(flattenedNodeAt(wasm,p0,rr*(1.05+.45*vessel),rr*(.78+.22*wrapped),rr*(.92+.48*dome),8));
     // Root connector: a short, thick bridge from a point directly on the
     // band's own real surface (same angle, same z) to the anchor's
     // center — this is what actually guarantees the anchor reads as
     // rising out of the mesh's edge rather than floating near it,
     // regardless of how the embed math alone works out.
     const rootSurfacePoint=[surfaceR*Math.cos(t),surfaceR*Math.sin(t),zBase];
-    parts.push(cylinderBetween(wasm, rootSurfacePoint, p0, rr*0.62, 24));
+    parts.push(cylinderBetween(wasm, rootSurfacePoint, p0, rr*0.62, 8));
   }
   {
     const veinIntensity=clamp(Math.max(lattice,cage),0,1);
