@@ -70,42 +70,74 @@ function wedgeCutterMesh(t0, t1, radius, height){
   const F=[[0,1,2],[3,5,4],[0,2,5],[0,5,3],[0,3,4],[0,4,1],[1,4,5],[1,5,2]];
   return {V,F};
 }
-// REDESIGNED per updated request: a fixed post-and-socket joint instead
-// of a hook-and-eye clasp -- two parallel straight posts on one segment
-// press-fit into two tubular socket cavities on the adjacent segment.
-// Non-articulated (nothing hinges or swings): the wearer presses the two
-// segments together and the posts seat into the sockets, similar to a
-// two-pin snap joint. TWO posts per joint (not one) specifically to
-// resist rotation around a single pin's axis, which a one-post design
-// would allow. Both posts and sockets protrude/embed in +Z, for the same
-// reason the previous hook/eye did: Z (the band's own width axis)
-// reliably has spare room after the wedge cut, while the arc direction
-// is already each segment's tightest dimension.
-function buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ){
-  const { Manifold } = wasm;
-  function onePost(zOffset){
-    const embed = postR*1.3;
-    const base = [anchor[0], anchor[1], anchor[2]+zOffset-embed];
-    const tip = [anchor[0], anchor[1], anchor[2]+zOffset+postLen];
-    let post = cylinderBetween(wasm, base, tip, postR, 32);
-    post = Manifold.union(post, sphereAt(wasm, tip, postR*0.92, 28));
-    post = Manifold.union(post, sphereAt(wasm, base, postR, 28));
-    return post;
+// REDESIGNED per updated request: a genuine sliding dovetail rail joint
+// instead of a press-fit post/socket. A trapezoidal rail -- narrow where
+// it meets the segment's surface, wider at its outer tip -- slides
+// lengthwise (along Z, the sliding axis) into a matching trapezoidal
+// groove cut into the adjacent segment. Once slid into place, the
+// dovetail's own shape mechanically blocks radial separation (the wide
+// tip cannot pass back out through the narrower groove opening), while
+// still allowing assembly via a simple lengthwise slide -- a real,
+// load-bearing mechanical joint, not a decorative press-fit.
+function dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, zLen, zCenterOffset){
+  const hz = zLen/2;
+  const z0 = zCenterOffset - hz, z1 = zCenterOffset + hz;
+  function corner(halfW, height, zOff, sign){
+    return [
+      anchor[0] + tangentDir[0]*halfW*sign + radialDir[0]*height,
+      anchor[1] + tangentDir[1]*halfW*sign + radialDir[1]*height,
+      anchor[2] + zOff
+    ];
   }
-  let result = onePost(-offsetZ);
-  result = Manifold.union(result, onePost(offsetZ));
-  return result;
+  // 8 vertices: 4 corners (base-left, base-right, tip-left, tip-right) at
+  // each of the two Z ends.
+  const V = [
+    corner(baseHalfW, 0, z0, -1), corner(baseHalfW, 0, z0, 1),
+    corner(tipHalfW, railHeight, z0, 1), corner(tipHalfW, railHeight, z0, -1),
+    corner(baseHalfW, 0, z1, -1), corner(baseHalfW, 0, z1, 1),
+    corner(tipHalfW, railHeight, z1, 1), corner(tipHalfW, railHeight, z1, -1)
+  ];
+  // Quad faces (as triangle pairs): near cap, far cap, and the 4 sides.
+  const F = [
+    [0,1,2],[0,2,3],       // near cap (z0)
+    [4,6,5],[4,7,6],       // far cap (z1)
+    [0,4,5],[0,5,1],       // base side
+    [1,5,6],[1,6,2],       // tangent+ side
+    [2,6,7],[2,7,3],       // tip side
+    [3,7,4],[3,4,0]        // tangent- side
+  ];
+  return {V,F};
 }
-function cutSocketPairCavity(wasm, segmentManifold, anchor, socketR, socketDepth, offsetZ){
-  const { Manifold } = wasm;
-  function oneSocketCutter(zOffset){
-    const mouth = [anchor[0], anchor[1], anchor[2]+zOffset-socketR*0.4];
-    const bottom = [anchor[0], anchor[1], anchor[2]+zOffset+socketDepth];
-    return cylinderBetween(wasm, mouth, bottom, socketR, 32);
+function buildDovetailRailPair(wasm, anchor, wall, railLen, offsetZ){
+  const rr = Math.hypot(anchor[0],anchor[1])||1;
+  const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
+  const tangentDir = [-radialDir[1], radialDir[0], 0];
+  const baseHalfW = wall*0.9, tipHalfW = wall*1.5, railHeight = wall*1.9;
+  function oneRail(zOff){
+    const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen, zOff);
+    return meshToManifold(wasm, mesh.V, mesh.F);
   }
-  const cutterA = oneSocketCutter(-offsetZ);
-  const cutterB = oneSocketCutter(offsetZ);
-  const cutters = unionAll(wasm, [cutterA, cutterB]);
+  const railA = oneRail(-offsetZ);
+  const railB = oneRail(offsetZ);
+  return unionAll(wasm, [railA, railB]);
+}
+function cutDovetailGroovePair(wasm, segmentManifold, anchor, wall, railLen, offsetZ){
+  const rr = Math.hypot(anchor[0],anchor[1])||1;
+  const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
+  const tangentDir = [-radialDir[1], radialDir[0], 0];
+  // Groove is slightly larger than the rail on every dimension for a
+  // real sliding clearance fit (not a tight press-fit): +0.25mm on the
+  // width dimensions, +0.3mm extra depth so the rail's tip does not
+  // bottom out, and +1mm extra length so the rail can fully enter
+  // without jamming at the very end of its travel.
+  const baseHalfW = wall*0.9+0.25, tipHalfW = wall*1.5+0.25, railHeight = wall*1.9+0.3;
+  function oneGroove(zOff){
+    const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen+1.0, zOff);
+    return meshToManifold(wasm, mesh.V, mesh.F);
+  }
+  const grooveA = oneGroove(-offsetZ);
+  const grooveB = oneGroove(offsetZ);
+  const cutters = unionAll(wasm, [grooveA, grooveB]);
   return safeDifference(wasm, segmentManifold, cutters);
 }
 // Anchors the connector on the segment's OWN real cut-face geometry
@@ -122,16 +154,14 @@ function findCutFaceAnchor(V, targetAngle, tol){
   return [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
 }
 // Cuts a completed choker/headpiece manifold into 3 wedge segments and
-// attaches a post-pair (odd joints) / socket-pair (even joints) at each
-// of the 2 internal cuts, alternating so every joint is exactly one
-// post-bearing face meeting one socket-bearing face. Returns an array of
-// 3 manifolds, each independently a valid, printable, single closed
-// solid.
-function splitIntoHookedSegments(wasm, manifold, postR, postLen){
+// attaches a dovetail-rail-pair (odd joints) / matching-groove-pair
+// (even joints) at each of the 2 internal cuts, alternating so every
+// joint is exactly one rail-bearing face meeting one groove-bearing
+// face. Returns an array of 3 manifolds, each independently a valid,
+// printable, single closed solid.
+function splitIntoHookedSegments(wasm, manifold, wall, railLen){
   const { Manifold } = wasm;
-  const socketR = postR + 0.25; // press-fit clearance over the post radius
-  const socketDepth = postLen + 1.5; // safety margin so the post doesn't bottom out
-  const offsetZ = postR*3.5; // spacing between the two posts/sockets in a pair
+  const offsetZ = wall*4.5; // spacing between the two rails/grooves in a pair
   const mesh = manifoldToMesh(manifold);
   const angles = mesh.V.map(v=>Math.atan2(v[1],v[0]));
   const minA = Math.min(...angles), maxA = Math.max(...angles);
@@ -164,15 +194,15 @@ function splitIntoHookedSegments(wasm, manifold, postR, postLen){
     const anchor = findCutFaceAnchor(m0.V, cutAngles[1]-gapEps, gapEps*3+0.02);
     if(anchor){
       const old = segments[0];
-      const postGeo = buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ);
-      segments[0] = Manifold.union(old, postGeo);
+      const railGeo = buildDovetailRailPair(wasm, anchor, wall, railLen, offsetZ);
+      segments[0] = Manifold.union(old, railGeo);
       try{ old.delete(); }catch(e){}
-      try{ postGeo.delete(); }catch(e){}
+      try{ railGeo.delete(); }catch(e){}
     }
     const m1 = manifoldToMesh(segments[1]);
     const anchorB = findCutFaceAnchor(m1.V, cutAngles[1]+gapEps, gapEps*3+0.02);
     if(anchorB){
-      segments[1] = cutSocketPairCavity(wasm, segments[1], anchorB, socketR, socketDepth, offsetZ);
+      segments[1] = cutDovetailGroovePair(wasm, segments[1], anchorB, wall, railLen, offsetZ);
     }
   }
   {
@@ -180,15 +210,15 @@ function splitIntoHookedSegments(wasm, manifold, postR, postLen){
     const anchor = findCutFaceAnchor(m1.V, cutAngles[2]-gapEps, gapEps*3+0.02);
     if(anchor){
       const old = segments[1];
-      const postGeo = buildPostPairConnector(wasm, anchor, postR, postLen, offsetZ);
-      segments[1] = Manifold.union(old, postGeo);
+      const railGeo = buildDovetailRailPair(wasm, anchor, wall, railLen, offsetZ);
+      segments[1] = Manifold.union(old, railGeo);
       try{ old.delete(); }catch(e){}
-      try{ postGeo.delete(); }catch(e){}
+      try{ railGeo.delete(); }catch(e){}
     }
     const m2 = manifoldToMesh(segments[2]);
     const anchorB = findCutFaceAnchor(m2.V, cutAngles[2]+gapEps, gapEps*3+0.02);
     if(anchorB){
-      segments[2] = cutSocketPairCavity(wasm, segments[2], anchorB, socketR, socketDepth, offsetZ);
+      segments[2] = cutDovetailGroovePair(wasm, segments[2], anchorB, wall, railLen, offsetZ);
     }
   }
   return segments;
@@ -2910,13 +2940,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
         bandW: p.bandWidth||0, innerR:(p.mainSize||0)/2
       };
     }
-    const postR = 1.4, postLen = 5.5;
-    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, postR, postLen);
+    const wall = 2.2, railLen = 9.0;
+    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wall, railLen);
     ({V, F} = concatenateSegmentMeshes(segmentManifolds));
     segmentManifolds.forEach(seg => { try{ seg.delete(); }catch(e){} });
     p.segmentedIntoParts = 3;
-    p.segmentConnectorType = 'postAndSocket';
-    p.segmentConnectorPostMm = postR*2;
+    p.segmentConnectorType = 'slidingDovetailRail';
+    p.segmentConnectorRailMm = railLen;
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
   }
