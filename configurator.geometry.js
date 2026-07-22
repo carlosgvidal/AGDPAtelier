@@ -1027,7 +1027,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const t = (p.articulationOffset||0)*Math.PI/180-cov/2+cov*u;
       const sr = Math.max(AGDP_MIN_WALL_MM*0.7, 0.45+p.nodeVolume*.3);
       const nodeZ = (k%2?1:-1)*bandW*0.18;
-      const localEmbed = Math.min(embedAtZ(t,nodeZ), sr*0.9);
+      const localEmbed = Math.min(embedAtZ(t,nodeZ), sr*0.95);
       const rr = localSurfaceRZ(t,nodeZ)+sr-localEmbed;
       decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 24));
     }
@@ -1372,7 +1372,14 @@ function makeVesselFaceManifold(wasm, p, outerR, height) {
     const rOut = rimR(tiltAngle), hOut = heightAt(tiltAngle);
     const rho = rOut*Math.sin(phi), zBase = hOut*Math.cos(phi);
     const sphereR = Math.max(AGDP_MIN_WALL_MM*1.1, (k===0?1:0.22)*(outerR*0.36+p.nodeVolume*0.75));
-    const embed = sphereR*0.42;
+    // Embed deepened from 0.42 to 0.68 of the sphere's own radius: a
+    // shallow embed against a thin dome shell (not a solid block) can
+    // leave the sphere and shell surfaces nearly tangent at their
+    // boundary, which is a classic source of sliver triangles and
+    // jagged, unstable boolean seams -- independent of either surface's
+    // own segment count. A deeper embed guarantees solid volumetric
+    // overlap regardless of the shell's local thickness at that point.
+    const embed = sphereR*0.68;
     const cx = rho*Math.cos(tiltAngle)*0.55, cy = rho*Math.sin(tiltAngle)*0.55;
     parts.push(sphereAt(wasm, [cx,cy,zBase+sphereR-embed], sphereR, 24));
   }
