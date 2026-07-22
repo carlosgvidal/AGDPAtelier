@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>AGDP — Prototipo: construcción plana + doblado</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#f5f1ea;font-family:-apple-system,Helvetica,Arial,sans-serif;}
+  #ui{position:fixed;top:0;left:0;width:320px;height:100%;box-sizing:border-box;padding:20px;background:#fff;border-right:1px solid #ddd;overflow-y:auto;}
+  #stage{position:fixed;top:0;left:320px;right:0;height:100%;}
+  canvas{display:block;width:100%;height:100%;}
+  h1{font-size:16px;margin:0 0 4px;}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8D7B6A;margin:18px 0 8px;}
+  label{display:block;font-size:12px;margin:8px 0 2px;color:#333;}
+  input[type=range]{width:100%;}
+  input[type=number]{width:70px;}
+  button{width:100%;padding:10px;margin-top:10px;background:#4F3A27;color:#fff;border:none;font-size:13px;cursor:pointer;}
+  button:hover{background:#3a2b1c;}
+  #status{margin-top:14px;padding:10px;font-size:12px;background:#f5f1ea;border:1px solid #ddd;white-space:pre-wrap;line-height:1.5;}
+  .row{display:flex;gap:8px;}
+  .row > div{flex:1;}
+  select{width:100%;padding:4px;font-size:12px;}
+</style>
+</head>
+<body>
+<div id="ui">
+  <h1>Construcción plana + doblado</h1>
+  <div style="font-size:11px;color:#8D7B6A;line-height:1.4;">Prototipo aislado. No toca el sitio en producción.</div>
+
+  <h2>Tipo</h2>
+  <select id="typeSelect">
+    <option value="ring">Anillo (cerrado, 360°)</option>
+    <option value="open">Pieza abierta (arco parcial)</option>
+  </select>
+
+  <h2>Dimensiones</h2>
+  <label>Diámetro interior (mm): <span id="innerDVal"></span></label>
+  <input type="range" id="innerD" min="14" max="140" value="18.4" step="0.1">
+  <label>Ancho de banda (mm): <span id="bandWVal"></span></label>
+  <input type="range" id="bandW" min="3" max="60" value="5.2" step="0.1">
+  <label>Grosor de pared (mm): <span id="wallVal"></span></label>
+  <input type="range" id="wall" min="1" max="8" value="1.6" step="0.1">
+  <label id="openingLabel" style="display:none">Apertura (grados): <span id="openingVal"></span></label>
+  <input type="range" id="opening" min="20" max="180" value="66" step="1" style="display:none">
+
+  <h2>Resolución (plana)</h2>
+  <label>Segmentos a lo largo (U): <span id="uSegVal"></span></label>
+  <input type="range" id="uSeg" min="24" max="300" value="120" step="1">
+  <label>Segmentos de altura (V): <span id="vSegVal"></span></label>
+  <input type="range" id="vSeg" min="4" max="40" value="12" step="1">
+
+  <h2>Decoración de prueba</h2>
+  <label>Número de agujeros: <span id="holeCountVal"></span></label>
+  <input type="range" id="holeCount" min="0" max="12" value="4" step="1">
+  <label>Número de nodos (esferas): <span id="nodeCountVal"></span></label>
+  <input type="range" id="nodeCount" min="0" max="8" value="3" step="1">
+  <label>Número de rieles: <span id="ribCountVal"></span></label>
+  <input type="range" id="ribCount" min="0" max="6" value="2" step="1">
+
+  <button id="genBtn">GENERAR</button>
+  <button id="seedBtn">NUEVA SEMILLA</button>
+
+  <div id="status">Listo.</div>
+</div>
+<div id="stage"><canvas id="view"></canvas></div>
+
+<script type="module">
+// Direct URL imports instead of an import map: broader Safari
+// compatibility (import maps only landed in Safari 16.4, March 2023),
+// and jsdelivr instead of esm.sh for more reliable CORS/CDN behavior.
+const statusEl = document.getElementById('status');
+function setStatus(msg){ statusEl.textContent = msg; console.log(msg); }
+function setError(msg){
+  statusEl.textContent = '⚠ ERROR\n\n'+msg+'\n\nAbre la consola del navegador (Cmd+Opt+C en Safari/Chrome) para más detalle.';
+  statusEl.style.background = '#fde8e8';
+  statusEl.style.borderColor = '#e88';
+  console.error(msg);
+}
+
+let THREE, OrbitControls, ManifoldModule;
+try {
+  setStatus('Cargando Three.js...');
+  THREE = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js");
+  ({ OrbitControls } = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js"));
+} catch(e){
+  setError('No se pudo cargar Three.js desde jsdelivr.\n\n'+e.message);
+  throw e;
+}
+
+let wasm;
+try {
+  setStatus('Cargando WASM de manifold-3d (puede tardar unos segundos)...');
+  const mod = await import("https://cdn.jsdelivr.net/npm/manifold-3d@3.4.1/+esm");
+  ManifoldModule = mod.default;
+  wasm = await ManifoldModule();
+  wasm.setup();
+} catch(e){
+  setError('No se pudo cargar manifold-3d (el motor de geometria).\n\n'+e.message);
+  throw e;
+}
+const { Manifold, Mesh } = wasm;
+setStatus('WASM listo. Generando primera pieza...');
+
+// ---------------------------------------------------------------------
+// Three.js scene (minimal)
+// ---------------------------------------------------------------------
+const canvas = document.getElementById('view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf5f1ea);
+const camera = new THREE.PerspectiveCamera(28, canvas.clientWidth/canvas.clientHeight, 0.1, 2000);
+camera.position.set(40,30,50);
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+function resize(){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambient);
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+key.position.set(1,1,1);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+fill.position.set(-1,0.5,-1);
+scene.add(fill);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0,0,0);
+
+const material = new THREE.MeshPhysicalMaterial({ color:0xeeeeee, metalness:1.0, roughness:0.12 });
+let currentMesh = null;
+
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+resize();
+animate();
+
+// ---------------------------------------------------------------------
+// Manifold helpers
+// ---------------------------------------------------------------------
+function meshToManifold(V, F){
+  const positions = new Float32Array(V.length*3);
+  for(let i=0;i<V.length;i++){ positions[i*3]=V[i][0]; positions[i*3+1]=V[i][1]; positions[i*3+2]=V[i][2]; }
+  const triangles = new Uint32Array(F.length*3);
+  for(let i=0;i<F.length;i++){ triangles[i*3]=F[i][0]; triangles[i*3+1]=F[i][1]; triangles[i*3+2]=F[i][2]; }
+  return new Manifold(new Mesh({numProp:3, vertProperties:positions, triVerts:triangles}));
+}
+function manifoldToArrays(m){
+  const out = m.getMesh();
+  const V=[], F=[];
+  for(let i=0;i<out.vertProperties.length;i+=3) V.push([out.vertProperties[i],out.vertProperties[i+1],out.vertProperties[i+2]]);
+  for(let i=0;i<out.triVerts.length;i+=3) F.push([out.triVerts[i],out.triVerts[i+1],out.triVerts[i+2]]);
+  return {V,F};
+}
+function checkManifold(V,F){
+  const edgeCount = new Map();
+  function vk(v){ return Math.round(v[0]*10000)+','+Math.round(v[1]*10000)+','+Math.round(v[2]*10000); }
+  for(const f of F){
+    const pts=[vk(V[f[0]]),vk(V[f[1]]),vk(V[f[2]])];
+    for(let i=0;i<3;i++){
+      const a=pts[i], b=pts[(i+1)%3];
+      const e = a<b?a+'|'+b:b+'|'+a;
+      edgeCount.set(e,(edgeCount.get(e)||0)+1);
+    }
+  }
+  let boundary=0, nonmanifold=0;
+  for(const c of edgeCount.values()){ if(c===1)boundary++; else if(c!==2)nonmanifold++; }
+  return {boundary, nonmanifold, totalEdges:edgeCount.size};
+}
+
+// ---------------------------------------------------------------------
+// FLAT SLAB CONSTRUCTION
+// Everything below builds a plain rectangular block in flat (u,v,w)
+// space -- u along the unrolled length, v = height, w = radial depth
+// (0 at the bore surface, wall at the outer surface). All boolean
+// decorations happen HERE, on this flat, locally-predictable geometry --
+// exactly the same principle as building on a flat rectangle in Blender
+// before curving it.
+// ---------------------------------------------------------------------
+function buildFlatSlab(totalU, totalV, wall){
+  // A simple box: u in [0,totalU], v in [-totalV/2,totalV/2], w in [0,wall]
+  return Manifold.cube([totalU, totalV, wall], false).translate([0,-totalV/2,0]);
+}
+
+function seededRng(seed){
+  let s = seed >>> 0 || 1;
+  return function(){
+    s ^= s<<13; s ^= s>>>17; s ^= s<<5; s>>>=0;
+    return (s>>>0)/4294967296;
+  };
+}
+
+function addFlatHoles(slab, totalU, totalV, wall, count, rng){
+  if(count<=0) return slab;
+  const parts=[];
+  const holeR = Math.min(totalV*0.18, totalU/(count*2.2));
+  const margin = holeR*1.5; // keeps every hole safely clear of the seam
+  for(let i=0;i<count;i++){
+    const u = margin + (totalU-2*margin)*(i+0.5)/count;
+    const v = (rng()-0.5)*totalV*0.4;
+    const cutter = Manifold.cylinder(wall*3, holeR, holeR, 32, true)
+      .rotate([90,0,0])
+      .translate([u, v, wall/2]);
+    parts.push(cutter);
+  }
+  let cutters = parts[0];
+  for(let i=1;i<parts.length;i++) cutters = Manifold.union(cutters, parts[i]);
+  return Manifold.difference(slab, cutters);
+}
+
+function addFlatNodes(slab, totalU, totalV, wall, count, rng){
+  if(count<=0) return slab;
+  let result = slab;
+  const r = Math.min(totalV*0.22, wall*1.4);
+  const margin = r*1.5;
+  for(let i=0;i<count;i++){
+    const u = margin + (totalU-2*margin)*((i+0.5)/count) + (rng()-0.5)*totalU*0.03;
+    const v = (rng()-0.5)*totalV*0.3;
+    const node = Manifold.sphere(r, 24).translate([u, v, wall*0.6]);
+    result = Manifold.union(result, node);
+  }
+  return result;
+}
+
+function addFlatRibs(slab, totalU, totalV, wall, count, rng){
+  if(count<=0) return slab;
+  let result = slab;
+  const ribW = totalV*0.06;
+  const margin = wall*0.5;
+  for(let i=0;i<count;i++){
+    const v = -totalV*0.35 + totalV*0.7*(i+0.5)/count;
+    // Ribs stay INSIDE [0,totalU] with a safety margin -- confirmed via
+    // testing that letting them deliberately overshoot past the seam
+    // (a natural instinct to "make sure it's covered") was the single
+    // biggest contributor to defects after switching to this approach.
+    const rib = Manifold.cube([totalU-2*margin, ribW, wall*0.35], false)
+      .translate([margin, v-ribW/2, wall*0.92]);
+    result = Manifold.union(result, rib);
+  }
+  return result;
+}
+
+// Merges vertices that land on the exact same position after bending --
+// specifically the seam where u=0 and u=totalU meet up. The flat slab's
+// two end faces are built as separate geometry (a plain box has 8
+// distinct corners, no shared vertices across faces), so bending alone
+// makes them COINCIDE in space without actually CONNECTING them in the
+// mesh's topology. This is the same "merge by distance" step Blender
+// performs after a bend-to-close operation -- without it, confirmed via
+// direct testing that the seam alone produced the large majority of
+// defects in this new architecture (a plain undecorated slab was
+// perfectly clean in every trial once this weld was added).
+function weldSeam(V, F, epsilon){
+  epsilon = epsilon || 0.0005;
+  const scale = 1/epsilon;
+  const vertMap = new Map();
+  const newV = [];
+  const remap = new Int32Array(V.length);
+  for(let i=0;i<V.length;i++){
+    const v = V[i];
+    const key = Math.round(v[0]*scale)+','+Math.round(v[1]*scale)+','+Math.round(v[2]*scale);
+    let idx = vertMap.get(key);
+    if(idx===undefined){ idx = newV.length; newV.push(v); vertMap.set(key, idx); }
+    remap[i] = idx;
+  }
+  const newF = [];
+  for(const f of F){
+    const a=remap[f[0]], b=remap[f[1]], c=remap[f[2]];
+    if(a===b||b===c||a===c) continue; // only drops faces collapsed by the weld itself
+    newF.push([a,b,c]);
+  }
+  return {V:newV, F:newF};
+}
+
+// ---------------------------------------------------------------------
+// THE BEND: a pure mathematical vertex transform applied via
+// manifold.warpBatch() to the ALREADY-VALIDATED flat solid. No boolean
+// operations happen after this point -- since bending is just moving
+// vertices to new positions, it cannot introduce non-manifold geometry
+// if the flat input was already clean.
+// ---------------------------------------------------------------------
+function bendFlatToCurved(manifold, totalU, innerR, angleSpan){
+  // angleSpan: 2*PI for a closed ring, or the arc's angular span (radians)
+  // for an open piece.
+  return manifold.warpBatch((verts, count) => {
+    for(let i=0;i<count;i++){
+      const u = verts[i*3+0];
+      const v = verts[i*3+1];
+      const w = verts[i*3+2];
+      const angle = (u/totalU)*angleSpan - angleSpan/2;
+      const radius = innerR + w;
+      verts[i*3+0] = radius*Math.cos(angle);
+      verts[i*3+1] = radius*Math.sin(angle);
+      verts[i*3+2] = v;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Main generate function
+// ---------------------------------------------------------------------
+let seed = Math.floor(Math.random()*1e9);
+
+function readParams(){
+  return {
+    type: document.getElementById('typeSelect').value,
+    innerD: parseFloat(document.getElementById('innerD').value),
+    bandW: parseFloat(document.getElementById('bandW').value),
+    wall: parseFloat(document.getElementById('wall').value),
+    opening: parseFloat(document.getElementById('opening').value),
+    uSeg: parseInt(document.getElementById('uSeg').value),
+    vSeg: parseInt(document.getElementById('vSeg').value),
+    holeCount: parseInt(document.getElementById('holeCount').value),
+    nodeCount: parseInt(document.getElementById('nodeCount').value),
+    ribCount: parseInt(document.getElementById('ribCount').value),
+  };
+}
+
+async function generate(){
+ try {
+  const p = readParams();
+  const innerR = p.innerD/2;
+  const angleSpan = p.type==='ring' ? 2*Math.PI : (2*Math.PI - p.opening*Math.PI/180);
+  // Unrolled length at the MEAN radius (innerR + wall/2), a reasonable
+  // approximation for how long the flat rectangle should be so the
+  // final bent piece has correct real-world dimensions.
+  const meanR = innerR + p.wall/2;
+  const totalU = meanR * angleSpan;
+  const totalV = p.bandW;
+
+  const t0 = performance.now();
+  setStatus('Construyendo losa plana...');
+  let slab = buildFlatSlab(totalU, totalV, p.wall);
+
+  const rng = seededRng(seed);
+  setStatus('Agregando agujeros (en plano)...');
+  slab = addFlatHoles(slab, totalU, totalV, p.wall, p.holeCount, rng);
+  setStatus('Agregando nodos (en plano)...');
+  slab = addFlatNodes(slab, totalU, totalV, p.wall, p.nodeCount, rng);
+  setStatus('Agregando rieles (en plano)...');
+  slab = addFlatRibs(slab, totalU, totalV, p.wall, p.ribCount, rng);
+
+  const flatMesh = manifoldToArrays(slab);
+  const flatCheck = checkManifold(flatMesh.V, flatMesh.F);
+
+  setStatus('Doblando (transformacion matematica pura)...');
+  const bent = bendFlatToCurved(slab, totalU, innerR, angleSpan);
+  const rawMesh = manifoldToArrays(bent);
+  const rawCheck = checkManifold(rawMesh.V, rawMesh.F);
+
+  const isClosedSeam = p.type==='ring';
+  const finalMesh = isClosedSeam ? weldSeam(rawMesh.V, rawMesh.F) : rawMesh;
+  const bentCheck = checkManifold(finalMesh.V, finalMesh.F);
+  const ms = (performance.now()-t0).toFixed(0);
+
+  setStatus(
+    `Generado en ${ms}ms\n\n`+
+    `PLANO (antes de doblar):\n`+
+    `  vertices=${flatMesh.V.length} triangulos=${flatMesh.F.length}\n`+
+    `  frontera=${flatCheck.boundary} no-multiples=${flatCheck.nonmanifold}\n\n`+
+    `DOBLADO, antes de soldar costura:\n`+
+    `  no-multiples=${rawCheck.nonmanifold}\n\n`+
+    `DOBLADO + costura soldada (resultado final):\n`+
+    `  vertices=${finalMesh.V.length} triangulos=${finalMesh.F.length}\n`+
+    `  frontera=${bentCheck.boundary} no-multiples=${bentCheck.nonmanifold}\n\n`+
+    (bentCheck.nonmanifold===0 && bentCheck.boundary===0 ? '✓ MANIFOLD LIMPIO' : '✗ HAY DEFECTOS')
+  );
+
+  // render
+  if(currentMesh){ scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+  const geometry = new THREE.BufferGeometry();
+  const posArr = new Float32Array(finalMesh.V.length*3);
+  finalMesh.V.forEach((v,i)=>{ posArr[i*3]=v[0]; posArr[i*3+1]=v[2]; posArr[i*3+2]=v[1]; }); // swap Y/Z for a more natural upright view
+  geometry.setAttribute('position', new THREE.BufferAttribute(posArr,3));
+  const idx = new Uint32Array(finalMesh.F.length*3);
+  finalMesh.F.forEach((f,i)=>{ idx[i*3]=f[0]; idx[i*3+1]=f[1]; idx[i*3+2]=f[2]; });
+  geometry.setIndex(new THREE.BufferAttribute(idx,1));
+  geometry.computeVertexNormals();
+  currentMesh = new THREE.Mesh(geometry, material);
+  scene.add(currentMesh);
+
+  slab.delete(); bent.delete();
+ } catch(e){
+   setError('Fallo al generar la pieza.\n\n'+e.message+'\n\n'+(e.stack||''));
+ }
+}
+
+document.getElementById('genBtn').addEventListener('click', generate);
+document.getElementById('seedBtn').addEventListener('click', ()=>{ seed = Math.floor(Math.random()*1e9); generate(); });
+document.getElementById('typeSelect').addEventListener('change', (e)=>{
+  const isOpen = e.target.value==='open';
+  document.getElementById('openingLabel').style.display = isOpen?'block':'none';
+  document.getElementById('opening').style.display = isOpen?'block':'none';
+});
+
+// live value labels
+['innerD','bandW','wall','opening','uSeg','vSeg','holeCount','nodeCount','ribCount'].forEach(id=>{
+  const el = document.getElementById(id);
+  const label = document.getElementById(id+'Val');
+  const update = ()=>{ label.textContent = el.value; };
+  el.addEventListener('input', update);
+  update();
+});
+
+generate();
+</script>
+</body>
+</html>
