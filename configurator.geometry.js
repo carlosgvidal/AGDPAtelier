@@ -515,7 +515,11 @@ function organicNodeAt(wasm, center, radius, segments, seedPhase) {
   const phase=Number.isFinite(seedPhase)?seedPhase:(center[0]*.173+center[1]*.117+center[2]*.071);
   const e=.055+.025*(.5+.5*Math.sin(phase));
   const sx=1+e, sy=1-e*.42, sz=1/(sx*sy);
-  return Manifold.sphere(radius,segments||12).scale([sx,sy,sz]).translate(center);
+  // Decorative nodes need enough latitude/longitude rings to remain smooth
+  // after anisotropic scaling. This is intentionally local: cutter spheres
+  // and the rest of the geometry pipeline retain their original resolution.
+  const localSegments=Math.max(28,Math.min(40,Math.round(24+Math.max(0,radius)*2.25)),Math.round(segments||0));
+  return Manifold.sphere(radius,localSegments).scale([sx,sy,sz]).translate(center);
 }
 function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN) {
   // The opening is part of the source topology. No subtraction is performed,
@@ -1833,14 +1837,22 @@ async function makePendantManifold(wasm, p) {
   const shoulderY=topY-annularWall*.85;
   const tunnelWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.45,annularWall*.30);
   const crownOuterR=Math.max(passageR+tunnelWall,annularWall*1.28);
-  const crownCenter=[0,topY+Math.max(crownOuterR*.78,annularWall*1.30),0];
+  // Keep the complete chain opening outside the body's upper envelope.
+  // The added clearance is radial, not a global scale, so it does not alter
+  // the pendant silhouette or the torus section.
+  const bailClearance=Math.max(annularWall*.34,passageR*.18,(p.minFeature||.8)*.38);
+  const crownCenter=[0,topY+Math.max(crownOuterR*.78,annularWall*1.30)+bailClearance,0];
 
   // The shoulders must never terminate on the tunnel axis.  In v0.191 both
   // members converged at crownCenter, so the later subtraction could erase
   // their entire overlap with the crown and isolate the suspension ring.
   // They now enter the lower flanks, outside the protected tunnel envelope.
   const flankX=Math.min(crownOuterR*.58,passageR+tunnelWall*.62);
-  const flankY=crownCenter[1]-Math.sqrt(Math.max(0,crownOuterR*crownOuterR-flankX*flankX))*.72;
+  const lowerInnerRimY=crownCenter[1]-passageR;
+  const flankY=Math.min(
+    crownCenter[1]-Math.sqrt(Math.max(0,crownOuterR*crownOuterR-flankX*flankX))*.82,
+    lowerInnerRimY-Math.max(annularWall*.20,(p.minFeature||.8)*.20)
+  );
   const shoulderR=Math.max(memberR*1.30,annularWall*.30,tunnelWall*.58);
   addMember([-shoulderX,shoulderY,0],[-flankX,flankY,0],shoulderR);
   addMember([ shoulderX,shoulderY,0],[ flankX,flankY,0],shoulderR);
@@ -1869,13 +1881,17 @@ async function makePendantManifold(wasm, p) {
   // floating geometry (diagnosed via Node.js harness: preflight always
   // reported manifoldOK=true but components=2-3, i.e. a genuine assembly
   // gap, not a topology defect).
-  const saddleY=flankY;
+  // The bridge stays below the chain aperture. Keeping its upper envelope
+  // below the torus inner rim prevents the main body/bridge from visually
+  // blocking or boolean-clipping the opening.
+  const saddleRadius=Math.max(shoulderR*.92,tunnelWall*.62);
+  const saddleY=Math.min(flankY,lowerInnerRimY-saddleRadius*1.08);
   const saddleHalf=Math.max(flankX,shoulderR*1.25);
   parts.push(cylinderBetween(
     wasm,
     [-saddleHalf,saddleY,0],
     [ saddleHalf,saddleY,0],
-    Math.max(shoulderR*.92,tunnelWall*.62),
+    saddleRadius,
     32
   ));
 
