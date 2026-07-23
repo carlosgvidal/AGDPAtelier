@@ -176,6 +176,108 @@ function softenStudioHDRI(texture){
 })();
 
 const _surfaceRng = window.SeededVariation.createGenerator('AGDP|silver-surface-v079');
+// Second, independent generator dedicated to scratches. Kept separate
+// from _surfaceRng (which drives the brushed-line pattern row-by-row)
+// so that adding scratches never shifts the brushed lines' own
+// randomness sequence -- each pass draws from its own stream, seeded
+// off the same 'AGDP|silver-surface-v079' family for reproducibility
+// across regenerations of the same piece.
+const _scratchRng = window.SeededVariation.createGenerator('AGDP|silver-surface-v079|scratches');
+
+// A shared scratch layout, generated once and reused by both the normal
+// map (for the physical groove) and the roughness map (for the duller,
+// more diffuse reflection a real micro-scratch produces) -- this is what
+// keeps the two effects visually locked to the same scratches instead of
+// drawing two unrelated random patterns that wouldn't line up.
+function buildScratchLayout(canvasW, canvasH){
+  // Real handling scratches on polished silver: sparse, short, varied in
+  // angle and length, denser in a couple of loose clusters (where a piece
+  // gets set down or slides against something) rather than perfectly
+  // uniform across the whole surface -- an even scatter reads as a
+  // texture/pattern rather than as incidental wear.
+  const clusterCount = 2 + Math.floor(_scratchRng()*2);
+  const clusters = [];
+  for(let c=0;c<clusterCount;c++){
+    clusters.push({ cx: _scratchRng()*canvasW, cy: _scratchRng()*canvasH, spread: canvasW*(0.10+_scratchRng()*0.14) });
+  }
+  const scratchCount = 16 + Math.floor(_scratchRng()*14);
+  const scratches = [];
+  for(let i=0;i<scratchCount;i++){
+    // ~60% of scratches cluster around one of the loose "wear zones"
+    // above; the rest scatter freely, so the result reads as organic
+    // rather than as a repeating decorative motif.
+    let x0, y0;
+    if(_scratchRng()<0.6){
+      const cl = clusters[Math.floor(_scratchRng()*clusters.length)];
+      const ang = _scratchRng()*Math.PI*2, rad = _scratchRng()*cl.spread;
+      x0 = cl.cx + Math.cos(ang)*rad;
+      y0 = cl.cy + Math.sin(ang)*rad;
+    } else {
+      x0 = _scratchRng()*canvasW;
+      y0 = _scratchRng()*canvasH;
+    }
+    const angle = _scratchRng()*Math.PI*2;
+    // Two populations: mostly short, faint scrapes, with a few longer,
+    // slightly deeper ones -- avoids every scratch reading as identical.
+    const isLong = _scratchRng()<0.22;
+    const len = isLong ? (28+_scratchRng()*46) : (5+_scratchRng()*18);
+    // A slight curve (not a perfectly straight line) matches how a real
+    // scratch drifts as a hand or object slides across a surface.
+    const curve = (_scratchRng()-0.5)*len*0.35;
+    const x1 = x0+Math.cos(angle)*len, y1 = y0+Math.sin(angle)*len;
+    const midX = (x0+x1)/2 - Math.sin(angle)*curve;
+    const midY = (y0+y1)/2 + Math.cos(angle)*curve;
+    scratches.push({
+      x0, y0, x1, y1, midX, midY,
+      width: isLong ? (0.6+_scratchRng()*0.6) : (0.4+_scratchRng()*0.4),
+      intensity: isLong ? (0.35+_scratchRng()*0.30) : (0.15+_scratchRng()*0.25)
+    });
+  }
+  return scratches;
+}
+function paintScratchesOnContext(cx, scratches, mode){
+  // mode 'normal': pushes a thin groove into the normal map (a highlight
+  // on one side, a shadow on the other, along the scratch's own local
+  // perpendicular) so it reads as a real physical dent under the studio
+  // lighting instead of a flat painted mark.
+  // mode 'roughness': a soft, low-alpha pass that lightens (roughens)
+  // the roughness map along the same path, since a scratch disturbs the
+  // mirror finish and scatters reflections more than the surrounding
+  // brushed metal.
+  for(const s of scratches){
+    cx.beginPath();
+    cx.moveTo(s.x0, s.y0);
+    cx.quadraticCurveTo(s.midX, s.midY, s.x1, s.y1);
+    if(mode==='normal'){
+      const dx=s.x1-s.x0, dy=s.y1-s.y0;
+      const len=Math.hypot(dx,dy)||1;
+      const nx=-dy/len, ny=dx/len; // perpendicular to the scratch direction
+      // Shadow lobe (channel encodes a normal tilt away from the surface
+      // on one edge)...
+      cx.strokeStyle = `rgba(${Math.round(128-nx*70*s.intensity)},${Math.round(128-ny*70*s.intensity)},255,${s.intensity})`;
+      cx.lineWidth = s.width;
+      cx.stroke();
+      // ...and a thin bright counter-edge immediately alongside it, which
+      // is what actually sells a real incised groove rather than a flat
+      // painted line -- a true scratch has a raised lip catching light on
+      // one side and a shadowed trough on the other.
+      cx.save();
+      cx.translate(nx*s.width*0.9, ny*s.width*0.9);
+      cx.beginPath();
+      cx.moveTo(s.x0, s.y0);
+      cx.quadraticCurveTo(s.midX, s.midY, s.x1, s.y1);
+      cx.strokeStyle = `rgba(${Math.round(128+nx*55*s.intensity)},${Math.round(128+ny*55*s.intensity)},255,${s.intensity*0.7})`;
+      cx.lineWidth = Math.max(0.5, s.width*0.65);
+      cx.stroke();
+      cx.restore();
+    } else {
+      const v = 215+Math.round(_scratchRng()*35);
+      cx.strokeStyle = `rgba(${v},${v},${v},${Math.min(0.55, s.intensity*0.85)})`;
+      cx.lineWidth = s.width*1.15;
+      cx.stroke();
+    }
+  }
+}
 function buildBrushedLinesNormalMap(){
   const w = 512, h = 512;
   const c = document.createElement('canvas');
@@ -188,6 +290,7 @@ function buildBrushedLinesNormalMap(){
     cx.strokeStyle = `rgba(${jitter>0?255:0},128,255,${alpha})`;
     cx.beginPath(); cx.moveTo(0, y+0.5); cx.lineTo(w, y+0.5); cx.lineWidth = 1; cx.stroke();
   }
+  paintScratchesOnContext(cx, _scratchLayout, 'normal');
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 10);
   return tex;
@@ -203,10 +306,15 @@ function buildBrushedRoughnessMap(){
     cx.strokeStyle = `rgba(${v},${v},${v},0.5)`;
     cx.beginPath(); cx.moveTo(0,y+0.5); cx.lineTo(w,y+0.5); cx.lineWidth=1; cx.stroke();
   }
+  paintScratchesOnContext(cx, _scratchLayout, 'roughness');
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 10);
   return tex;
 }
+// Generated once, ahead of both maps, so the normal-map grooves and the
+// roughness-map dulling always describe the exact same set of scratches
+// at the exact same canvas coordinates.
+const _scratchLayout = buildScratchLayout(512, 512);
 const _material = new THREE.MeshPhysicalMaterial({
   color: 0xeeeeee, metalness: 1.0, roughness: 0.1, ior: 1.35, envMapIntensity: 0.736,
   clearcoat: 0,
@@ -400,5 +508,3 @@ function _animate(){
   _renderer.render(_scene,_camera);
 }
 _animate();
-
-
