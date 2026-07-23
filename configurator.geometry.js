@@ -21,13 +21,13 @@ function meshToManifold(wasm, V, F) {
 function manifoldToMesh(manifoldObj) {
   const out = manifoldObj.getMesh();
   try {
-    const V = [], F = [];
-    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
-    return { V, F };
-  } finally {
-    if (out && typeof out.delete === 'function') out.delete();
-  }
+  const V = [], F = [];
+  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+  return { V, F };
+} finally {
+  if (out && typeof out.delete === 'function') out.delete();
+}
 }
 function unionAll(wasm, manifolds) {
   const { Manifold } = wasm;
