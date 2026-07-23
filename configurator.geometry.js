@@ -510,15 +510,56 @@ function toroidalBailMesh(origin, innerR, outerR, axialThickness, ringSegments, 
   }
   return {V,F};
 }
+
+function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cornerSegments) {
+  const cs=Math.max(10,Math.round(cornerSegments||18));
+  const halfD=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
+  const outerCorner=Math.min(outerW,outerH)*.22;
+  const innerCorner=Math.min(innerW,innerH)*.24;
+  function loop(w,h,r){
+    const pts=[];
+    const cx=w*.5-r, cy=h*.5-r;
+    const centers=[[cx,cy],[-cx,cy],[-cx,-cy],[cx,-cy]];
+    const starts=[0,Math.PI*.5,Math.PI,Math.PI*1.5];
+    for(let q=0;q<4;q++){
+      for(let k=0;k<cs;k++){
+        const a=starts[q]+(k/(cs))*Math.PI*.5;
+        pts.push([centers[q][0]+r*Math.cos(a),centers[q][1]+r*Math.sin(a)]);
+      }
+    }
+    return pts;
+  }
+  const outer=loop(outerW,outerH,outerCorner);
+  const inner=loop(innerW,innerH,innerCorner);
+  const n=outer.length,V=[],F=[];
+  const of=[],ob=[],inf=[],inb=[];
+  for(let i=0;i<n;i++){
+    of.push(V.length);V.push([origin[0]+outer[i][0],origin[1]+outer[i][1],origin[2]+halfD]);
+    ob.push(V.length);V.push([origin[0]+outer[i][0],origin[1]+outer[i][1],origin[2]-halfD]);
+    inf.push(V.length);V.push([origin[0]+inner[i][0],origin[1]+inner[i][1],origin[2]+halfD]);
+    inb.push(V.length);V.push([origin[0]+inner[i][0],origin[1]+inner[i][1],origin[2]-halfD]);
+  }
+  const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    q(of[i],of[j],inf[j],inf[i]);
+    q(ob[i],inb[i],inb[j],ob[j]);
+    q(of[i],ob[i],ob[j],of[j]);
+    q(inf[i],inf[j],inb[j],inb[i]);
+  }
+  return {V,F};
+}
+
 function organicNodeAt(wasm, center, radius, segments, seedPhase) {
   const {Manifold}=wasm;
   const phase=Number.isFinite(seedPhase)?seedPhase:(center[0]*.173+center[1]*.117+center[2]*.071);
-  const e=.055+.025*(.5+.5*Math.sin(phase));
-  const sx=1+e, sy=1-e*.42, sz=1/(sx*sy);
-  // Decorative nodes need enough latitude/longitude rings to remain smooth
-  // after anisotropic scaling. This is intentionally local: cutter spheres
-  // and the rest of the geometry pipeline retain their original resolution.
-  const localSegments=Math.max(28,Math.min(40,Math.round(24+Math.max(0,radius)*2.25)),Math.round(segments||0));
+  // Keep deformation subtle. Strong anisotropic scaling exaggerates every
+  // latitude ring and produces visible facets in mirror-finish materials.
+  const e=.026+.012*(.5+.5*Math.sin(phase));
+  const sx=1+e, sy=1-e*.28, sz=1/(sx*sy);
+  // One stable local resolution avoids mixed tessellation at node/body unions.
+  // Cutters retain their original resolution and are not routed here.
+  const localSegments=Math.max(48,Math.round(segments||0));
   return Manifold.sphere(radius,localSegments).scale([sx,sy,sz]).translate(center);
 }
 function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN) {
@@ -1839,7 +1880,7 @@ async function makePendantManifold(wasm, p) {
   const crownOuterR=Math.max(passageR+tunnelWall,annularWall*1.28);
   // Keep the complete chain opening outside the body's upper envelope.
   // The added clearance is radial, not a global scale, so it does not alter
-  // the pendant silhouette or the torus section.
+  // the pendant silhouette or the frame section.
   const bailClearance=Math.max(annularWall*.34,passageR*.18,(p.minFeature||.8)*.38);
   const crownCenter=[0,topY+Math.max(crownOuterR*.78,annularWall*1.30)+bailClearance,0];
 
@@ -1857,17 +1898,21 @@ async function makePendantManifold(wasm, p) {
   addMember([-shoulderX,shoulderY,0],[-flankX,flankY,0],shoulderR);
   addMember([ shoulderX,shoulderY,0],[ flankX,flankY,0],shoulderR);
 
-  // Toroidal bail generated as one closed surface. There is no planar annulus
-  // and no cylindrical subtraction, so the chain opening has no trapezoidal
-  // cap triangulation and the exterior carries a continuous curved reflection.
-  const bailOuterR=crownOuterR*(.94+.04*organic);
-  const bailMesh=toroidalBailMesh(
+  // Straight framed bail generated directly as one closed shell in the same
+  // XY plane as the shoulders. The aperture is part of the source topology:
+  // no cylindrical subtraction and no torus/shoulder plane mismatch.
+  const frameOuterW=crownOuterR*2.04;
+  const frameOuterH=crownOuterR*2.18;
+  const frameInnerW=passageR*2;
+  const frameInnerH=passageR*2.12;
+  const bailMesh=roundedRectFrameMesh(
     crownCenter,
-    passageR,
-    bailOuterR,
+    frameOuterW,
+    frameOuterH,
+    frameInnerW,
+    frameInnerH,
     bandWidth,
-    128,
-    24
+    20
   );
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
@@ -1882,7 +1927,7 @@ async function makePendantManifold(wasm, p) {
   // reported manifoldOK=true but components=2-3, i.e. a genuine assembly
   // gap, not a topology defect).
   // The bridge stays below the chain aperture. Keeping its upper envelope
-  // below the torus inner rim prevents the main body/bridge from visually
+  // below the frame inner rim prevents the main body/bridge from visually
   // blocking or boolean-clipping the opening.
   const saddleRadius=Math.max(shoulderR*.92,tunnelWall*.62);
   const saddleY=Math.min(flankY,lowerInnerRimY-saddleRadius*1.08);
@@ -1910,7 +1955,7 @@ async function makePendantManifold(wasm, p) {
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
   p.pendantBodyHeightMm=finalAudit.bounds.dim[1];
   p.pendantBodyDepthMm=finalAudit.bounds.dim[2];
-  p.pendantSuspension='integratedIntoAnnularCore';
+  p.pendantSuspension='integratedRoundedFrame';
   p.pendantPassageDiameterMm=passageR*2;
   p.pendantTotalHeightMm=finalAudit.bounds.dim[1];
   p.pendantBaseGeometry='ringDerivedClosedAnnularCore';
