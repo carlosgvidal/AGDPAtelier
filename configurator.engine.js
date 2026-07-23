@@ -311,7 +311,7 @@ window.AGDP_PROPORTION_SYSTEM=AGDP_PROPORTION_SYSTEM;
 window.ProportionEngine=ProportionEngine;
 
 window.AGDP_GEOMETRY_CONSTRAINTS_V157=Object.freeze({
-  geometryRevision:'v200',
+  geometryRevision:'v201',
   minimumBridgeDiameterMm:1.4,
   minimumNeckClearanceMm:2.0,
   minimumHeadClearanceMm:2.5,

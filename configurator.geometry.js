@@ -480,6 +480,43 @@ function annularPrismMesh(origin, ex, ey, ez, innerU, innerV, outerU, outerV, th
   }
   return {V,F};
 }
+
+function toroidalBailMesh(origin, innerR, outerR, axialThickness, ringSegments, tubeSegments) {
+  const uSeg=Math.max(96,Math.round(ringSegments||128));
+  const vSeg=Math.max(18,Math.round(tubeSegments||24));
+  const majorR=(innerR+outerR)*.5;
+  const radialTube=Math.max((outerR-innerR)*.5,AGDP_MIN_WALL_MM*.55);
+  const axialTube=Math.max(axialThickness*.5,AGDP_MIN_WALL_MM*.55);
+  const V=[],F=[];
+  for(let i=0;i<uSeg;i++){
+    const u=2*Math.PI*i/uSeg,cu=Math.cos(u),su=Math.sin(u);
+    for(let j=0;j<vSeg;j++){
+      const v=2*Math.PI*j/vSeg,cv=Math.cos(v),sv=Math.sin(v);
+      const localR=majorR+radialTube*cv;
+      V.push([
+        origin[0]+axialTube*sv,
+        origin[1]+localR*cu,
+        origin[2]+localR*su
+      ]);
+    }
+  }
+  for(let i=0;i<uSeg;i++){
+    const ni=(i+1)%uSeg;
+    for(let j=0;j<vSeg;j++){
+      const nj=(j+1)%vSeg;
+      const a=i*vSeg+j,b=ni*vSeg+j,c=ni*vSeg+nj,d=i*vSeg+nj;
+      F.push([a,b,c],[a,c,d]);
+    }
+  }
+  return {V,F};
+}
+function organicNodeAt(wasm, center, radius, segments, seedPhase) {
+  const {Manifold}=wasm;
+  const phase=Number.isFinite(seedPhase)?seedPhase:(center[0]*.173+center[1]*.117+center[2]*.071);
+  const e=.055+.025*(.5+.5*Math.sin(phase));
+  const sx=1+e, sy=1-e*.42, sz=1/(sx*sy);
+  return Manifold.sphere(radius,segments||12).scale([sx,sy,sz]).translate(center);
+}
 function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN) {
   // The opening is part of the source topology. No subtraction is performed,
   // so the inner rim cannot inherit triangulation from a transverse boolean.
@@ -1028,7 +1065,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const rivetZ = (k%2?1:-1)*bandW*0.22;
       const localEmbed = Math.min(embedAtZ(t,rivetZ), rivetR*0.9);
       const rOut = localSurfaceRZ(t,rivetZ)+rivetR-localEmbed;
-      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR, 8));
+      decorations.push(organicNodeAt(wasm,[rOut*ct,rOut*st,rivetZ],rivetR,12,t));
     }
   }
   const plainBody = facetCount===0 && p.holes<=0 && (p.architectural||0)*10<0.5;
@@ -1065,7 +1102,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       // faceting -- fewer facets means fewer chances for that. This
       // trades a slightly more faceted-looking bead for the piece
       // actually being printable, which is the more urgent priority.
-      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 8));
+      decorations.push(organicNodeAt(wasm,[rr*Math.cos(t),rr*Math.sin(t),nodeZ],sr,12,t+k*.73));
     }
   }
   // Hallmark engraving removed entirely per explicit request: the
@@ -1087,7 +1124,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       // This guarantees genuine volumetric overlap with the solid band
       // instead of an ambiguous tangent touch.
       const rCenter = innerR+ballR*1.15;
-      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 8));
+      decorations.push(organicNodeAt(wasm,[rCenter*ct,rCenter*st,0],ballR,12,t));
     });
   }
 
@@ -1184,7 +1221,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.4, baseWall*(1.8+2.2*sv));
     const embed=massR*0.35;
     const massCenterR=hSurface+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR, 8));
+    decorations.push(organicNodeAt(wasm,[massCenterR*hct,massCenterR*hst,0],massR,12,ht));
     const oppositeT=ht+Math.PI;
     const oppCt=Math.cos(oppositeT), oppSt=Math.sin(oppositeT);
     const oppSurface=localSurfaceRZ(oppositeT,0);
@@ -1231,7 +1268,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const dMassR=Math.max(baseWall*1.3, baseWall*(1.5+1.3*sv));
     const embed=dMassR*0.4;
     const centerR=esurf+dMassR-embed;
-    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR, 8));
+    decorations.push(organicNodeAt(wasm,[centerR*ect,centerR*est,0],dMassR,12,et));
   }
 
   // Compresión literal: un lado real se aplasta hacia el eje mientras el
@@ -1289,7 +1326,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const r=Math.max(AGDP_MIN_WALL_MM*0.5, baseWall*(0.16+0.10*pRng()));
       const embed=r*0.5;
       const rr=surf+r-embed;
-      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r, 8));
+      decorations.push(organicNodeAt(wasm,[rr*ct,rr*st,z],r,12,t+k*.41));
     }
   }
 
@@ -1305,7 +1342,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.1, baseWall*(1.2+0.8*sv));
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR, 8));
+    decorations.push(organicNodeAt(wasm,[massCenterR*ict,massCenterR*ist,0],massR,12,it));
     const voidT=invT+Math.PI*0.5+iRng()*0.3;
     const vct=Math.cos(voidT), vst=Math.sin(voidT);
     const voidSurf=localSurfaceRZ(voidT,0);
@@ -1808,16 +1845,17 @@ async function makePendantManifold(wasm, p) {
   addMember([-shoulderX,shoulderY,0],[-flankX,flankY,0],shoulderR);
   addMember([ shoulderX,shoulderY,0],[ flankX,flankY,0],shoulderR);
 
-  // Native annular bail, oriented on the chain axis (X). The round opening
-  // is generated as topology rather than cut from a disk by a transverse CSG.
-  const bailOuterY=crownOuterR*(.88+.08*organic);
-  const bailMesh=annularPrismMesh(
+  // Toroidal bail generated as one closed surface. There is no planar annulus
+  // and no cylindrical subtraction, so the chain opening has no trapezoidal
+  // cap triangulation and the exterior carries a continuous curved reflection.
+  const bailOuterR=crownOuterR*(.94+.04*organic);
+  const bailMesh=toroidalBailMesh(
     crownCenter,
-    [0,1,0],[0,0,1],[1,0,0],
-    passageR,passageR,
-    bailOuterY,crownOuterR,
+    passageR,
+    bailOuterR,
     bandWidth,
-    96
+    128,
+    24
   );
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
