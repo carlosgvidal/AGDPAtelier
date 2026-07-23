@@ -551,6 +551,50 @@ function rectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth) {
   return {V,F};
 }
 
+
+function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth, cornerSegments) {
+  // Lateral frame in the YZ plane with short-radius corners. The straight
+  // spans remain dominant, while the corners use enough facets to match the
+  // visual resolution of the surrounding annular body.
+  const cs=Math.max(8,Math.round(cornerSegments||12));
+  const hx=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
+  const wallZ=Math.max((outerW-innerW)*.5,AGDP_MIN_WALL_MM);
+  const wallY=Math.max((outerH-innerH)*.5,AGDP_MIN_WALL_MM);
+  const outerR=Math.min(Math.max(AGDP_MIN_WALL_MM*.22,Math.min(wallZ,wallY)*.32),Math.min(outerW,outerH)*.075);
+  const innerR=Math.min(Math.max(AGDP_MIN_WALL_MM*.18,outerR*.72),Math.min(innerW,innerH)*.08);
+  function loop(w,h,r){
+    const pts=[];
+    const cz=w*.5-r, cy=h*.5-r;
+    const centers=[[cz,cy],[-cz,cy],[-cz,-cy],[cz,-cy]]; // [z,y]
+    const starts=[0,Math.PI*.5,Math.PI,Math.PI*1.5];
+    for(let q=0;q<4;q++){
+      for(let k=0;k<cs;k++){
+        const a=starts[q]+(k/cs)*Math.PI*.5;
+        pts.push([centers[q][0]+r*Math.cos(a),centers[q][1]+r*Math.sin(a)]);
+      }
+    }
+    return pts;
+  }
+  const outer=loop(outerW,outerH,outerR);
+  const inner=loop(innerW,innerH,innerR);
+  const n=outer.length,V=[],F=[];
+  const pfO=[],pfI=[],pbO=[],pbI=[];
+  const add=(x,zy)=>{V.push([origin[0]+x,origin[1]+zy[1],origin[2]+zy[0]]);return V.length-1;};
+  for(let i=0;i<n;i++){
+    pfO.push(add(hx,outer[i])); pfI.push(add(hx,inner[i]));
+    pbO.push(add(-hx,outer[i])); pbI.push(add(-hx,inner[i]));
+  }
+  const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    q(pfO[i],pfO[j],pfI[j],pfI[i]);
+    q(pbO[i],pbI[i],pbI[j],pbO[j]);
+    q(pfO[i],pbO[i],pbO[j],pfO[j]);
+    q(pfI[i],pfI[j],pbI[j],pbI[i]);
+  }
+  return {V,F};
+}
+
 function organicNodeAt(wasm, center, radius, segments, seedPhase) {
   const {Manifold}=wasm;
   const phase=Number.isFinite(seedPhase)?seedPhase:(center[0]*.173+center[1]*.117+center[2]*.071);
@@ -1870,9 +1914,13 @@ async function makePendantManifold(wasm, p) {
   // Rectilinear bail: the frame itself is the structural connection.
   // Its lower rail overlaps the pendant body directly, so no posts,
   // shoulders, saddle or auxiliary members are required.
-  const frameOuterW=crownOuterR*1.72;
+  // Keep the lateral frame inside the actual depth envelope of the pendant.
+  // This prevents the bail from becoming wider than the central body when
+  // crownOuterR grows on small or highly architectural pieces.
+  const frameOuterW=Math.min(crownOuterR*1.72,bandWidth*.94);
   const frameOuterH=crownOuterR*2.48;
-  const frameInnerW=passageR*1.84;
+  const lateralWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.08);
+  const frameInnerW=Math.max(AGDP_MIN_WALL_MM*.8,Math.min(passageR*1.84,frameOuterW-lateralWall*2));
   const frameInnerH=passageR*2.26;
   const frameOverlap=Math.max(annularWall*.42,(p.minFeature||.8)*.55);
   // Lateral frame: its opening axis is X, so the chain passes from side to side.
@@ -1880,13 +1928,14 @@ async function makePendantManifold(wasm, p) {
   // member enters the annular opening.
   const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
   const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
-  const bailMesh=rectilinearFrameMeshYZ(
+  const bailMesh=refinedRectilinearFrameMeshYZ(
     crownCenter,
     frameOuterW,
     frameOuterH,
     frameInnerW,
     frameInnerH,
-    frameDepth
+    frameDepth,
+    12
   );
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
