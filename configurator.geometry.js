@@ -592,6 +592,13 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
     q(pfO[i],pbO[i],pbO[j],pfO[j]);
     q(pfI[i],pfI[j],pbI[j],pbI[i]);
   }
+  // The loop construction above is geometrically closed, but its natural
+  // winding is inward in the YZ frame. Reverse every triangle once here so
+  // the frame has positive signed volume and outward-facing normals before
+  // it enters Manifold or any boolean operation.
+  for(let i=0;i<F.length;i++){
+    const t=F[i]; F[i]=[t[0],t[2],t[1]];
+  }
   return {V,F};
 }
 
@@ -1940,15 +1947,18 @@ async function makePendantManifold(wasm, p) {
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
   let manifold=unionAll(wasm,parts);
-  let mesh=manifoldToMesh(manifold);
-  let preflight=validate(mesh.V,mesh.F,{type:'pendant-annular-preflight',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
-  if(preflight.components!==1||!preflight.manifoldOK)throw new Error('AGDP annular pendant core failed continuity validation');
-
-  // No passage subtraction: the chain opening already exists in the bail mesh.
-
+  // The frame is already the final suspension geometry. Convert and validate
+  // the resulting pendant only once; the former duplicate getMesh()/array
+  // allocation doubled transient memory on every pendant regeneration.
   const finalMesh=manifoldToMesh(manifold);
   const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
-  if(!finalAudit.ok||finalAudit.components!==1)throw new Error('AGDP annular pendant failed structural validation');
+  if(!finalAudit.ok||finalAudit.components!==1||!finalAudit.manifoldOK){
+    try{ manifold.delete(); }catch(e){}
+    throw new Error('AGDP annular pendant failed structural validation');
+  }
+  const preflight=finalAudit;
+
+  // No passage subtraction: the chain opening already exists in the bail mesh.
 
   p.pendantBodyEnvelopeMm=targetEnvelope;
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
