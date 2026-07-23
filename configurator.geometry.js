@@ -5,93 +5,60 @@ function wrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a 
 const AGDP_MIN_WALL_MM = 0.8;
 const AGDP_STRUCTURAL_WALL_MM = 1.3;
 
-// Normalizes triangle winding for every manually generated mesh before it
-// enters Manifold. First it propagates a consistent orientation across each
-// edge-connected shell; then it flips each closed component whose signed
-// volume is negative. This removes typology-specific inverted faces without
-// changing vertex positions, dimensions or design parameters.
-function orientMeshOutward(V, F) {
-  if (!Array.isArray(V) || !Array.isArray(F) || F.length === 0) return F;
-  const faces = F.map(t => [t[0], t[1], t[2]]);
-  const edgeUses = new Map();
-  const key = (a,b) => a < b ? a + '|' + b : b + '|' + a;
-  for (let fi=0; fi<faces.length; fi++) {
-    const t=faces[fi];
-    for (let e=0; e<3; e++) {
-      const a=t[e], b=t[(e+1)%3], k=key(a,b);
-      let uses=edgeUses.get(k); if(!uses){uses=[];edgeUses.set(k,uses);}
-      uses.push({fi,a,b});
+function auditAndOrientClosedMesh(V, F, label) {
+  const edgeUse = new Map();
+  let signedVolume = 0;
+  for (let i = 0; i < F.length; i++) {
+    const face = F[i];
+    if (!Array.isArray(face) || face.length !== 3) throw new Error((label||'mesh')+': cara no triangular');
+    const a=face[0], b=face[1], c=face[2];
+    if (![a,b,c].every(Number.isInteger) || a<0 || b<0 || c<0 || a>=V.length || b>=V.length || c>=V.length) {
+      throw new Error((label||'mesh')+': índice de cara fuera de rango');
     }
+    if (a===b || b===c || c===a) throw new Error((label||'mesh')+': triángulo degenerado');
+    const A=V[a], B=V[b], C=V[c];
+    if (![...A,...B,...C].every(Number.isFinite)) throw new Error((label||'mesh')+': coordenada no finita');
+    signedVolume += (
+      A[0]*(B[1]*C[2]-B[2]*C[1]) +
+      A[1]*(B[2]*C[0]-B[0]*C[2]) +
+      A[2]*(B[0]*C[1]-B[1]*C[0])
+    ) / 6;
+    [[a,b],[b,c],[c,a]].forEach(([u,v])=>{
+      const key=u<v?u+'_'+v:v+'_'+u;
+      edgeUse.set(key,(edgeUse.get(key)||0)+1);
+    });
   }
-  const adjacency=Array.from({length:faces.length},()=>[]);
-  for (const uses of edgeUses.values()) {
-    if (uses.length !== 2) continue;
-    const u=uses[0], v=uses[1];
-    // Adjacent faces must traverse their common edge in opposite directions.
-    const sameDirection = u.a===v.a && u.b===v.b;
-    adjacency[u.fi].push([v.fi,sameDirection]);
-    adjacency[v.fi].push([u.fi,sameDirection]);
+  let boundaryEdges=0, nonManifoldEdges=0;
+  edgeUse.forEach(count=>{ if(count===1) boundaryEdges++; else if(count!==2) nonManifoldEdges++; });
+  if (boundaryEdges || nonManifoldEdges) {
+    throw new Error((label||'mesh')+': malla no cerrada (bordes abiertos '+boundaryEdges+', no-manifold '+nonManifoldEdges+')');
   }
-  const state=new Int8Array(faces.length); // 0 unvisited, +1 keep, -1 flip
-  const components=[];
-  for(let start=0; start<faces.length; start++){
-    if(state[start]) continue;
-    state[start]=1;
-    const queue=[start], component=[];
-    for(let qi=0; qi<queue.length; qi++){
-      const fi=queue[qi]; component.push(fi);
-      for(const [nj,sameDirection] of adjacency[fi]){
-        const required = sameDirection ? -state[fi] : state[fi];
-        if(!state[nj]){state[nj]=required;queue.push(nj);}
-      }
-    }
-    components.push(component);
+  if (!Number.isFinite(signedVolume) || Math.abs(signedVolume) < 1e-9) {
+    throw new Error((label||'mesh')+': volumen firmado nulo o inválido');
   }
-  for(let fi=0; fi<faces.length; fi++){
-    if(state[fi]<0){const t=faces[fi];faces[fi]=[t[0],t[2],t[1]];}
+  if (signedVolume < 0) {
+    for (let i=0;i<F.length;i++) { const t=F[i][1]; F[i][1]=F[i][2]; F[i][2]=t; }
+    signedVolume = -signedVolume;
   }
-  for(const component of components){
-    let volume6=0;
-    let closed=true;
-    const componentSet=new Set(component);
-    for(const fi of component){
-      const t=faces[fi], a=V[t[0]], b=V[t[1]], c=V[t[2]];
-      if(!a||!b||!c) continue;
-      volume6 += a[0]*(b[1]*c[2]-b[2]*c[1])
-               + a[1]*(b[2]*c[0]-b[0]*c[2])
-               + a[2]*(b[0]*c[1]-b[1]*c[0]);
-      for(let e=0;e<3;e++){
-        const uses=edgeUses.get(key(t[e],t[(e+1)%3]))||[];
-        if(uses.filter(u=>componentSet.has(u.fi)).length!==2){closed=false;break;}
-      }
-      if(!closed) break;
-    }
-    if(closed && volume6 < 0){
-      for(const fi of component){const t=faces[fi];faces[fi]=[t[0],t[2],t[1]];}
-    }
-  }
-  return faces;
+  return { boundaryEdges, nonManifoldEdges, signedVolume };
 }
 
-function meshToManifold(wasm, V, F) {
+function meshToManifold(wasm, V, F, label) {
+  auditAndOrientClosedMesh(V, F, label||'custom mesh');
   const { Manifold, Mesh } = wasm;
   const positions = new Float32Array(V.length * 3);
   for (let i = 0; i < V.length; i++) { positions[i*3]=V[i][0]; positions[i*3+1]=V[i][1]; positions[i*3+2]=V[i][2]; }
-  const orientedF = orientMeshOutward(V, F);
-  const triangles = new Uint32Array(orientedF.length * 3);
-  for (let i = 0; i < orientedF.length; i++) { triangles[i*3]=orientedF[i][0]; triangles[i*3+1]=orientedF[i][1]; triangles[i*3+2]=orientedF[i][2]; }
+  const triangles = new Uint32Array(F.length * 3);
+  for (let i = 0; i < F.length; i++) { triangles[i*3]=F[i][0]; triangles[i*3+1]=F[i][1]; triangles[i*3+2]=F[i][2]; }
   const mesh = new Mesh({ numProp: 3, vertProperties: positions, triVerts: triangles });
-  return new Manifold(mesh);
+  try { return new Manifold(mesh); }
+  finally { try{ mesh.delete(); }catch(e){} }
 }
 function manifoldToMesh(manifoldObj) {
   const out = manifoldObj.getMesh();
   const V = [], F = [];
-  try {
-    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
-  } finally {
-    try{ out.delete(); }catch(e){}
-  }
+  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
   return { V, F };
 }
 function unionAll(wasm, manifolds) {
@@ -276,7 +243,7 @@ function splitIntoHookedSegments(wasm, manifold, wall){
   ];
   for(let s=0;s<3;s++){
     const wc = wedgeCutterMesh(segBounds[s][0], segBounds[s][1], R, H);
-    const wedge = meshToManifold(wasm, wc.V, wc.F);
+    const wedge = meshToManifold(wasm, wc.V, wc.F, 'wedge cutter');
     segments.push(Manifold.intersection(manifold, wedge));
     try{ wedge.delete(); }catch(e){}
   }
@@ -664,13 +631,6 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
     q(pbO[i],pbI[i],pbI[j],pbO[j]);
     q(pfO[i],pbO[i],pbO[j],pfO[j]);
     q(pfI[i],pfI[j],pbI[j],pbI[i]);
-  }
-  // The loop construction above is geometrically closed, but its natural
-  // winding is inward in the YZ frame. Reverse every triangle once here so
-  // the frame has positive signed volume and outward-facing normals before
-  // it enters Manifold or any boolean operation.
-  for(let i=0;i<F.length;i++){
-    const t=F[i]; F[i]=[t[0],t[2],t[1]];
   }
   return {V,F};
 }
@@ -2020,18 +1980,15 @@ async function makePendantManifold(wasm, p) {
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
   let manifold=unionAll(wasm,parts);
-  // The frame is already the final suspension geometry. Convert and validate
-  // the resulting pendant only once; the former duplicate getMesh()/array
-  // allocation doubled transient memory on every pendant regeneration.
-  const finalMesh=manifoldToMesh(manifold);
-  const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
-  if(!finalAudit.ok||finalAudit.components!==1||!finalAudit.manifoldOK){
-    try{ manifold.delete(); }catch(e){}
-    throw new Error('AGDP annular pendant failed structural validation');
-  }
-  const preflight=finalAudit;
+  let mesh=manifoldToMesh(manifold);
+  let preflight=validate(mesh.V,mesh.F,{type:'pendant-annular-preflight',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
+  if(preflight.components!==1||!preflight.manifoldOK)throw new Error('AGDP annular pendant core failed continuity validation');
 
   // No passage subtraction: the chain opening already exists in the bail mesh.
+
+  const finalMesh=manifoldToMesh(manifold);
+  const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
+  if(!finalAudit.ok||finalAudit.components!==1)throw new Error('AGDP annular pendant failed structural validation');
 
   p.pendantBodyEnvelopeMm=targetEnvelope;
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
@@ -3043,13 +3000,8 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   const scale=dim.map(d=>clamp((d-2*wall)/d,.15,scaleCeiling));
   let inner=manifold.translate(center.map(v=>-v)).scale(scale).translate(center);
   let hollowed;
-  try{
-    hollowed=wasm.Manifold.difference(manifold,inner);
-  } catch(e){
-    try{ inner.delete(); }catch(err){}
-    return manifold;
-  }
-  try{ inner.delete(); }catch(e){}
+  try{ hollowed=wasm.Manifold.difference(manifold,inner); }
+  catch(e){ return manifold; }
 
   // Two opposing 2.4 mm escape holes exceed Shapeways' 2.0 mm multiple-hole
   // minimum. REDESIGNED placement: every rail, node, and relief feature in
@@ -3084,24 +3036,9 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
     cutters.push(cylinderBetween(wasm,p0,p1,holeR,24));
   });
   if(cutters.length===2){
-    let cutterUnion=null;
-    let perforated=null;
-    try{
-      cutterUnion=unionAll(wasm,cutters);
-      perforated=wasm.Manifold.difference(hollowed,cutterUnion);
-    } catch(e){
-      try{ cutterUnion?.delete(); }catch(err){}
-      try{ hollowed.delete(); }catch(err){}
-      return manifold;
-    }
-    try{ cutterUnion.delete(); }catch(e){}
-    try{ hollowed.delete(); }catch(e){}
-    hollowed=perforated;
-  }else{
-    cutters.forEach(c=>{try{c.delete();}catch(e){}});
-    try{ hollowed.delete(); }catch(e){}
-    return manifold;
-  }
+    try{ hollowed=wasm.Manifold.difference(hollowed,unionAll(wasm,cutters)); }
+    catch(e){ return manifold; }
+  }else return manifold;
 
   const after=manifoldBounds(hollowed);
   const finalWeight=silverWeightGrams(meshVolumeMm3(after.mesh.V,after.mesh.F));
@@ -3115,15 +3052,9 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // engineering one.
   const reduction=1-finalWeight/Math.max(initialWeight,1e-6);
   const reductionCeiling=p.type==='headpiece'?.93:.90;
-  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling){
-    try{ hollowed.delete(); }catch(e){}
-    return manifold;
-  }
+  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling)return manifold;
   const topo=topologyAudit(after.mesh.V,after.mesh.F);
-  if(!topo.manifoldOK || (Number.isFinite(topo.components) && topo.components!==1)){
-    try{ hollowed.delete(); }catch(e){}
-    return manifold;
-  }
+  if(!topo.manifoldOK)return manifold;
 
   p.silverHollowingApplied=true;
   p.silverShellWallMm=wall;
@@ -3131,7 +3062,6 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   p.silverEscapeHoleCount=2;
   p.silverWeightAfterHollowingG=finalWeight;
   p.silverWeightReductionRatio=reduction;
-  try{ manifold.delete(); }catch(e){}
   return hollowed;
 }
 
@@ -3211,7 +3141,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.segmentConnectorRailMm = 'full-height';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
-    try{ manifold.delete(); }catch(e){}
   }
 
   const expectedComponents = p.type==='cufflinks' ? 2 : (isSegmentedType ? 3 : 1);
@@ -3245,12 +3174,8 @@ async function makeMeshManifoldEntry(wasm, inputParams){
 function manifoldToMeshHelper(manifoldObj){
   const out = manifoldObj.getMesh();
   const V = [], F = [];
-  try {
-    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
-  } finally {
-    try{ out.delete(); }catch(e){}
-  }
+  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
   return { V, F };
 }
 
