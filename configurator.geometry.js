@@ -3547,11 +3547,12 @@ function makeHairCombManifold(wasm,p){
 // =============================================================================
 function makeHoopEarringManifold(wasm, p){
   const HOOK_TIP_R_MM = 0.45;
-  const HOOK_ROOT_R_MM = 0.78;
-  const HOOK_RISE_MM = 5.8;
-  const HOOK_BEND_R_MM = 4.8;
-  const HOOK_INSERTION_MM = 11.5;
-  const HOOK_TAIL_FLARE_MM = 1.0;
+  const HOOK_SHAFT_R_MM = 0.58;
+  const HOOK_ROOT_R_MM = 0.82;
+  const HOOK_RISE_MM = 6.2;
+  const HOOK_BEND_R_MM = 5.2;
+  const HOOK_INSERTION_MM = 12.0;
+  const HOOK_TAIL_FLARE_MM = 0.9;
   const BODY_SPAN_MM = clamp(p.mainSize||26, 16, 34);
   const BODY_DEPTH_MM = clamp(p.bandWidth||4.8, 3.6, 7.2);
 
@@ -3576,25 +3577,48 @@ function makeHoopEarringManifold(wasm, p){
       type:'pendantAnnularCore',innerD:innerR*2,width:bandWidth,closed:true,opening:0
     });
 
-    const bodyManifold=built.manifold.rotate([0,90,0]);
-    const parts=[bodyManifold];
+    let bodyManifold=built.manifold.rotate([0,90,0]);
 
-    const rootEmbed=Math.max(annularWall*.42,(p.minFeature||.8)*.65);
-    const root=[0,outerR-rootEmbed,0];
-    const riseY=root[1]+HOOK_RISE_MM;
+    // Rebuild a protected structural root after every decorative operation.
+    // The root penetrates the annular wall deeply and occupies the complete
+    // body depth, preventing cellular/node cutters from isolating the hook.
+    const rootEmbed=Math.max(annularWall*.78,(p.minFeature||.8)*1.65);
+    const rootY=outerR-rootEmbed;
+    const shoulderY=outerR+HOOK_ROOT_R_MM*.55;
+    const rootDepth=Math.max(bandWidth*.82,HOOK_ROOT_R_MM*2.35);
+    const rootWidth=Math.max(HOOK_ROOT_R_MM*2.45,annularWall*.58);
+    const rootHeight=Math.max(rootEmbed+HOOK_ROOT_R_MM*1.65,annularWall*.82);
+
+    const rootBlock=wasm.Manifold.cube([rootDepth,rootHeight,rootWidth],true)
+      .translate([0,rootY+rootHeight*.48,0]);
+    const rootCore=cylinderBetween(
+      wasm,
+      [0,rootY-annularWall*.18,0],
+      [0,shoulderY+HOOK_ROOT_R_MM*.65,0],
+      HOOK_ROOT_R_MM*1.18,
+      32
+    );
+    bodyManifold=unionAll(wasm,[bodyManifold,rootBlock,rootCore]);
+
+    // One planar, non-self-intersecting centreline. The first section begins
+    // inside the rebuilt root rather than on its surface, so the final union
+    // has a real shared volume and never depends on tangent contact.
     const hookPts=[];
     const hookRadii=[];
+    const hookStartY=rootY-annularWall*.12;
+    const riseY=outerR+HOOK_RISE_MM;
 
-    const riseSteps=6;
+    const riseSteps=12;
     for(let i=0;i<=riseSteps;i++){
       const q=i/riseSteps;
-      hookPts.push([0,root[1]+HOOK_RISE_MM*q,0]);
-      const r=HOOK_ROOT_R_MM+(HOOK_ROOT_R_MM*.78-HOOK_ROOT_R_MM)*q;
-      hookRadii.push([r,r*.96]);
+      const eased=q*q*(3-2*q);
+      hookPts.push([0,hookStartY+(riseY-hookStartY)*q,0]);
+      const r=HOOK_ROOT_R_MM+(HOOK_SHAFT_R_MM-HOOK_ROOT_R_MM)*eased;
+      hookRadii.push([r,r]);
     }
 
     const bendCenter=[HOOK_BEND_R_MM,riseY,0];
-    const bendSteps=20;
+    const bendSteps=30;
     for(let i=1;i<=bendSteps;i++){
       const q=i/bendSteps;
       const a=Math.PI-Math.PI*q;
@@ -3603,12 +3627,12 @@ function makeHoopEarringManifold(wasm, p){
         bendCenter[1]+HOOK_BEND_R_MM*Math.sin(a),
         0
       ]);
-      const r=HOOK_ROOT_R_MM*.78+(HOOK_TIP_R_MM*1.18-HOOK_ROOT_R_MM*.78)*q;
-      hookRadii.push([r,r*.96]);
+      const r=HOOK_SHAFT_R_MM+(HOOK_TIP_R_MM*1.12-HOOK_SHAFT_R_MM)*q;
+      hookRadii.push([r,r]);
     }
 
     const tailStart=hookPts[hookPts.length-1];
-    const tailSteps=12;
+    const tailSteps=18;
     for(let i=1;i<=tailSteps;i++){
       const q=i/tailSteps;
       const eased=q*q*(3-2*q);
@@ -3617,15 +3641,21 @@ function makeHoopEarringManifold(wasm, p){
         tailStart[1]-HOOK_INSERTION_MM*q,
         0
       ]);
-      const r=HOOK_TIP_R_MM*1.18+(HOOK_TIP_R_MM-HOOK_TIP_R_MM*1.18)*q;
-      hookRadii.push([r,r*.96]);
+      const r=HOOK_TIP_R_MM*1.12+(HOOK_TIP_R_MM-HOOK_TIP_R_MM*1.12)*q;
+      hookRadii.push([r,r]);
     }
 
-    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,24,false);
-    parts.push(meshToManifold(wasm,hookMesh.V,hookMesh.F));
-    parts.push(sphereAt(wasm,hookPts[hookPts.length-1],HOOK_TIP_R_MM,24));
+    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,32,false);
+    const hookManifold=meshToManifold(wasm,hookMesh.V,hookMesh.F);
+    const rootBulb=sphereAt(wasm,[0,shoulderY,0],HOOK_ROOT_R_MM*1.28,32);
+    const tipBulb=sphereAt(wasm,hookPts[hookPts.length-1],HOOK_TIP_R_MM,32);
 
-    const manifold=unionAll(wasm,parts);
+    // Union the hook assembly first, then merge it with the reinforced body.
+    // This avoids a many-way CSG intersection at the most stressed junction.
+    const completeHook=unionAll(wasm,[hookManifold,rootBulb,tipBulb]);
+    const manifold=wasm.Manifold.union(bodyManifold,completeHook);
+    try{ bodyManifold.delete(); }catch(e){}
+    try{ completeHook.delete(); }catch(e){}
 
     p.hoopHookTipDiameterMm=HOOK_TIP_R_MM*2;
     p.hoopHookRootDiameterMm=HOOK_ROOT_R_MM*2;
@@ -3636,7 +3666,7 @@ function makeHoopEarringManifold(wasm, p){
     p.hoopBodyDepthMm=bandWidth;
     p.hoopClosureType='completeFrenchHook';
     p.hoopBodyGeometry='pendantAnnularCore';
-    p.hoopFixedGeometry='pendant-derived annular body with complete tapered French hook';
+    p.hoopFixedGeometry='pendant-derived annular body with protected volumetric hook root';
 
     return {manifold,bandW:bandWidth};
   })();
