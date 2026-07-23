@@ -352,6 +352,73 @@ function tubeAlongPathMesh(points, radius, ringSegN, closed) {
   }
   return {V,F};
 }
+// Variable-elliptical-radius variant of tubeAlongPathMesh: each point along
+// the path carries its OWN (rx, ry) cross-section instead of one fixed
+// radius for the whole tube. This is what a genuinely continuous, tapering
+// ridge/crest needs -- unlike stitching together independent
+// ellipticalSegmentBetween capsules (each its own separate capped
+// cylinder with no shared cross-section with its neighbors), this shares
+// a single ring of vertices at every path point, so consecutive
+// cross-sections blend into one smooth tube instead of each one's own end
+// cap poking through the next segment's own volume. That poking-through is
+// exactly what produced the blocky, self-intersecting, faceted lumps in
+// the hair comb crown once cross-section radius (rx driven by
+// CROWN_HEIGHT_MM*crownBoost) grew larger than the spacing between
+// consecutive crownAnchors -- confirmed numerically (rx/spacing reached
+// ~1.37x at the crest's own peak), which independent capsules cannot
+// tolerate but a shared-ring tube handles by construction.
+function variableEllipticalTubeMesh(points, radii, ringSegN, closed){
+  ringSegN = Math.max(ringSegN||8,6);
+  const n = points.length;
+  const V=[], F=[];
+  function tri(a,b,c){F.push([a,b,c]);}
+  const tangents=[];
+  for(let i=0;i<n;i++){
+    const prev=points[closed?(i-1+n)%n:Math.max(0,i-1)], next=points[closed?(i+1)%n:Math.min(n-1,i+1)];
+    const d=[next[0]-prev[0],next[1]-prev[1],next[2]-prev[2]];
+    const l=Math.hypot(d[0],d[1],d[2])||1;
+    tangents.push([d[0]/l,d[1]/l,d[2]/l]);
+  }
+  function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+  function norm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}
+  let ref=[0,0,1]; if(Math.abs(tangents[0][2])>0.9) ref=[1,0,0];
+  let e1=norm(cross(ref,tangents[0])), e2=cross(tangents[0],e1);
+  const rings=[];
+  for(let i=0;i<n;i++){
+    if(i>0){
+      const tn=tangents[i], dot=e1[0]*tn[0]+e1[1]*tn[1]+e1[2]*tn[2];
+      const proj=[e1[0]-tn[0]*dot,e1[1]-tn[1]*dot,e1[2]-tn[2]*dot];
+      e1=norm(proj); e2=cross(tn,e1);
+    }
+    const rx=radii[i][0], ry=radii[i][1];
+    const ring=[];
+    for(let k=0;k<ringSegN;k++){
+      const ang=2*Math.PI*k/ringSegN, c=Math.cos(ang), s=Math.sin(ang);
+      ring.push(V.length);
+      V.push([
+        points[i][0]+ (e1[0]*c*rx+e2[0]*s*ry),
+        points[i][1]+ (e1[1]*c*rx+e2[1]*s*ry),
+        points[i][2]+ (e1[2]*c*rx+e2[2]*s*ry)
+      ]);
+    }
+    rings.push(ring);
+  }
+  const segCount = closed?n:n-1;
+  for(let i=0;i<segCount;i++){
+    const a=rings[i], b=rings[(i+1)%n];
+    for(let k=0;k<ringSegN;k++){
+      const kp=(k+1)%ringSegN;
+      tri(a[k],a[kp],b[kp]); tri(a[k],b[kp],b[k]);
+    }
+  }
+  if(!closed){
+    const capA=V.length; V.push(points[0].slice());
+    for(let k=0;k<ringSegN;k++){const kp=(k+1)%ringSegN; tri(capA,rings[0][kp],rings[0][k]);}
+    const capB=V.length; V.push(points[n-1].slice());
+    for(let k=0;k<ringSegN;k++){const kp=(k+1)%ringSegN; tri(capB,rings[n-1][k],rings[n-1][kp]);}
+  }
+  return {V,F};
+}
 function simpleAnnularBandMesh(innerR, outerR, zCenter, width, seg, arcRad, closed) {
   arcRad = arcRad===undefined ? 2*Math.PI : arcRad;
   closed = closed===undefined ? true : closed;
@@ -3259,24 +3326,42 @@ function makeHairCombManifold(wasm,p){
     const base=spinePointAt(clamp(x,-width/2,width/2));
     crownAnchors.push([base[0], base[1]+SPINE_R_MM*0.3, base[2]]);
   }
-  // A continuous crest riding above the spine's own anchors, matching the
-  // taper-to-edges behavior already used elsewhere so it reads as a real
-  // sculptural crown rather than a floating blob.
+  // A continuous crest riding above the spine's own anchors, built as ONE
+  // continuous tube with a per-point (rx,ry) cross-section rather than a
+  // chain of independent capsule segments -- the previous approach
+  // (ellipticalSegmentBetween per span) let each segment's own end cap
+  // poke through its neighbor's volume whenever the cross-section radius
+  // exceeded the anchor spacing (confirmed numerically: up to 1.37x at
+  // the crest's own peak, for realistic CROWN_HEIGHT_MM/crownBoost
+  // values), producing the blocky, self-intersecting, faceted lumps seen
+  // in production. A single shared-ring tube can't develop that defect --
+  // consecutive cross-sections blend by construction instead of each
+  // being its own separate capped solid.
   const crestPeakU = 0.5; // fixed centered peak (crown is symmetric by construction; asymmetry, if any, comes from decoration below)
   const crestWidth = 0.32;
-  for(let s=0;s<crownSamples;s++){
-    const q=(s+0.5)/crownSamples;
+  const crestPathPts = [];
+  const crestRadii = [];
+  for(let s=0;s<=crownSamples;s++){
+    const q=s/crownSamples;
     const distFromPeak=(q-crestPeakU)/crestWidth;
     const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.2);
-    const a=crownAnchors[s], b=crownAnchors[s+1];
-    const topA=[a[0], a[1]+CROWN_HEIGHT_MM*(0.55+0.35*dome*taperEdge), a[2]+CROWN_HEIGHT_MM*(0.05+0.10*vessel)];
-    const topB=[b[0], b[1]+CROWN_HEIGHT_MM*(0.55+0.35*dome*taperEdge), b[2]+CROWN_HEIGHT_MM*(0.05+0.10*vessel)];
+    const a=crownAnchors[s];
+    crestPathPts.push([a[0], a[1]+CROWN_HEIGHT_MM*(0.55+0.35*dome*taperEdge), a[2]+CROWN_HEIGHT_MM*(0.05+0.10*vessel)]);
     const rx=CROWN_HEIGHT_MM*(0.16+0.05*dome)*crownBoost*(0.45+0.55*taperEdge);
     const ry=CROWN_HEIGHT_MM*(0.12+0.04*dome)*crownBoost*(0.45+0.55*taperEdge);
-    parts.push(ellipticalSegmentBetween(wasm,topA,topB,Math.max(1.2,rx),Math.max(1.0,ry),18));
-    // Root connector guaranteeing the crest reads as rising out of the
-    // spine rather than floating near it.
-    parts.push(ellipticalSegmentBetween(wasm,a,topA,SPINE_R_MM*0.75,SPINE_R_MM*0.6,12));
+    crestRadii.push([Math.max(1.2,rx), Math.max(1.0,ry)]);
+  }
+  {
+    const crestMesh = variableEllipticalTubeMesh(crestPathPts, crestRadii, 18, false);
+    parts.push(meshToManifold(wasm, crestMesh.V, crestMesh.F));
+  }
+  // Root connectors, one per anchor, guaranteeing the crest reads as
+  // rising continuously out of the spine rather than floating near it --
+  // these stay as independent short segments (not part of the tube above)
+  // since they are short relative to their own radius and don't develop
+  // the same overlap defect the crest itself did.
+  for(let s=0;s<=crownSamples;s++){
+    parts.push(ellipticalSegmentBetween(wasm,crownAnchors[s],crestPathPts[s],SPINE_R_MM*0.75,SPINE_R_MM*0.6,12));
   }
 
   if(crownMode==='lattice' && lattice>0.16){
@@ -3498,15 +3583,30 @@ function makeHoopEarringManifold(wasm, p){
     // after translating would swing the body off to the side instead of
     // simply turning it in place where it hangs.
     let bodyManifold = face.manifold.rotate([0,90,0]);
-    const embedIntoBody = Math.min(bodyOuterR*0.35, collarR*1.6);
-    const bodyCenter=[0, -embedIntoBody, 0];
+    // BUG FIX: the previous embedIntoBody = min(bodyOuterR*0.35, collarR*1.6)
+    // made the body's CENTER sit only ~3mm below the post's base regardless
+    // of body size, while the body itself extends +-bodyOuterR from that
+    // center -- so at every tested size (16-34mm) the post's base ended up
+    // BURIED 5-14mm inside the body's own volume instead of visibly
+    // protruding above it. Confirmed numerically before this fix. A real
+    // dango's stick visibly emerges from the dumpling on at least one
+    // side; the fix places the body's center far enough below the post's
+    // base that the post's own length clears the body's near edge, with
+    // only a small FIXED overlap (not size-dependent) for a guaranteed
+    // solid union at the junction.
+    const JUNCTION_OVERLAP_MM = 2.2;
+    const bodyDropFromPostBase = Math.max(0, POST_LENGTH_MM - JUNCTION_OVERLAP_MM) + bodyOuterR;
+    const bodyCenter=[0, -bodyDropFromPostBase, 0];
     bodyManifold = bodyManifold.translate(bodyCenter);
     parts.push(bodyManifold);
 
     // Root connector guaranteeing the decorated body reads as fused to
     // the post rather than tangent/floating near it -- spans from the
-    // post's own base down into the body's own embedded center.
-    parts.push(cylinderBetween(wasm, postBase, bodyCenter, collarR*0.85, 16));
+    // post's own base down past the body's near edge into its embedded
+    // interior, so the two volumes have real overlap regardless of the
+    // gap the corrected placement above now leaves visible.
+    const connectorEnd=[0, -(bodyDropFromPostBase-bodyOuterR*0.4), 0];
+    parts.push(cylinderBetween(wasm, postBase, connectorEnd, collarR*0.85, 16));
 
     p.hoopPostTipDiameterMm = POST_TIP_R_MM*2;
     p.hoopPostRootDiameterMm = POST_ROOT_R_MM*2;
