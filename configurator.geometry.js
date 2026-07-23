@@ -484,8 +484,8 @@ function annularPrismMesh(origin, ex, ey, ez, innerU, innerV, outerU, outerV, th
 function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cornerSegments) {
   const cs=Math.max(10,Math.round(cornerSegments||18));
   const halfD=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
-  const outerCorner=Math.min(outerW,outerH)*.105;
-  const innerCorner=Math.min(innerW,innerH)*.12;
+  const outerCorner=Math.max(AGDP_MIN_WALL_MM*.18,Math.min(outerW,outerH)*.035);
+  const innerCorner=Math.max(AGDP_MIN_WALL_MM*.16,Math.min(innerW,innerH)*.045);
   function loop(w,h,r){
     const pts=[];
     const cx=w*.5-r, cy=h*.5-r;
@@ -1833,48 +1833,19 @@ async function makePendantManifold(wasm, p) {
   // the annular core deeply; the chain tunnel is cut only after union.
   const passageR=Math.max(.85,p.chainFitRadiusMm!=null?p.chainFitRadiusMm:1.35);
   const topY=outerR*sy;
-  const shoulderX=Math.max(annularWall*.55,outerR*sx*.18);
-  // Embed fraction increased from .48 to .85: the shoulder's start point
-  // must land inside the CORE's actual (elliptically-scaled) surface, but
-  // topY is only a same-axis approximation of that surface -- at .48 it
-  // was correct only near a roughly circular aspect ratio. Diagnosed via
-  // Node.js harness: components=2/3 (a genuine disconnection, not a
-  // manifold defect) persisted at high sy/sx eccentricity even after
-  // fixing the saddle-shoulder junction, tracing back to this embed
-  // point sometimes landing outside the real surface. A deeper, more
-  // conservative embed removes the dependency on exact ellipse geometry.
-  // Verified: pendant success rate went from ~35% to 95% across 22 test
-  // seeds after this fix plus the saddle-anchoring fix below.
-  const shoulderY=topY-annularWall*.85;
   const tunnelWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.45,annularWall*.30);
   const crownOuterR=Math.max(passageR+tunnelWall,annularWall*1.28);
-  // Keep the complete chain opening outside the body's upper envelope.
-  // The added clearance is radial, not a global scale, so it does not alter
-  // the pendant silhouette or the frame section.
-  const bailClearance=Math.max(annularWall*.34,passageR*.18,(p.minFeature||.8)*.38);
-  const crownCenter=[0,topY+Math.max(crownOuterR*.78,annularWall*1.30)+bailClearance,0];
 
-  // The shoulders must never terminate on the tunnel axis.  In v0.191 both
-  // members converged at crownCenter, so the later subtraction could erase
-  // their entire overlap with the crown and isolate the suspension ring.
-  // They now enter the lower flanks, outside the protected tunnel envelope.
-  const flankX=Math.min(crownOuterR*.58,passageR+tunnelWall*.62);
-  const lowerInnerRimY=crownCenter[1]-passageR;
-  const flankY=Math.min(
-    crownCenter[1]-Math.sqrt(Math.max(0,crownOuterR*crownOuterR-flankX*flankX))*.82,
-    lowerInnerRimY-Math.max(annularWall*.20,(p.minFeature||.8)*.20)
-  );
-  const shoulderR=Math.max(memberR*1.30,annularWall*.30,tunnelWall*.58);
-  addMember([-shoulderX,shoulderY,0],[-flankX,flankY,0],shoulderR);
-  addMember([ shoulderX,shoulderY,0],[ flankX,flankY,0],shoulderR);
+  // Rectilinear bail: the frame itself is the structural connection.
+  // Its lower rail overlaps the pendant body directly, so no posts,
+  // shoulders, saddle or auxiliary members are required.
+  const frameOuterW=crownOuterR*1.72;
+  const frameOuterH=crownOuterR*2.48;
+  const frameInnerW=passageR*1.84;
+  const frameInnerH=passageR*2.26;
+  const frameOverlap=Math.max(annularWall*.42,(p.minFeature||.8)*.55);
+  const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
 
-  // Straight framed bail generated directly as one closed shell in the same
-  // XY plane as the shoulders. The aperture is part of the source topology:
-  // no cylindrical subtraction and no torus/shoulder plane mismatch.
-  const frameOuterW=crownOuterR*1.78;
-  const frameOuterH=crownOuterR*2.62;
-  const frameInnerW=passageR*1.88;
-  const frameInnerH=passageR*2.42;
   const bailMesh=roundedRectFrameMesh(
     crownCenter,
     frameOuterW,
@@ -1882,33 +1853,9 @@ async function makePendantManifold(wasm, p) {
     frameInnerW,
     frameInnerH,
     bandWidth,
-    12
+    14
   );
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
-
-  // A continuous saddle below the tunnel creates a guaranteed load path
-  // between both shoulders and the crown after subtraction. Its Y
-  // position is anchored directly to the shoulders' own flank endpoint
-  // (flankY) rather than computed independently from crownCenter/
-  // passageR/tunnelWall: the two formulas do not always agree, and when
-  // they drift apart by more than the tube radii can bridge, the saddle
-  // fails to actually touch the shoulders, leaving them as disconnected
-  // floating geometry (diagnosed via Node.js harness: preflight always
-  // reported manifoldOK=true but components=2-3, i.e. a genuine assembly
-  // gap, not a topology defect).
-  // The bridge stays below the chain aperture. Keeping its upper envelope
-  // below the frame inner rim prevents the main body/bridge from visually
-  // blocking or boolean-clipping the opening.
-  const saddleRadius=Math.max(shoulderR*.92,tunnelWall*.62);
-  const saddleY=Math.min(flankY,lowerInnerRimY-saddleRadius*1.08);
-  const saddleHalf=Math.max(flankX,shoulderR*1.25);
-  parts.push(cylinderBetween(
-    wasm,
-    [-saddleHalf,saddleY,0],
-    [ saddleHalf,saddleY,0],
-    saddleRadius,
-    32
-  ));
 
   let manifold=unionAll(wasm,parts);
   let mesh=manifoldToMesh(manifold);
@@ -1925,7 +1872,7 @@ async function makePendantManifold(wasm, p) {
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
   p.pendantBodyHeightMm=finalAudit.bounds.dim[1];
   p.pendantBodyDepthMm=finalAudit.bounds.dim[2];
-  p.pendantSuspension='integratedRectangularFrame';
+  p.pendantSuspension='integratedRectilinearFrameNoPosts';
   p.pendantPassageDiameterMm=passageR*2;
   p.pendantTotalHeightMm=finalAudit.bounds.dim[1];
   p.pendantBaseGeometry='ringDerivedClosedAnnularCore';
