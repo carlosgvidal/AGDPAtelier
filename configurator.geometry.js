@@ -5,54 +5,18 @@ function wrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a 
 const AGDP_MIN_WALL_MM = 0.8;
 const AGDP_STRUCTURAL_WALL_MM = 1.3;
 
-function auditAndOrientClosedMesh(V, F, label) {
-  const edgeUse = new Map();
-  let signedVolume = 0;
-  for (let i = 0; i < F.length; i++) {
-    const face = F[i];
-    if (!Array.isArray(face) || face.length !== 3) throw new Error((label||'mesh')+': cara no triangular');
-    const a=face[0], b=face[1], c=face[2];
-    if (![a,b,c].every(Number.isInteger) || a<0 || b<0 || c<0 || a>=V.length || b>=V.length || c>=V.length) {
-      throw new Error((label||'mesh')+': índice de cara fuera de rango');
-    }
-    if (a===b || b===c || c===a) throw new Error((label||'mesh')+': triángulo degenerado');
-    const A=V[a], B=V[b], C=V[c];
-    if (![...A,...B,...C].every(Number.isFinite)) throw new Error((label||'mesh')+': coordenada no finita');
-    signedVolume += (
-      A[0]*(B[1]*C[2]-B[2]*C[1]) +
-      A[1]*(B[2]*C[0]-B[0]*C[2]) +
-      A[2]*(B[0]*C[1]-B[1]*C[0])
-    ) / 6;
-    [[a,b],[b,c],[c,a]].forEach(([u,v])=>{
-      const key=u<v?u+'_'+v:v+'_'+u;
-      edgeUse.set(key,(edgeUse.get(key)||0)+1);
-    });
-  }
-  let boundaryEdges=0, nonManifoldEdges=0;
-  edgeUse.forEach(count=>{ if(count===1) boundaryEdges++; else if(count!==2) nonManifoldEdges++; });
-  if (boundaryEdges || nonManifoldEdges) {
-    throw new Error((label||'mesh')+': malla no cerrada (bordes abiertos '+boundaryEdges+', no-manifold '+nonManifoldEdges+')');
-  }
-  if (!Number.isFinite(signedVolume) || Math.abs(signedVolume) < 1e-9) {
-    throw new Error((label||'mesh')+': volumen firmado nulo o inválido');
-  }
-  if (signedVolume < 0) {
-    for (let i=0;i<F.length;i++) { const t=F[i][1]; F[i][1]=F[i][2]; F[i][2]=t; }
-    signedVolume = -signedVolume;
-  }
-  return { boundaryEdges, nonManifoldEdges, signedVolume };
-}
-
-function meshToManifold(wasm, V, F, label) {
-  auditAndOrientClosedMesh(V, F, label||'custom mesh');
+function meshToManifold(wasm, V, F) {
   const { Manifold, Mesh } = wasm;
   const positions = new Float32Array(V.length * 3);
   for (let i = 0; i < V.length; i++) { positions[i*3]=V[i][0]; positions[i*3+1]=V[i][1]; positions[i*3+2]=V[i][2]; }
   const triangles = new Uint32Array(F.length * 3);
   for (let i = 0; i < F.length; i++) { triangles[i*3]=F[i][0]; triangles[i*3+1]=F[i][1]; triangles[i*3+2]=F[i][2]; }
   const mesh = new Mesh({ numProp: 3, vertProperties: positions, triVerts: triangles });
-  try { return new Manifold(mesh); }
-  finally { try{ mesh.delete(); }catch(e){} }
+  try {
+    return new Manifold(mesh);
+  } finally {
+    if (mesh && typeof mesh.delete === 'function') mesh.delete();
+  }
 }
 function manifoldToMesh(manifoldObj) {
   const out = manifoldObj.getMesh();
@@ -243,7 +207,7 @@ function splitIntoHookedSegments(wasm, manifold, wall){
   ];
   for(let s=0;s<3;s++){
     const wc = wedgeCutterMesh(segBounds[s][0], segBounds[s][1], R, H);
-    const wedge = meshToManifold(wasm, wc.V, wc.F, 'wedge cutter');
+    const wedge = meshToManifold(wasm, wc.V, wc.F);
     segments.push(Manifold.intersection(manifold, wedge));
     try{ wedge.delete(); }catch(e){}
   }
@@ -633,6 +597,19 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
     q(pfI[i],pfI[j],pbI[j],pbI[i]);
   }
   return {V,F};
+}
+
+function rectilinearFrameManifoldYZ(wasm, origin, outerW, outerH, innerW, innerH, depth) {
+  const { Manifold } = wasm;
+  const wallZ = Math.max((outerW-innerW)*.5, AGDP_MIN_WALL_MM);
+  const wallY = Math.max((outerH-innerH)*.5, AGDP_MIN_WALL_MM);
+  const x = origin[0], y = origin[1], z = origin[2];
+  return unionAll(wasm, [
+    Manifold.cube([depth, wallY, outerW], true).translate([x, y+(outerH-wallY)*.5, z]),
+    Manifold.cube([depth, wallY, outerW], true).translate([x, y-(outerH-wallY)*.5, z]),
+    Manifold.cube([depth, innerH, wallZ], true).translate([x, y, z+(outerW-wallZ)*.5]),
+    Manifold.cube([depth, innerH, wallZ], true).translate([x, y, z-(outerW-wallZ)*.5])
+  ]);
 }
 
 function organicNodeAt(wasm, center, radius, segments, seedPhase) {
@@ -1968,16 +1945,16 @@ async function makePendantManifold(wasm, p) {
   // member enters the annular opening.
   const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
   const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
-  const bailMesh=refinedRectilinearFrameMeshYZ(
+  const bailManifold=rectilinearFrameManifoldYZ(
+    wasm,
     crownCenter,
     frameOuterW,
     frameOuterH,
     frameInnerW,
     frameInnerH,
-    frameDepth,
-    12
+    frameDepth
   );
-  parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
+  parts.push(bailManifold);
 
   let manifold=unionAll(wasm,parts);
   let mesh=manifoldToMesh(manifold);
@@ -3141,6 +3118,8 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.segmentConnectorRailMm = 'full-height';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
+    try{ manifold.delete(); }catch(e){}
+    manifold = null;
   }
 
   const expectedComponents = p.type==='cufflinks' ? 2 : (isSegmentedType ? 3 : 1);
@@ -3173,10 +3152,14 @@ async function makeMeshManifoldEntry(wasm, inputParams){
 }
 function manifoldToMeshHelper(manifoldObj){
   const out = manifoldObj.getMesh();
-  const V = [], F = [];
-  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
-  return { V, F };
+  try {
+    const V = [], F = [];
+    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+    return { V, F };
+  } finally {
+    if (out && typeof out.delete === 'function') out.delete();
+  }
 }
 
 let _wasmReady = null;
