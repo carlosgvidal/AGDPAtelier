@@ -1,5 +1,5 @@
 'use strict';
-const AGDP_APP_VERSION='0.203';
+const AGDP_APP_VERSION='0.201';
 window.AGDP_APP_VERSION=AGDP_APP_VERSION;
 window.addEventListener('error',function(e){
   const statusWrap=document.getElementById('agdpStatusWrap');
@@ -311,7 +311,7 @@ window.AGDP_PROPORTION_SYSTEM=AGDP_PROPORTION_SYSTEM;
 window.ProportionEngine=ProportionEngine;
 
 window.AGDP_GEOMETRY_CONSTRAINTS_V157=Object.freeze({
-  geometryRevision:'v203',
+  geometryRevision:'v200',
   minimumBridgeDiameterMm:1.4,
   minimumNeckClearanceMm:2.0,
   minimumHeadClearanceMm:2.5,
