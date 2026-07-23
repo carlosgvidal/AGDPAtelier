@@ -520,6 +520,37 @@ function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cor
   return {V,F};
 }
 
+
+function rectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth) {
+  // Closed rectangular frame in the YZ plane. The chain passage runs along X,
+  // matching the lateral orientation of a conventional pendant bail.
+  const hx=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
+  const ow=Math.max(outerW*.5,AGDP_MIN_WALL_MM);
+  const oh=Math.max(outerH*.5,AGDP_MIN_WALL_MM);
+  const iw=Math.max(innerW*.5,AGDP_MIN_WALL_MM*.25);
+  const ih=Math.max(innerH*.5,AGDP_MIN_WALL_MM*.25);
+  const V=[],F=[];
+  const frontOuter=[],frontInner=[],backOuter=[],backInner=[];
+  const outer=[[-ow,-oh],[ow,-oh],[ow,oh],[-ow,oh]]; // [z,y]
+  const inner=[[-iw,-ih],[iw,-ih],[iw,ih],[-iw,ih]];
+  const add=(x,zy)=>{V.push([origin[0]+x,origin[1]+zy[1],origin[2]+zy[0]]);return V.length-1;};
+  for(let i=0;i<4;i++){
+    frontOuter.push(add(hx,outer[i]));
+    frontInner.push(add(hx,inner[i]));
+    backOuter.push(add(-hx,outer[i]));
+    backInner.push(add(-hx,inner[i]));
+  }
+  const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
+  for(let i=0;i<4;i++){
+    const j=(i+1)%4;
+    q(frontOuter[i],frontOuter[j],frontInner[j],frontInner[i]);
+    q(backOuter[i],backInner[i],backInner[j],backOuter[j]);
+    q(frontOuter[i],backOuter[i],backOuter[j],frontOuter[j]);
+    q(frontInner[i],frontInner[j],backInner[j],backInner[i]);
+  }
+  return {V,F};
+}
+
 function organicNodeAt(wasm, center, radius, segments, seedPhase) {
   const {Manifold}=wasm;
   const phase=Number.isFinite(seedPhase)?seedPhase:(center[0]*.173+center[1]*.117+center[2]*.071);
@@ -1844,16 +1875,18 @@ async function makePendantManifold(wasm, p) {
   const frameInnerW=passageR*1.84;
   const frameInnerH=passageR*2.26;
   const frameOverlap=Math.max(annularWall*.42,(p.minFeature||.8)*.55);
+  // Lateral frame: its opening axis is X, so the chain passes from side to side.
+  // Only the lower rail overlaps the outer crown of the pendant; no vertical
+  // member enters the annular opening.
   const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
-
-  const bailMesh=roundedRectFrameMesh(
+  const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
+  const bailMesh=rectilinearFrameMeshYZ(
     crownCenter,
     frameOuterW,
     frameOuterH,
     frameInnerW,
     frameInnerH,
-    bandWidth,
-    14
+    frameDepth
   );
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
@@ -1872,7 +1905,7 @@ async function makePendantManifold(wasm, p) {
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
   p.pendantBodyHeightMm=finalAudit.bounds.dim[1];
   p.pendantBodyDepthMm=finalAudit.bounds.dim[2];
-  p.pendantSuspension='integratedRectilinearFrameNoPosts';
+  p.pendantSuspension='integratedLateralRectilinearFrameNoPosts';
   p.pendantPassageDiameterMm=passageR*2;
   p.pendantTotalHeightMm=finalAudit.bounds.dim[1];
   p.pendantBaseGeometry='ringDerivedClosedAnnularCore';
