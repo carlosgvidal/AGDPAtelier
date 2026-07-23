@@ -1403,7 +1403,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const dMassR=Math.max(baseWall*1.3, baseWall*(1.5+1.3*sv));
     const embed=dMassR*0.4;
     const centerR=esurf+dMassR-embed;
-    decorations.push(organicNodeAt(wasm,[centerR*ect,centerR*est,0],dMassR,12,et));
+    decorations.push(organicNodeAt(wasm,[centerR*ect,centerR*est,0],dMassR,12,edgeT));
   }
 
   // Compresión literal: un lado real se aplasta hacia el eje mientras el
@@ -1477,7 +1477,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.1, baseWall*(1.2+0.8*sv));
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
-    decorations.push(organicNodeAt(wasm,[massCenterR*ict,massCenterR*ist,0],massR,12,it));
+    decorations.push(organicNodeAt(wasm,[massCenterR*ict,massCenterR*ist,0],massR,12,invT));
     const voidT=invT+Math.PI*0.5+iRng()*0.3;
     const vct=Math.cos(voidT), vst=Math.sin(voidT);
     const voidSurf=localSurfaceRZ(voidT,0);
