@@ -259,11 +259,30 @@ function concatenateSegmentMeshes(segmentManifolds){
   }
   return { V, F };
 }
+function circularSegments(radius, chordTarget, minimum, maximum) {
+  const r=Math.max(AGDP_MIN_WALL_MM, Math.abs(radius)||AGDP_MIN_WALL_MM);
+  const chord=Math.max(0.12, chordTarget||0.20);
+  const estimated=Math.ceil((2*Math.PI*r)/chord);
+  const even=estimated+(estimated%2);
+  return Math.max(minimum||24, Math.min(maximum||128, even));
+}
+function sphereSegments(radius, requested) {
+  if(requested!=null)return Math.max(16, requested);
+  return circularSegments(radius, 0.22, 24, 64);
+}
+function ringSegments(radius, requested) {
+  if(requested!=null)return Math.max(48, requested);
+  return circularSegments(radius, 0.16, 64, 128);
+}
+function unionPenetration(featureRadius, availableEmbed) {
+  const target=Math.max(AGDP_MIN_WALL_MM*0.45, featureRadius*0.34);
+  return Math.min(Math.max(target, availableEmbed||0), featureRadius*0.82);
+}
 function cylinderBetween(wasm, p0, p1, radius, segments) {
   const { Manifold } = wasm;
   const dx=p1[0]-p0[0], dy=p1[1]-p0[1], dz=p1[2]-p0[2];
   const len = Math.hypot(dx,dy,dz) || 1e-6;
-  const cyl = Manifold.cylinder(len, radius, radius, segments || 16, true);
+  const cyl = Manifold.cylinder(len, radius, radius, segments || circularSegments(radius,0.22,24,64), true);
   const ux=dx/len, uy=dy/len, uz=dz/len;
   const thetaDeg = Math.acos(clamp(uz,-1,1)) * 180/Math.PI;
   const phiDeg = Math.atan2(uy,ux) * 180/Math.PI;
@@ -273,7 +292,7 @@ function cylinderBetween(wasm, p0, p1, radius, segments) {
 }
 function sphereAt(wasm, center, radius, segments) {
   const { Manifold } = wasm;
-  return Manifold.sphere(radius, segments || 20).translate(center);
+  return Manifold.sphere(radius, sphereSegments(radius,segments)).translate(center);
 }
 function radialBlock(wasm, t, r, z, radialDepth, tangentWidth, height) {
   const { Manifold } = wasm;
@@ -455,8 +474,9 @@ function domeShellMesh(rimRFn, heightFn, seg, radSeg, indentFn) {
 }
 function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN) {
   const { Manifold } = wasm;
-  const outer = Manifold.cylinder(thickness, ro, ro, segN || 48, true);
-  const inner = Manifold.cylinder(thickness * 1.4, ri, ri, segN || 48, true);
+  const resolvedSegments=ringSegments(ro,segN);
+  const outer = Manifold.cylinder(thickness, ro, ro, resolvedSegments, true);
+  const inner = Manifold.cylinder(thickness * 1.6, ri, ri, resolvedSegments, true);
   let ring = safeDifference(wasm, outer, inner);
   const nx=ez[0],ny=ez[1],nz=ez[2];
   const thetaDeg = Math.acos(clamp(nz,-1,1)) * 180/Math.PI;
@@ -1004,9 +1024,9 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const t = -arcRad/2+arcRad*(0.2+0.6*u);
       const ct=Math.cos(t), st=Math.sin(t);
       const rivetZ = (k%2?1:-1)*bandW*0.22;
-      const localEmbed = Math.min(embedAtZ(t,rivetZ), rivetR*0.9);
+      const localEmbed = unionPenetration(rivetR, Math.min(embedAtZ(t,rivetZ), rivetR*0.9));
       const rOut = localSurfaceRZ(t,rivetZ)+rivetR-localEmbed;
-      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR, 8));
+      decorations.push(sphereAt(wasm, [rOut*ct,rOut*st,rivetZ], rivetR));
     }
   }
   const plainBody = facetCount===0 && p.holes<=0 && (p.architectural||0)*10<0.5;
@@ -1018,10 +1038,10 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const ringInnerR = Math.max(AGDP_MIN_WALL_MM*0.7, ringOuterR-baseWall*1.1);
     const ringThickness = Math.max(AGDP_MIN_WALL_MM*0.8, baseWall*0.6);
     const ex=[-st0,ct0,0], ey=[0,0,1], ez=[ct0,st0,0];
-    const overlapMargin = Math.min(ringOuterR*0.3, baseWall*0.5);
+    const overlapMargin = Math.min(ringOuterR*0.46, Math.max(baseWall*0.72, AGDP_MIN_WALL_MM*0.9));
     const originRadial = surfaceHere+ringOuterR-overlapMargin;
     const origin=[originRadial*ct0, originRadial*st0, 0];
-    decorations.push(insertedRingManifold(wasm, origin, ex, ey, ez, ringInnerR, ringOuterR, ringThickness, 40));
+    decorations.push(insertedRingManifold(wasm, origin, ex, ey, ez, ringInnerR, ringOuterR, ringThickness));
   }
   const nodeCount = (insertRingMode||cellularActive) ? 0 : Math.max(0, Math.round(p.nodes||0));
   if (nodeCount>0) {
@@ -1031,19 +1051,9 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const t = (p.articulationOffset||0)*Math.PI/180-cov/2+cov*u;
       const sr = Math.max(AGDP_MIN_WALL_MM*0.7, 0.45+p.nodeVolume*.3);
       const nodeZ = (k%2?1:-1)*bandW*0.18;
-      const localEmbed = Math.min(embedAtZ(t,nodeZ), sr*0.95);
+      const localEmbed = unionPenetration(sr, Math.min(embedAtZ(t,nodeZ), sr*0.95));
       const rr = localSurfaceRZ(t,nodeZ)+sr-localEmbed;
-      // Segment count reduced from 24 to 8: confirmed via direct,
-      // isolated testing that the number of non-manifold edges produced
-      // by this sphere's union with the band scales with the sphere's
-      // OWN facet count (4 segments -> 1 defect, 24 -> 176, 96 -> 3065),
-      // the opposite of what earlier "smoother reflections" tuning
-      // assumed. Every additional facet on the sphere adds another
-      // potential near-tangent crossing against the base mesh's own
-      // faceting -- fewer facets means fewer chances for that. This
-      // trades a slightly more faceted-looking bead for the piece
-      // actually being printable, which is the more urgent priority.
-      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr, 8));
+      decorations.push(sphereAt(wasm, [rr*Math.cos(t), rr*Math.sin(t), nodeZ], sr));
     }
   }
   // Hallmark engraving removed entirely per explicit request: the
@@ -1065,7 +1075,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       // This guarantees genuine volumetric overlap with the solid band
       // instead of an ambiguous tangent touch.
       const rCenter = innerR+ballR*1.15;
-      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR, 8));
+      decorations.push(sphereAt(wasm, [rCenter*ct, rCenter*st, 0], ballR));
     });
   }
 
@@ -1162,7 +1172,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.4, baseWall*(1.8+2.2*sv));
     const embed=massR*0.35;
     const massCenterR=hSurface+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR, 8));
+    decorations.push(sphereAt(wasm,[massCenterR*hct, massCenterR*hst, 0], massR));
     const oppositeT=ht+Math.PI;
     const oppCt=Math.cos(oppositeT), oppSt=Math.sin(oppositeT);
     const oppSurface=localSurfaceRZ(oppositeT,0);
@@ -1209,7 +1219,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const dMassR=Math.max(baseWall*1.3, baseWall*(1.5+1.3*sv));
     const embed=dMassR*0.4;
     const centerR=esurf+dMassR-embed;
-    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR, 8));
+    decorations.push(sphereAt(wasm,[centerR*ect, centerR*est, 0], dMassR));
   }
 
   // Compresión literal: un lado real se aplasta hacia el eje mientras el
@@ -1267,7 +1277,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const r=Math.max(AGDP_MIN_WALL_MM*0.5, baseWall*(0.16+0.10*pRng()));
       const embed=r*0.5;
       const rr=surf+r-embed;
-      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r, 8));
+      decorations.push(sphereAt(wasm,[rr*ct,rr*st,z], r));
     }
   }
 
@@ -1283,7 +1293,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const massR=Math.max(baseWall*1.1, baseWall*(1.2+0.8*sv));
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
-    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR, 8));
+    decorations.push(sphereAt(wasm,[massCenterR*ict, massCenterR*ist, 0], massR));
     const voidT=invT+Math.PI*0.5+iRng()*0.3;
     const vct=Math.cos(voidT), vst=Math.sin(voidT);
     const voidSurf=localSurfaceRZ(voidT,0);
