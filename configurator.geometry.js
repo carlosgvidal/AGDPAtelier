@@ -3569,6 +3569,9 @@ function makeHoopEarringManifold(wasm, p){
       bandWidth,
       holes:Math.min(2,p.holes||0),
       railCount:Math.min(2,p.railCount||0),
+      nodes:0,
+      rivets:0,
+      screws:0,
       crown:false,
       spikes:0,
       opening:0
@@ -3578,6 +3581,35 @@ function makeHoopEarringManifold(wasm, p){
     });
 
     let bodyManifold=built.manifold.rotate([0,90,0]);
+
+    // Earring-safe nodules are generated outside the shared band pipeline.
+    // Each nodule includes a radial support that penetrates the annular wall,
+    // and all nodules are fused into one manifold before the single body union.
+    const earringNodeCount=Math.max(0,Math.round(p.nodes||0));
+    if(earringNodeCount>0){
+      const cov=clamp((p.articulationCoverage||120)*Math.PI/180,0.35,Math.PI*1.65);
+      const center=(p.articulationOffset||0)*Math.PI/180;
+      const nodeParts=[];
+      for(let k=0;k<earringNodeCount;k++){
+        const u=earringNodeCount===1?.5:k/(earringNodeCount-1);
+        const t=center-cov*.5+cov*u;
+        const nodeR=Math.max(AGDP_MIN_WALL_MM*.72,0.45+(p.nodeVolume||0)*.3);
+        const depthOffset=(k%2?1:-1)*bandWidth*.18;
+        const radialDir=[0,Math.sin(t),-Math.cos(t)];
+        const supportStartR=Math.max(innerR+annularWall*.18,outerR-annularWall*.72);
+        const nodeCenterR=outerR+nodeR*.38;
+        const supportStart=[depthOffset,radialDir[1]*supportStartR,radialDir[2]*supportStartR];
+        const nodeCenter=[depthOffset,radialDir[1]*nodeCenterR,radialDir[2]*nodeCenterR];
+        const supportR=Math.max(AGDP_MIN_WALL_MM*.62,nodeR*.62);
+        nodeParts.push(cylinderBetween(wasm,supportStart,nodeCenter,supportR,24));
+        nodeParts.push(organicNodeAt(wasm,nodeCenter,nodeR,24,t+k*.73));
+      }
+      const nodeAssembly=unionAll(wasm,nodeParts);
+      const mergedBody=wasm.Manifold.union(bodyManifold,nodeAssembly);
+      try{ bodyManifold.delete(); }catch(e){}
+      try{ nodeAssembly.delete(); }catch(e){}
+      bodyManifold=mergedBody;
+    }
 
     // Rebuild a protected structural root after every decorative operation.
     // The root penetrates the annular wall deeply and occupies the complete
