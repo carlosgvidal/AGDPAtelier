@@ -5,20 +5,93 @@ function wrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a 
 const AGDP_MIN_WALL_MM = 0.8;
 const AGDP_STRUCTURAL_WALL_MM = 1.3;
 
+// Normalizes triangle winding for every manually generated mesh before it
+// enters Manifold. First it propagates a consistent orientation across each
+// edge-connected shell; then it flips each closed component whose signed
+// volume is negative. This removes typology-specific inverted faces without
+// changing vertex positions, dimensions or design parameters.
+function orientMeshOutward(V, F) {
+  if (!Array.isArray(V) || !Array.isArray(F) || F.length === 0) return F;
+  const faces = F.map(t => [t[0], t[1], t[2]]);
+  const edgeUses = new Map();
+  const key = (a,b) => a < b ? a + '|' + b : b + '|' + a;
+  for (let fi=0; fi<faces.length; fi++) {
+    const t=faces[fi];
+    for (let e=0; e<3; e++) {
+      const a=t[e], b=t[(e+1)%3], k=key(a,b);
+      let uses=edgeUses.get(k); if(!uses){uses=[];edgeUses.set(k,uses);}
+      uses.push({fi,a,b});
+    }
+  }
+  const adjacency=Array.from({length:faces.length},()=>[]);
+  for (const uses of edgeUses.values()) {
+    if (uses.length !== 2) continue;
+    const u=uses[0], v=uses[1];
+    // Adjacent faces must traverse their common edge in opposite directions.
+    const sameDirection = u.a===v.a && u.b===v.b;
+    adjacency[u.fi].push([v.fi,sameDirection]);
+    adjacency[v.fi].push([u.fi,sameDirection]);
+  }
+  const state=new Int8Array(faces.length); // 0 unvisited, +1 keep, -1 flip
+  const components=[];
+  for(let start=0; start<faces.length; start++){
+    if(state[start]) continue;
+    state[start]=1;
+    const queue=[start], component=[];
+    for(let qi=0; qi<queue.length; qi++){
+      const fi=queue[qi]; component.push(fi);
+      for(const [nj,sameDirection] of adjacency[fi]){
+        const required = sameDirection ? -state[fi] : state[fi];
+        if(!state[nj]){state[nj]=required;queue.push(nj);}
+      }
+    }
+    components.push(component);
+  }
+  for(let fi=0; fi<faces.length; fi++){
+    if(state[fi]<0){const t=faces[fi];faces[fi]=[t[0],t[2],t[1]];}
+  }
+  for(const component of components){
+    let volume6=0;
+    let closed=true;
+    const componentSet=new Set(component);
+    for(const fi of component){
+      const t=faces[fi], a=V[t[0]], b=V[t[1]], c=V[t[2]];
+      if(!a||!b||!c) continue;
+      volume6 += a[0]*(b[1]*c[2]-b[2]*c[1])
+               + a[1]*(b[2]*c[0]-b[0]*c[2])
+               + a[2]*(b[0]*c[1]-b[1]*c[0]);
+      for(let e=0;e<3;e++){
+        const uses=edgeUses.get(key(t[e],t[(e+1)%3]))||[];
+        if(uses.filter(u=>componentSet.has(u.fi)).length!==2){closed=false;break;}
+      }
+      if(!closed) break;
+    }
+    if(closed && volume6 < 0){
+      for(const fi of component){const t=faces[fi];faces[fi]=[t[0],t[2],t[1]];}
+    }
+  }
+  return faces;
+}
+
 function meshToManifold(wasm, V, F) {
   const { Manifold, Mesh } = wasm;
   const positions = new Float32Array(V.length * 3);
   for (let i = 0; i < V.length; i++) { positions[i*3]=V[i][0]; positions[i*3+1]=V[i][1]; positions[i*3+2]=V[i][2]; }
-  const triangles = new Uint32Array(F.length * 3);
-  for (let i = 0; i < F.length; i++) { triangles[i*3]=F[i][0]; triangles[i*3+1]=F[i][1]; triangles[i*3+2]=F[i][2]; }
+  const orientedF = orientMeshOutward(V, F);
+  const triangles = new Uint32Array(orientedF.length * 3);
+  for (let i = 0; i < orientedF.length; i++) { triangles[i*3]=orientedF[i][0]; triangles[i*3+1]=orientedF[i][1]; triangles[i*3+2]=orientedF[i][2]; }
   const mesh = new Mesh({ numProp: 3, vertProperties: positions, triVerts: triangles });
   return new Manifold(mesh);
 }
 function manifoldToMesh(manifoldObj) {
   const out = manifoldObj.getMesh();
   const V = [], F = [];
-  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+  try {
+    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+  } finally {
+    try{ out.delete(); }catch(e){}
+  }
   return { V, F };
 }
 function unionAll(wasm, manifolds) {
@@ -2970,8 +3043,13 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   const scale=dim.map(d=>clamp((d-2*wall)/d,.15,scaleCeiling));
   let inner=manifold.translate(center.map(v=>-v)).scale(scale).translate(center);
   let hollowed;
-  try{ hollowed=wasm.Manifold.difference(manifold,inner); }
-  catch(e){ return manifold; }
+  try{
+    hollowed=wasm.Manifold.difference(manifold,inner);
+  } catch(e){
+    try{ inner.delete(); }catch(err){}
+    return manifold;
+  }
+  try{ inner.delete(); }catch(e){}
 
   // Two opposing 2.4 mm escape holes exceed Shapeways' 2.0 mm multiple-hole
   // minimum. REDESIGNED placement: every rail, node, and relief feature in
@@ -3006,9 +3084,24 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
     cutters.push(cylinderBetween(wasm,p0,p1,holeR,24));
   });
   if(cutters.length===2){
-    try{ hollowed=wasm.Manifold.difference(hollowed,unionAll(wasm,cutters)); }
-    catch(e){ return manifold; }
-  }else return manifold;
+    let cutterUnion=null;
+    let perforated=null;
+    try{
+      cutterUnion=unionAll(wasm,cutters);
+      perforated=wasm.Manifold.difference(hollowed,cutterUnion);
+    } catch(e){
+      try{ cutterUnion?.delete(); }catch(err){}
+      try{ hollowed.delete(); }catch(err){}
+      return manifold;
+    }
+    try{ cutterUnion.delete(); }catch(e){}
+    try{ hollowed.delete(); }catch(e){}
+    hollowed=perforated;
+  }else{
+    cutters.forEach(c=>{try{c.delete();}catch(e){}});
+    try{ hollowed.delete(); }catch(e){}
+    return manifold;
+  }
 
   const after=manifoldBounds(hollowed);
   const finalWeight=silverWeightGrams(meshVolumeMm3(after.mesh.V,after.mesh.F));
@@ -3022,9 +3115,15 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // engineering one.
   const reduction=1-finalWeight/Math.max(initialWeight,1e-6);
   const reductionCeiling=p.type==='headpiece'?.93:.90;
-  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling)return manifold;
+  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling){
+    try{ hollowed.delete(); }catch(e){}
+    return manifold;
+  }
   const topo=topologyAudit(after.mesh.V,after.mesh.F);
-  if(!topo.manifoldOK)return manifold;
+  if(!topo.manifoldOK || (Number.isFinite(topo.components) && topo.components!==1)){
+    try{ hollowed.delete(); }catch(e){}
+    return manifold;
+  }
 
   p.silverHollowingApplied=true;
   p.silverShellWallMm=wall;
@@ -3032,6 +3131,7 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   p.silverEscapeHoleCount=2;
   p.silverWeightAfterHollowingG=finalWeight;
   p.silverWeightReductionRatio=reduction;
+  try{ manifold.delete(); }catch(e){}
   return hollowed;
 }
 
@@ -3111,7 +3211,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.segmentConnectorRailMm = 'full-height';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
-try{ manifold.delete(); }catch(e){}
+    try{ manifold.delete(); }catch(e){}
   }
 
   const expectedComponents = p.type==='cufflinks' ? 2 : (isSegmentedType ? 3 : 1);
@@ -3145,8 +3245,12 @@ try{ manifold.delete(); }catch(e){}
 function manifoldToMeshHelper(manifoldObj){
   const out = manifoldObj.getMesh();
   const V = [], F = [];
-  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+  try {
+    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+  } finally {
+    try{ out.delete(); }catch(e){}
+  }
   return { V, F };
 }
 
