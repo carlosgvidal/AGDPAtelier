@@ -3596,13 +3596,18 @@ function makeHoopEarringManifold(wasm, p){
         const nodeR=Math.max(AGDP_MIN_WALL_MM*.72,0.45+(p.nodeVolume||0)*.3);
         const depthOffset=(k%2?1:-1)*bandWidth*.18;
         const radialDir=[0,Math.sin(t),-Math.cos(t)];
-        const supportStartR=Math.max(innerR+annularWall*.18,outerR-annularWall*.72);
-        const nodeCenterR=outerR+nodeR*.38;
+        const supportStartR=Math.max(innerR+annularWall*.08,outerR-annularWall*.88);
+        const nodeCenterR=outerR+nodeR*.30;
         const supportStart=[depthOffset,radialDir[1]*supportStartR,radialDir[2]*supportStartR];
         const nodeCenter=[depthOffset,radialDir[1]*nodeCenterR,radialDir[2]*nodeCenterR];
-        const supportR=Math.max(AGDP_MIN_WALL_MM*.62,nodeR*.62);
-        nodeParts.push(cylinderBetween(wasm,supportStart,nodeCenter,supportR,24));
-        nodeParts.push(organicNodeAt(wasm,nodeCenter,nodeR,24,t+k*.73));
+        const supportEnd=[
+          depthOffset,
+          radialDir[1]*(nodeCenterR+nodeR*.42),
+          radialDir[2]*(nodeCenterR+nodeR*.42)
+        ];
+        const supportR=Math.max(AGDP_MIN_WALL_MM*.68,nodeR*.68);
+        nodeParts.push(cylinderBetween(wasm,supportStart,supportEnd,supportR,32));
+        nodeParts.push(organicNodeAt(wasm,nodeCenter,nodeR,48,t+k*.73));
       }
       const nodeAssembly=unionAll(wasm,nodeParts);
       const mergedBody=wasm.Manifold.union(bodyManifold,nodeAssembly);
@@ -3611,46 +3616,37 @@ function makeHoopEarringManifold(wasm, p){
       bodyManifold=mergedBody;
     }
 
-    // Rebuild a protected structural root after every decorative operation.
-    // The root penetrates the annular wall deeply and occupies the complete
-    // body depth, preventing cellular/node cutters from isolating the hook.
-    const rootEmbed=Math.max(annularWall*.78,(p.minFeature||.8)*1.65);
-    const rootY=outerR-rootEmbed;
-    const shoulderY=outerR+HOOK_ROOT_R_MM*.55;
-    const rootDepth=Math.max(bandWidth*.82,HOOK_ROOT_R_MM*2.35);
-    const rootWidth=Math.max(HOOK_ROOT_R_MM*2.45,annularWall*.58);
-    const rootHeight=Math.max(rootEmbed+HOOK_ROOT_R_MM*1.65,annularWall*.82);
-
-    const rootBlock=wasm.Manifold.cube([rootDepth,rootHeight,rootWidth],true)
-      .translate([0,rootY+rootHeight*.48,0]);
-    const rootCore=cylinderBetween(
-      wasm,
-      [0,rootY-annularWall*.18,0],
-      [0,shoulderY+HOOK_ROOT_R_MM*.65,0],
-      HOOK_ROOT_R_MM*1.18,
-      32
-    );
-    bodyManifold=unionAll(wasm,[bodyManifold,rootBlock,rootCore]);
-
-    // One planar, non-self-intersecting centreline. The first section begins
-    // inside the rebuilt root rather than on its surface, so the final union
-    // has a real shared volume and never depends on tangent contact.
+    // Build the support and hook as one continuous sweep. The first rings are
+    // embedded through the full annular wall and taper smoothly into the hook,
+    // avoiding faceted support blocks and multi-body intersections at the root.
     const hookPts=[];
     const hookRadii=[];
-    const hookStartY=rootY-annularWall*.12;
+    const rootEmbed=Math.max(annularWall*.92,(p.minFeature||.8)*1.9);
+    const hookStartY=outerR-rootEmbed;
+    const shoulderY=outerR+HOOK_ROOT_R_MM*.62;
     const riseY=outerR+HOOK_RISE_MM;
 
-    const riseSteps=12;
-    for(let i=0;i<=riseSteps;i++){
+    const rootSteps=14;
+    for(let i=0;i<=rootSteps;i++){
+      const q=i/rootSteps;
+      const eased=q*q*(3-2*q);
+      hookPts.push([0,hookStartY+(shoulderY-hookStartY)*q,0]);
+      const rx=HOOK_ROOT_R_MM*1.42+(HOOK_ROOT_R_MM-HOOK_ROOT_R_MM*1.42)*eased;
+      const rz=HOOK_ROOT_R_MM*1.26+(HOOK_ROOT_R_MM-HOOK_ROOT_R_MM*1.26)*eased;
+      hookRadii.push([rx,rz]);
+    }
+
+    const riseSteps=16;
+    for(let i=1;i<=riseSteps;i++){
       const q=i/riseSteps;
       const eased=q*q*(3-2*q);
-      hookPts.push([0,hookStartY+(riseY-hookStartY)*q,0]);
+      hookPts.push([0,shoulderY+(riseY-shoulderY)*q,0]);
       const r=HOOK_ROOT_R_MM+(HOOK_SHAFT_R_MM-HOOK_ROOT_R_MM)*eased;
       hookRadii.push([r,r]);
     }
 
     const bendCenter=[HOOK_BEND_R_MM,riseY,0];
-    const bendSteps=30;
+    const bendSteps=36;
     for(let i=1;i<=bendSteps;i++){
       const q=i/bendSteps;
       const a=Math.PI-Math.PI*q;
@@ -3664,7 +3660,7 @@ function makeHoopEarringManifold(wasm, p){
     }
 
     const tailStart=hookPts[hookPts.length-1];
-    const tailSteps=18;
+    const tailSteps=22;
     for(let i=1;i<=tailSteps;i++){
       const q=i/tailSteps;
       const eased=q*q*(3-2*q);
@@ -3677,14 +3673,13 @@ function makeHoopEarringManifold(wasm, p){
       hookRadii.push([r,r]);
     }
 
-    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,32,false);
+    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,48,false);
     const hookManifold=meshToManifold(wasm,hookMesh.V,hookMesh.F);
-    const rootBulb=sphereAt(wasm,[0,shoulderY,0],HOOK_ROOT_R_MM*1.28,32);
-    const tipBulb=sphereAt(wasm,hookPts[hookPts.length-1],HOOK_TIP_R_MM,32);
+    const tipBulb=sphereAt(wasm,hookPts[hookPts.length-1],HOOK_TIP_R_MM,48);
+    const completeHook=wasm.Manifold.union(hookManifold,tipBulb);
+    try{ hookManifold.delete(); }catch(e){}
+    try{ tipBulb.delete(); }catch(e){}
 
-    // Union the hook assembly first, then merge it with the reinforced body.
-    // This avoids a many-way CSG intersection at the most stressed junction.
-    const completeHook=unionAll(wasm,[hookManifold,rootBulb,tipBulb]);
     const manifold=wasm.Manifold.union(bodyManifold,completeHook);
     try{ bodyManifold.delete(); }catch(e){}
     try{ completeHook.delete(); }catch(e){}
