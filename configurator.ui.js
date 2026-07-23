@@ -110,6 +110,7 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       dimInnerDiameter:'Diámetro interior', dimInnerWidth:'Ancho interior', dimInnerDepth:'Fondo interior', dimOpening:'Apertura posterior', dimWidth:'Ancho', dimHeight:'Alto', dimThickness:'Espesor', dimTargetWeight:'Rango de peso objetivo',
       dimTotalWidth:'Ancho total', dimCrownHeight:'Altura de cabezal', dimToothCount:'Número de dientes', dimToothSpacing:'Separación entre dientes', dimToothDiameter:'Diámetro de diente (raíz/punta)',
       dimHoopOuterDiameter:'Diámetro exterior del aro', dimHoopWireDiameter:'Grosor del aro', dimHookTipDiameter:'Grosor de punta del gancho',
+      dimHoopBodySpan:'Diámetro del cuerpo', dimHoopPostLength:'Longitud del poste', dimHoopPostTipDiameter:'Grosor de punta del poste',
       dimOverall:'Dimensión total', dimPlate:'Placa', dimWeight:'Peso aprox. en plata',
       dimNominal:'Talla solicitada', dimDesign:'Diámetro de diseño (con compensación)',
       weightLight:'Colgante ligero', weightMedium:'Colgante medio', weightHeavy:'Colgante pesado — considerar mecanismo reforzado',
@@ -133,6 +134,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       dimInnerDiameter:'Inner diameter', dimInnerWidth:'Inner width', dimInnerDepth:'Inner depth', dimOpening:'Rear opening', dimWidth:'Width', dimHeight:'Height', dimThickness:'Thickness', dimTargetWeight:'Target weight range',
       dimTotalWidth:'Overall width', dimCrownHeight:'Crown height', dimToothCount:'Tooth count', dimToothSpacing:'Tooth spacing', dimToothDiameter:'Tooth diameter (root/tip)',
       dimHoopOuterDiameter:'Hoop outer diameter', dimHoopWireDiameter:'Hoop wire thickness', dimHookTipDiameter:'Hook tip thickness',
+      dimHoopBodySpan:'Body span', dimHoopPostLength:'Post length', dimHoopPostTipDiameter:'Post tip thickness',
       dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
       dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
@@ -241,9 +243,9 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       rows.push([t('dimToothCount'), String(cp.hairCombToothCount||10)]);
       rows.push([t('dimToothDiameter'), (cp.hairCombToothRootDiameterMm||2.9).toFixed(1)+' / '+(cp.hairCombToothTipDiameterMm||1.7).toFixed(1)+' mm']);
     } else if(params.type==='hoopEarring'){
-      rows.push([t('dimHoopOuterDiameter'), (cp.hoopOuterDiameterMm||params.mainSize).toFixed(1)+' mm']);
-      rows.push([t('dimHoopWireDiameter'), (cp.hoopWireDiameterMm||2.2).toFixed(1)+' mm']);
-      rows.push([t('dimHookTipDiameter'), (cp.hoopHookTipDiameterMm||1.3).toFixed(1)+' mm']);
+      rows.push([t('dimHoopBodySpan'), (cp.hoopBodySpanMm||params.mainSize).toFixed(1)+' mm']);
+      rows.push([t('dimHoopPostLength'), (cp.hoopPostLengthMm||11.5).toFixed(1)+' mm']);
+      rows.push([t('dimHoopPostTipDiameter'), (cp.hoopPostTipDiameterMm||1.3).toFixed(1)+' mm']);
     } else if(params.type==='cuffBracelet'){
       rows.push([t('dimInnerWidth'), (params.mainSize*1.20).toFixed(1)+' mm']);
       rows.push([t('dimInnerDepth'), (params.mainSize*0.85).toFixed(1)+' mm']);
