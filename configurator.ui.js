@@ -17,80 +17,16 @@
     {key:'l',  circMm:190, label_es:'L · muñeca ~19cm',   label_en:'L · wrist ~19cm'},
     {key:'xl', circMm:205, label_es:'XL · muñeca ~20.5cm',label_en:'XL · wrist ~20.5cm'},
   ].map(w=>Object.assign(w,{diameterMm: w.circMm/Math.PI + 8}));
-  const CHOKER_SIZES = [
-    {key:'s', label_es:'S · cuello estrecho', label_en:'S · narrow neck'},
-    {key:'m', label_es:'M · cuello medio', label_en:'M · medium neck'},
-    {key:'l', label_es:'L · cuello amplio', label_en:'L · broad neck'},
+  const HAIRCOMB_SIZES = [
+    {key:'s', totalWidthMm:95, topHeightMm:38, label_es:'S · 95 mm · cabezal 38 mm', label_en:'S · 95 mm · 38 mm crown'},
+    {key:'m', totalWidthMm:110, topHeightMm:42, label_es:'M · 110 mm · cabezal 42 mm', label_en:'M · 110 mm · 42 mm crown'},
+    {key:'l', totalWidthMm:120, topHeightMm:48, label_es:'L · 120 mm · cabezal 48 mm', label_en:'L · 120 mm · 48 mm crown'},
   ];
-  const CHOKER_PROFILES = [
-    {
-      key:'torque', label_es:'Torque · abierto, ligero y escultórico', label_en:'Torque · open, light and sculptural',
-      hint_es:'Arco abierto que abraza la base del cuello, con contacto posterior mínimo.',
-      hint_en:'Open arc around the base of the neck with minimal posterior contact.',
-      widths:[115,122,130], depths:[92,98,106], openings:[60,66,72],
-      frontHeight:42, rearHeightRatio:.58, wall:4.8, frontDrop:8, rearLift:4, frontProjection:.030,
-      weightRange:[60,95]
-    },
-    {
-      key:'cervical', label_es:'Collar cervical · envolvente y arquitectónico', label_en:'Cervical collar · enveloping and architectural',
-      hint_es:'Mayor superficie, apoyo distribuido y expansión controlada sobre las clavículas.',
-      hint_en:'Greater surface area, distributed support and controlled expansion over the clavicles.',
-      widths:[118,126,134], depths:[96,104,112], openings:[62,66,72],
-      frontHeight:52, rearHeightRatio:.70, wall:5.6, frontDrop:10, rearLift:4, frontProjection:.065,
-      weightRange:[90,150]
-    },
-    {
-      key:'sculptural', label_es:'Gargantilla escultórica · frontal y dominante', label_en:'Sculptural choker · frontal and dominant',
-      hint_es:'Volumen concentrado al frente, menor altura posterior y apertura más contenida.',
-      hint_en:'Volume concentrated at the front, reduced posterior height and a tighter opening.',
-      widths:[112,119,127], depths:[90,96,102], openings:[58,62,66],
-      frontHeight:34, rearHeightRatio:.50, wall:4.6, frontDrop:10, rearLift:3, frontProjection:.090,
-      weightRange:[40,70]
-    }
-  ];
-
-  const HEAD_SIZES = [
-    {key:'s', innerWidthMm:132, innerDepthMm:154, label_es:'S · de oreja a oreja ~132 mm', label_en:'S · ear to ear ~132 mm'},
-    {key:'m', innerWidthMm:142, innerDepthMm:164, label_es:'M · de oreja a oreja ~142 mm', label_en:'M · ear to ear ~142 mm'},
-    {key:'l', innerWidthMm:152, innerDepthMm:174, label_es:'L · de oreja a oreja ~152 mm', label_en:'L · ear to ear ~152 mm'},
-  ];
-  const HEAD_PROFILES = [
-    {
-      key:'frontal', label_es:'Tiara frontal · presencia escultórica', label_en:'Frontal tiara · sculptural presence',
-      hint_es:'Concentra la altura y el volumen sobre la frente, con brazos laterales ligeros.',
-      hint_en:'Concentrates height and volume over the forehead with lightweight side arms.',
-      arcDeg:188, frontHeight:52, sideHeightRatio:.30, rearHeightRatio:.18, wall:3.2, crownRise:11, templeDrop:7, frontProjection:.055,
-      weightRange:[35,48]
-    },
-    {
-      key:'complete', label_es:'Diadema completa · de oreja a oreja', label_en:'Full headband · ear to ear',
-      hint_es:'Distribuye la estructura sobre la curvatura craneal y reduce la presión puntual.',
-      hint_en:'Distributes the structure over the cranial curve and reduces pressure points.',
-      arcDeg:222, frontHeight:43, sideHeightRatio:.58, rearHeightRatio:.34, wall:3.5, crownRise:15, templeDrop:9, frontProjection:.035,
-      weightRange:[42,55]
-    },
-    {
-      key:'modular', label_es:'Combinación modular · frente y laterales', label_en:'Modular combination · front and sides',
-      hint_es:'Mantiene un frente dominante y desarrolla apoyos laterales de transición gradual.',
-      hint_en:'Keeps a dominant front while developing gradual transitional side supports.',
-      arcDeg:208, frontHeight:58, sideHeightRatio:.48, rearHeightRatio:.24, wall:3.4, crownRise:13, templeDrop:8, frontProjection:.070,
-      weightRange:[38,52]
-    }
-  ];
-  const COMB_SIZES = [
-    {key:'s', totalWidthMm:95, topHeightMm:45, toothLengthMm:32, label_es:'S · 95 mm · dientes 32 mm', label_en:'S · 95 mm · 32 mm teeth'},
-    {key:'m', totalWidthMm:110, topHeightMm:50, toothLengthMm:35, label_es:'M · 110 mm · dientes 35 mm', label_en:'M · 110 mm · 35 mm teeth'},
-    {key:'l', totalWidthMm:120, topHeightMm:58, toothLengthMm:38, label_es:'L · 120 mm · dientes 38 mm', label_en:'L · 120 mm · 38 mm teeth'},
-  ];
-  const COMB_PROFILES = [
-    {key:'organic',label_es:'Orgánica · ligera y aérea',label_en:'Organic · light and airy',hint_es:'Vacíos amplios, curvas fluidas y siete dientes para una sujeción ligera.',hint_en:'Wide voids, fluid curves and seven teeth for light hold.',teeth:7, bodyWall:3.6, toothDiameter:2.6, arch:8, depth:10.5, cranialCurve:8.5, insertionAngle:17, toothSweep:7.5, tipReturn:2.8, weightRange:[28,42]},
-    {key:'tectonic',label_es:'Tectónica · sólida y arquitectónica',label_en:'Tectonic · solid and architectural',hint_es:'Volúmenes marcados, ocho dientes y un cuerpo superior de mayor presencia.',hint_en:'Defined volumes, eight teeth and a more substantial upper body.',teeth:8, bodyWall:4.4, toothDiameter:2.9, arch:5, depth:11.5, cranialCurve:7.0, insertionAngle:14, toothSweep:6.2, tipReturn:2.4, weightRange:[38,55]},
-    {key:'hybrid',label_es:'Híbrida · equilibrio entre ligereza y solidez',label_en:'Hybrid · balanced lightness and solidity',hint_es:'Cuerpo escultórico perforado y nueve dientes con transición estructural reforzada.',hint_en:'Perforated sculptural body and nine teeth with reinforced structural transitions.',teeth:9, bodyWall:4.0, toothDiameter:2.8, arch:7, depth:11.0, cranialCurve:8.0, insertionAngle:16, toothSweep:7.0, tipReturn:2.6, weightRange:[34,50]},
-  ];
-  const MONEY_CLIP_SIZES = [
-    {key:'s', lengthMm:50, widthMm:20, thicknessMm:1.8, capacityMm:3.0, label_es:'S · 50 × 20 mm · billetes', label_en:'S · 50 × 20 mm · banknotes'},
-    {key:'m', lengthMm:55, widthMm:23, thicknessMm:2.0, capacityMm:3.8, label_es:'M · 55 × 23 mm · estándar', label_en:'M · 55 × 23 mm · standard'},
-    {key:'l', lengthMm:60, widthMm:25, thicknessMm:2.2, capacityMm:4.6, label_es:'L · 60 × 25 mm · billetes y tarjetas', label_en:'L · 60 × 25 mm · notes and cards'},
+  const HOOP_EARRING_SIZES = [
+    {key:'s', outerDiamMm:20, label_es:'S · 20 mm', label_en:'S · 20 mm'},
+    {key:'m', outerDiamMm:26, label_es:'M · 26 mm', label_en:'M · 26 mm'},
+    {key:'l', outerDiamMm:34, label_es:'L · 34 mm', label_en:'L · 34 mm'},
+    {key:'xl', outerDiamMm:40, label_es:'XL · 40 mm', label_en:'XL · 40 mm'},
   ];
   const PENDANT_SIZES = [
     {key:'sm', mainSize:23.5, label_es:'Pequeño · 23.5 mm', label_en:'Small · 23.5 mm'},
@@ -106,15 +42,15 @@
     ring:{options:RING_SIZES, key:'us', kind:'ring'},
     bangle:{options:WRIST_SIZES, key:'key', kind:'wrist'},
     cuffBracelet:{options:WRIST_SIZES, key:'key', kind:'wrist'},
-    choker:{options:CHOKER_SIZES, key:'key', kind:'neck'},
-    headpiece:{options:HEAD_SIZES, key:'key', kind:'head'},
+    haircomb:{options:HAIRCOMB_SIZES, key:'key', kind:'haircomb'},
+    hoopEarring:{options:HOOP_EARRING_SIZES, key:'key', kind:'hoopEarring'},
     earCuff:null,
     pendant:{options:PENDANT_SIZES, key:'key', kind:'pendant'},
     cufflinks:null,
   };
 
   function baseParamsForType(pieceType){
-    const openDefaults={cuffBracelet:70,choker:72,headpiece:152,earCuff:70};
+    const openDefaults={cuffBracelet:70,earCuff:70};
     return {
       type:pieceType,faceShape:'round',mainSize:18.4,bandWidth:5.2,opening:openDefaults[pieceType]||0,segments:208,
       organic:.28,architectural:.74,longitudinal:.56,asymmetry:.10,surfaceRelief:.052,sideRelief:.036,
@@ -129,9 +65,6 @@
   let selectedType=null;
   let selectedSizeIndex=0;
   let selectedChainFit=1;
-  let selectedChokerProfile=0;
-  let selectedHeadProfile=0;
-  let selectedCombProfile=0;
   const typeGrid=document.getElementById('agdpTypeGrid');
   const generateBtn=document.getElementById('agdpGenerateBtn');
   const orderBtn=document.getElementById('agdpOrderBtn');
@@ -153,15 +86,6 @@
   const sizeWrap=document.getElementById('agdpSizeWrap');
   const sizeSelect=document.getElementById('agdpSizeSelect');
   const sizeHint=document.getElementById('agdpSizeHint');
-  const chokerProfileWrap=document.getElementById('agdpChokerProfileWrap');
-  const chokerProfileSelect=document.getElementById('agdpChokerProfileSelect');
-  const chokerProfileHint=document.getElementById('agdpChokerProfileHint');
-  const headProfileWrap=document.getElementById('agdpHeadProfileWrap');
-  const headProfileSelect=document.getElementById('agdpHeadProfileSelect');
-  const headProfileHint=document.getElementById('agdpHeadProfileHint');
-  const combProfileWrap=document.getElementById('agdpCombProfileWrap');
-  const combProfileSelect=document.getElementById('agdpCombProfileSelect');
-  const combProfileHint=document.getElementById('agdpCombProfileHint');
   const chainFitWrap=document.getElementById('agdpChainFitWrap');
   const chainFitSelect=document.getElementById('agdpChainFitSelect');
   const chainFitLabel=document.getElementById('agdpChainFitLabel');
@@ -170,7 +94,7 @@
   const I18N = {
     es:{
       typeRing:'Anillo', typePendant:'Colgante', typeBangle:'Brazalete rígido', typeCuffBracelet:'Brazalete abierto',
-      typeChoker:'Gargantilla rígida', typeHeadpiece:'Tiara / diadema', typeComb:'Peineta', typeClip:'Clip', typeMoneyClip:'Money clip', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
+      typeHaircomb:'Peineta', typeHoopEarring:'Hoop earring', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
 generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
@@ -179,24 +103,21 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
       sizeHintPendant:'Tamaño de la placa. La apertura para cadena se ajusta abajo.',
-      sizeHintNeck:'La talla se adapta al perfil seleccionado dentro de los rangos cervicales recomendados.',
-      sizeHintHead:'La talla define el ancho interior de oreja a oreja y la curvatura craneal de apoyo.',
-      sizeHintComb:'La talla controla el ancho total, la altura superior y la longitud funcional de los dientes.',
-      sizeHintMoneyClip:'La talla ajusta longitud, ancho, espesor y capacidad para billetes o tarjetas.',
-      combProfileLabel:'Tipología de peineta',
-      headProfileLabel:'Configuración de cabeza',
-      chokerProfileLabel:'Volumetría cervical',
+      sizeHintHaircomb:'La talla controla el ancho total (fijo, con dientes y riel de seguridad estándar) y la altura del cabezal decorado.',
+      sizeHintHoopEarring:'La talla determina el diámetro exterior del aro. El gancho y el cierre son de calibre fijo por seguridad.',
       chainFitLabel:'Grosor de cadena',
       dimsTitle:'Medidas finales',
-      dimInnerDiameter:'Diámetro interior', dimInnerWidth:'Ancho interior', dimInnerDepth:'Fondo interior', dimOpening:'Apertura posterior', dimFrontHeight:'Altura frontal', dimRearHeight:'Altura posterior', dimWidth:'Ancho', dimHeight:'Alto', dimThickness:'Espesor', dimTargetWeight:'Rango de peso objetivo', dimEarToEar:'Interior de oreja a oreja', dimCranialDepth:'Fondo craneal', dimArc:'Cobertura angular', dimCrownRise:'Elevación de coronilla', dimTotalWidth:'Ancho total', dimTopHeight:'Altura superior', dimToothLength:'Longitud de dientes', dimToothCount:'Número de dientes', dimToothSpacing:'Separación entre dientes', dimCranialCurve:'Curvatura craneal', dimInsertionAngle:'Ángulo de inserción', dimClipLength:'Longitud del mecanismo', dimClipWidth:'Ancho del frente', dimClipHeight:'Alto del frente', dimClipGap:'Garganta útil', dimChainPassage:'Paso para cadena', dimMoneyClipLength:'Longitud', dimMoneyClipWidth:'Ancho', dimMoneyClipCapacity:'Capacidad útil', dimMoneyClipReturn:'Retorno elástico',
+      dimInnerDiameter:'Diámetro interior', dimInnerWidth:'Ancho interior', dimInnerDepth:'Fondo interior', dimOpening:'Apertura posterior', dimWidth:'Ancho', dimHeight:'Alto', dimThickness:'Espesor', dimTargetWeight:'Rango de peso objetivo',
+      dimTotalWidth:'Ancho total', dimCrownHeight:'Altura de cabezal', dimToothCount:'Número de dientes', dimToothSpacing:'Separación entre dientes', dimToothDiameter:'Diámetro de diente (raíz/punta)',
+      dimHoopOuterDiameter:'Diámetro exterior del aro', dimHoopWireDiameter:'Grosor del aro', dimHookTipDiameter:'Grosor de punta del gancho',
       dimOverall:'Dimensión total', dimPlate:'Placa', dimWeight:'Peso aprox. en plata',
-      dimNominal:'Talla solicitada', dimDesign:'Diámetro de diseño (con compensación)', dimStructuralModule:'Módulo estructural', dimFormalEnvelope:'Envolvente formal', dimProjection:'Proyección',
+      dimNominal:'Talla solicitada', dimDesign:'Diámetro de diseño (con compensación)',
       weightLight:'Colgante ligero', weightMedium:'Colgante medio', weightHeavy:'Colgante pesado — considerar mecanismo reforzado',
-      tagType:{ring:'Anillo',bangle:'Brazalete rígido',cuffBracelet:'Brazalete abierto',choker:'Gargantilla rígida',headpiece:'Tiara / diadema',comb:'Peineta',clip:'Clip',moneyClip:'Money clip',pendant:'Colgante',cufflinks:'Mancuernillas',earCuff:'Ear cuff'},
+      tagType:{ring:'Anillo',bangle:'Brazalete rígido',cuffBracelet:'Brazalete abierto',haircomb:'Peineta',hoopEarring:'Hoop earring',pendant:'Colgante',cufflinks:'Mancuernillas',earCuff:'Ear cuff'},
     },
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
-      typeChoker:'Choker', typeHeadpiece:'Tiara', typeComb:'Comb', typeClip:'Clip', typeMoneyClip:'Money clip', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
+      typeHaircomb:'Hair comb', typeHoopEarring:'Hoop earring', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
 generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
@@ -205,20 +126,17 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
       sizeHintPendant:'Plate size. Chain opening is set below.',
-      sizeHintNeck:'Size adapts to the selected profile within the recommended cervical ranges.',
-      sizeHintHead:'Size defines the inner ear-to-ear width and the supporting cranial curvature.',
-      sizeHintComb:'Size controls overall width, upper-body height and functional tooth length.',
-      sizeHintMoneyClip:'Size adjusts length, width, thickness and capacity for banknotes or cards.',
-      combProfileLabel:'Comb typology',
-      headProfileLabel:'Head configuration',
-      chokerProfileLabel:'Cervical volume',
+      sizeHintHaircomb:'Size controls overall width (fixed, with standard safety teeth and spine) and the decorated crown height.',
+      sizeHintHoopEarring:'Size determines the hoop\'s outer diameter. The hook and closure are fixed-gauge for safety.',
       chainFitLabel:'Chain thickness',
       dimsTitle:'Final measurements',
-      dimInnerDiameter:'Inner diameter', dimInnerWidth:'Inner width', dimInnerDepth:'Inner depth', dimOpening:'Rear opening', dimFrontHeight:'Front height', dimRearHeight:'Rear height', dimWidth:'Width', dimHeight:'Height', dimThickness:'Thickness', dimTargetWeight:'Target weight range', dimEarToEar:'Inner ear-to-ear width', dimCranialDepth:'Cranial depth', dimArc:'Angular coverage', dimCrownRise:'Crown rise', dimTotalWidth:'Overall width', dimTopHeight:'Upper height', dimToothLength:'Tooth length', dimToothCount:'Tooth count', dimToothSpacing:'Tooth spacing', dimCranialCurve:'Cranial curvature', dimInsertionAngle:'Insertion angle', dimClipLength:'Mechanism length', dimClipWidth:'Front width', dimClipHeight:'Front height', dimClipGap:'Functional throat', dimChainPassage:'Chain passage', dimMoneyClipLength:'Length', dimMoneyClipWidth:'Width', dimMoneyClipCapacity:'Usable capacity', dimMoneyClipReturn:'Spring return',
+      dimInnerDiameter:'Inner diameter', dimInnerWidth:'Inner width', dimInnerDepth:'Inner depth', dimOpening:'Rear opening', dimWidth:'Width', dimHeight:'Height', dimThickness:'Thickness', dimTargetWeight:'Target weight range',
+      dimTotalWidth:'Overall width', dimCrownHeight:'Crown height', dimToothCount:'Tooth count', dimToothSpacing:'Tooth spacing', dimToothDiameter:'Tooth diameter (root/tip)',
+      dimHoopOuterDiameter:'Hoop outer diameter', dimHoopWireDiameter:'Hoop wire thickness', dimHookTipDiameter:'Hook tip thickness',
       dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
-      dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)', dimStructuralModule:'Structural module', dimFormalEnvelope:'Formal envelope', dimProjection:'Projection',
+      dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
-      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',choker:'Rigid choker',headpiece:'Tiara / headband',comb:'Comb',clip:'Clip',moneyClip:'Money clip',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
+      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',haircomb:'Hair comb',hoopEarring:'Hoop earring',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
     }
   };
 
@@ -231,7 +149,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
 
   function renderSizeOptions(){
     const cfg = selectedType ? SIZE_CONFIG[selectedType] : null;
-    if(!cfg){ sizeWrap.style.display='none'; chokerProfileWrap.style.display='none'; headProfileWrap.style.display='none'; combProfileWrap.style.display='none'; chainFitWrap.style.display='none'; return; }
+    if(!cfg){ sizeWrap.style.display='none'; chainFitWrap.style.display='none'; return; }
     sizeWrap.style.display='block';
     sizeSelect.innerHTML='';
     cfg.options.forEach((opt,i)=>{
@@ -241,27 +159,8 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     });
     if(selectedSizeIndex>=cfg.options.length) selectedSizeIndex=0;
     sizeSelect.value = selectedSizeIndex;
-    const hintKey = cfg.kind==='ring'?'sizeHintRing':cfg.kind==='wrist'?'sizeHintWrist':cfg.kind==='neck'?'sizeHintNeck':cfg.kind==='head'?'sizeHintHead':cfg.kind==='comb'?'sizeHintComb':cfg.kind==='moneyClip'?'sizeHintMoneyClip':'sizeHintPendant';
+    const hintKey = cfg.kind==='ring'?'sizeHintRing':cfg.kind==='wrist'?'sizeHintWrist':cfg.kind==='haircomb'?'sizeHintHaircomb':cfg.kind==='hoopEarring'?'sizeHintHoopEarring':'sizeHintPendant';
     sizeHint.textContent = t(hintKey);
-    // Choker and headpiece profiles are no longer a client-facing choice —
-    // the seed picks among them automatically, so the picker stays hidden
-    // regardless of category.
-    chokerProfileWrap.style.display='none';
-    headProfileWrap.style.display='none';
-    if(cfg.kind==='comb'){
-      combProfileWrap.style.display='block';
-      combProfileSelect.innerHTML='';
-      COMB_PROFILES.forEach((profile,i)=>{
-        const o=document.createElement('option');
-        o.value=i; o.textContent=profile['label_'+currentLang]||profile.label_es;
-        combProfileSelect.appendChild(o);
-      });
-      combProfileSelect.value=selectedCombProfile;
-      const profile=COMB_PROFILES[selectedCombProfile]||COMB_PROFILES[0];
-      combProfileHint.textContent=profile['hint_'+currentLang]||profile.hint_es;
-    }else{
-      combProfileWrap.style.display='none';
-    }
     if(cfg.kind==='pendant'){
       chainFitWrap.style.display='block';
       chainFitLabel.textContent = t('chainFitLabel');
@@ -279,21 +178,6 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
 
   sizeSelect.addEventListener('change',()=>{ selectedSizeIndex = Number(sizeSelect.value); });
   chainFitSelect.addEventListener('change',()=>{ selectedChainFit = Number(chainFitSelect.value); });
-  chokerProfileSelect.addEventListener('change',()=>{
-    selectedChokerProfile=Number(chokerProfileSelect.value);
-    const profile=CHOKER_PROFILES[selectedChokerProfile]||CHOKER_PROFILES[0];
-    chokerProfileHint.textContent=profile['hint_'+currentLang]||profile.hint_es;
-  });
-  headProfileSelect.addEventListener('change',()=>{
-    selectedHeadProfile=Number(headProfileSelect.value);
-    const profile=HEAD_PROFILES[selectedHeadProfile]||HEAD_PROFILES[0];
-    headProfileHint.textContent=profile['hint_'+currentLang]||profile.hint_es;
-  });
-  combProfileSelect.addEventListener('change',()=>{
-    selectedCombProfile=Number(combProfileSelect.value);
-    const profile=COMB_PROFILES[selectedCombProfile]||COMB_PROFILES[0];
-    combProfileHint.textContent=profile['hint_'+currentLang]||profile.hint_es;
-  });
 
   langSwitch.querySelectorAll('.agdp-lang-btn').forEach(btn=>{
     btn.addEventListener('click',()=>{
@@ -335,35 +219,31 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     const dim = result.audit.bounds.dim;
     const rows = [];
     const overallStr = dim.map(d=>d.toFixed(1)).join(' × ')+' mm';
+    // Type-specific builders (clip, money clip, haircomb, hoopEarring)
+    // write their own derived dimensions onto the engine's INTERNAL
+    // compiled params object, exposed here as result.compiledParams --
+    // NOT onto the `params` object this file itself built and passed in,
+    // which the engine never mutates in place (it works from its own
+    // copy, produced by GenerationLayers.compile()). Falls back to
+    // `params` for any field that happens to exist on both, but reads
+    // requiring engine-computed values (tooth counts, hook gauge, etc.)
+    // must come from compiledParams or they will always be undefined.
+    const cp = result.compiledParams || params;
     // Curated for the customer: only dimensions that answer "will it fit
     // me", "how big is it", "how heavy is it". Internal engineering
-    // parameters (structural module, formal envelope, projection, the
-    // target weight *range* used only to accept/reject during
-    // generation) are left out of this default view -- they described
-    // the generation process, not the object the customer receives.
+    // parameters are left out of this default view.
     if(params.type==='ring'){
       rows.push([t('dimNominal'), (params.mainSizeNominal!=null?params.mainSizeNominal:params.mainSize).toFixed(2)+' mm']);
       rows.push([t('dimWidth'), params.bandWidth.toFixed(1)+' mm']);
-    } else if(params.type==='choker'){
-      rows.push([t('dimInnerWidth'), params.mainSize.toFixed(1)+' mm']);
-      rows.push([t('dimInnerDepth'), params.chokerInnerDepthMm.toFixed(1)+' mm']);
-      rows.push([t('dimOpening'), params.chokerOpeningMm.toFixed(1)+' mm']);
-    } else if(params.type==='headpiece'){
-      rows.push([t('dimEarToEar'), params.mainSize.toFixed(1)+' mm']);
-      rows.push([t('dimCranialDepth'), params.headInnerDepthMm.toFixed(1)+' mm']);
-      rows.push([t('dimArc'), params.headArcDeg.toFixed(0)+'°']);
-    } else if(params.type==='comb'){
+    } else if(params.type==='haircomb'){
       rows.push([t('dimTotalWidth'), params.mainSize.toFixed(1)+' mm']);
-      rows.push([t('dimToothLength'), params.combToothLengthMm.toFixed(1)+' mm']);
-      rows.push([t('dimToothCount'), String(params.combToothCount)]);
-    } else if(params.type==='moneyClip'){
-      rows.push([t('dimMoneyClipLength'), params.moneyClipLengthMm.toFixed(1)+' mm']);
-      rows.push([t('dimMoneyClipWidth'), params.moneyClipWidthMm.toFixed(1)+' mm']);
-      rows.push([t('dimMoneyClipCapacity'), params.moneyClipGapMm.toFixed(1)+' mm']);
-    } else if(params.type==='clip'){
-      rows.push([t('dimClipLength'), params.clipLengthMm.toFixed(1)+' mm']);
-      rows.push([t('dimClipWidth'), params.clipFaceWidthMm.toFixed(1)+' mm']);
-      rows.push([t('dimClipHeight'), params.clipFaceHeightMm.toFixed(1)+' mm']);
+      rows.push([t('dimCrownHeight'), (cp.combTopHeightMm||0).toFixed(1)+' mm']);
+      rows.push([t('dimToothCount'), String(cp.hairCombToothCount||10)]);
+      rows.push([t('dimToothDiameter'), (cp.hairCombToothRootDiameterMm||2.9).toFixed(1)+' / '+(cp.hairCombToothTipDiameterMm||1.7).toFixed(1)+' mm']);
+    } else if(params.type==='hoopEarring'){
+      rows.push([t('dimHoopOuterDiameter'), (cp.hoopOuterDiameterMm||params.mainSize).toFixed(1)+' mm']);
+      rows.push([t('dimHoopWireDiameter'), (cp.hoopWireDiameterMm||2.2).toFixed(1)+' mm']);
+      rows.push([t('dimHookTipDiameter'), (cp.hoopHookTipDiameterMm||1.3).toFixed(1)+' mm']);
     } else if(params.type==='cuffBracelet'){
       rows.push([t('dimInnerWidth'), (params.mainSize*1.20).toFixed(1)+' mm']);
       rows.push([t('dimInnerDepth'), (params.mainSize*0.85).toFixed(1)+' mm']);
@@ -387,29 +267,18 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
 
   let generationSerial=0;
   const AGDP_MAX_GEOMETRY_ATTEMPTS=16;
-  // Even with careful WASM object disposal, memory in a long-lived tab
-  // still climbs generation over generation. Choker and headpiece cost
-  // more per attempt than other types, so they get a lower threshold.
   const AGDP_REFRESH_AFTER_N_GENERATIONS=6;
-  const AGDP_REFRESH_AFTER_N_GENERATIONS_HEAVY=4;
   function agdpGenerationCount(){ return Number(sessionStorage.getItem('agdp_gen_count')||'0'); }
   function agdpBumpGenerationCount(){
     try{ sessionStorage.setItem('agdp_gen_count', String(agdpGenerationCount()+1)); }catch(e){}
   }
-  // Resets the WASM engine only -- not the page. A full page reload was
-  // the original safety net, but it meant leaving the site itself (nav,
-  // hero, wherever the visitor was) for a moment, which risks reading as
-  // the tool being broken and losing the visitor entirely rather than as
-  // routine maintenance. window.AGDP_resetWasmModule (added alongside
-  // this) drops the cached WASM module reference; once nothing else
-  // references it, the browser's own garbage collector frees the entire
-  // accumulated heap in one shot -- the actual mechanism a full reload
-  // was relying on, without needing to leave the page to get it. Falls
-  // back to the old full-reload behavior only if that function is ever
-  // unavailable (e.g. a partial deploy with mismatched script versions).
+  // Resets the WASM engine only -- not the page. See prior version's
+  // comment history for the full rationale; unchanged here except that
+  // the heavy-type (choker/headpiece) lower threshold no longer applies,
+  // since neither type exists anymore -- every type now uses the same
+  // standard refresh threshold.
   async function agdpMaybeResetEngineIfNeeded(){
-    const isHeavyType = (selectedType==='choker' || selectedType==='headpiece');
-    const threshold = isHeavyType ? AGDP_REFRESH_AFTER_N_GENERATIONS_HEAVY : AGDP_REFRESH_AFTER_N_GENERATIONS;
+    const threshold = AGDP_REFRESH_AFTER_N_GENERATIONS;
     if(agdpGenerationCount()<threshold) return;
     try{ sessionStorage.setItem('agdp_gen_count','0'); }catch(e){}
     if(typeof window.AGDP_resetWasmModule==='function'){
@@ -465,96 +334,23 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         result.params.mainSize=shrinkCompensatedDiameter(opt.diameterMm);
       }else if(cfg.kind==='wrist'){
         result.params.mainSize=opt.diameterMm;
-      }else if(cfg.kind==='neck'){
-        const chokerPickRng=SeededVariation.createGenerator(currentSeed+'|choker-profile-autopick');
-        const autoChokerIdx=Math.floor(chokerPickRng()*CHOKER_PROFILES.length);
-        const profile=CHOKER_PROFILES[autoChokerIdx]||CHOKER_PROFILES[0];
-        const idx=Math.max(0,Math.min(2,selectedSizeIndex));
-        const innerWidth=profile.widths[idx], innerDepth=profile.depths[idx], openingMm=profile.openings[idx];
-        result.params.mainSize=innerWidth;
-        result.params.chokerInnerDepthMm=innerDepth;
-        result.params.chokerDepthRatio=innerDepth/innerWidth;
-        result.params.chokerOpeningMm=openingMm;
-        result.params.opening=2*Math.asin(clamp(openingMm/innerDepth,0.05,0.92))*180/Math.PI;
-        result.params.bandWidth=profile.frontHeight;
-        result.params.chokerRearHeightRatio=profile.rearHeightRatio;
-        result.params.chokerWallMm=profile.wall;
-        result.params.chokerFrontDropMm=profile.frontDrop;
-        result.params.chokerRearLiftMm=profile.rearLift;
-        result.params.chokerFrontProjection=profile.frontProjection;
-        result.params.chokerProfile=profile.key;
-        result.params.chokerWeightRange=profile.weightRange.slice();
-        // Further reduced from 160 to 128: verified 14/15 reliable, ~200MB
-        // per click (down from ~220MB at 160, ~315MB at the original 288).
-        // 96 was also tested but showed a slightly bigger reliability dip
-        // (13/15) for smaller additional savings, so 128 is the balance
-        // point.
-        result.params.segments=128;
-      }else if(cfg.kind==='head'){
-        const profile=HEAD_PROFILES.find(hp=>hp.key==='modular')||HEAD_PROFILES[0];
-        result.params.mainSize=opt.innerWidthMm;
-        result.params.headInnerDepthMm=opt.innerDepthMm;
-        result.params.headDepthRatio=opt.innerDepthMm/opt.innerWidthMm;
-        result.params.opening=360-profile.arcDeg;
-        result.params.headArcDeg=profile.arcDeg;
-        result.params.bandWidth=profile.frontHeight;
-        result.params.headSideHeightRatio=profile.sideHeightRatio;
-        result.params.headRearHeightRatio=profile.rearHeightRatio;
-        result.params.headWallMm=profile.wall;
-        result.params.headCrownRiseMm=profile.crownRise;
-        result.params.headTempleDropMm=profile.templeDrop;
-        result.params.headFrontProjection=profile.frontProjection;
-        result.params.headProfile=profile.key;
-        result.params.headWeightRange=profile.weightRange.slice();
-        // Same reduction and same reasoning as choker above.
-        result.params.segments=136;
-      }else if(cfg.kind==='comb'){
-        const profile=COMB_PROFILES[selectedCombProfile]||COMB_PROFILES[0];
+      }else if(cfg.kind==='haircomb'){
+        // mainSize is the comb's fixed overall width (teeth+spine geometry
+        // itself is locked in makeHairCombManifold regardless of this
+        // value's exact number -- this only sizes the spine's own span so
+        // the fixed tooth count/spacing lays out across the requested
+        // width). combTopHeightMm sets the crown's height envelope, which
+        // IS seed/decoration-driven within ProportionEngine's haircomb range.
         result.params.mainSize=opt.totalWidthMm;
-        result.params.bandWidth=opt.topHeightMm;
         result.params.combTopHeightMm=opt.topHeightMm;
-        result.params.combToothLengthMm=opt.toothLengthMm;
-        result.params.combToothCount=profile.teeth;
-        result.params.combBodyWallMm=profile.bodyWall;
-        result.params.combToothDiameterMm=profile.toothDiameter;
-        result.params.combArchMm=profile.arch;
-        result.params.combDepthMm=profile.depth;
-        result.params.combCranialCurveMm=profile.cranialCurve;
-        result.params.combInsertionAngleDeg=profile.insertionAngle;
-        result.params.combToothSweepMm=profile.toothSweep;
-        result.params.combTipReturnMm=profile.tipReturn;
-        result.params.combProfile=profile.key;
-        result.params.combWeightRange=profile.weightRange.slice();
-        result.params.combToothSpacingMm=(opt.totalWidthMm-18)/(profile.teeth-1);
-        result.params.segments=240;
-      }else if(cfg.kind==='moneyClip'){
-        result.params.mainSize=opt.lengthMm;
-        result.params.bandWidth=opt.widthMm;
-        result.params.moneyClipLengthMm=opt.lengthMm;
-        result.params.moneyClipWidthMm=opt.widthMm;
-        result.params.moneyClipThicknessMm=opt.thicknessMm;
-        result.params.moneyClipGapMm=opt.capacityMm;
-        result.params.moneyClipReturnRadiusMm=(opt.capacityMm+opt.thicknessMm)/2;
-        result.params.moneyClipRearLengthMm=opt.lengthMm-8;
-        result.params.segments=240;
+        result.params.segments=160;
+      }else if(cfg.kind==='hoopEarring'){
+        result.params.mainSize=opt.outerDiamMm;
+        result.params.segments=160;
       }else if(cfg.kind==='pendant'){
         result.params.mainSize=opt.mainSize;
         result.params.chainFitRadiusMm=(CHAIN_FIT[selectedChainFit]||CHAIN_FIT[1]).innerMm/2;
       }
-    }
-
-    if(selectedType==='clip'){
-      result.params.mainSize=32;
-      result.params.bandWidth=32;
-      result.params.clipLengthMm=36;
-      result.params.clipWidthMm=7.2;
-      result.params.clipFaceWidthMm=32;
-      result.params.clipFaceHeightMm=30;
-      result.params.clipThicknessMm=2.0;
-      result.params.clipGapMm=2.8;
-      result.params.clipSpringLengthMm=36;
-      result.params.clipChainPassageMm=3.2;
-      result.params.segments=224;
     }
 
     const requestedSeed=currentSeed;
@@ -618,16 +414,6 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       console.error('AGDP: no se obtuvo una geometría válida tras los reintentos',{
         type:selectedType,attempts:AGDP_MAX_GEOMETRY_ATTEMPTS,error:terminalEngineError,lastFailureReason
       });
-      // The customer-facing badge never shows technical detail (attempt
-      // counts, audit warnings, exception messages) — that belongs in
-      // console/telemetry only. The one distinction worth keeping public
-      // is whether the issue is genuinely actionable by the customer
-      // (check connection) versus simply trying another variant.
-      // Exception: when the page is loaded with ?debug=1 in the URL, the
-      // real technical reason is appended on-screen. This is an opt-in
-      // diagnostic path for testing on devices without devtools access —
-      // never shown to a visitor who hasn't deliberately added the
-      // parameter, and easy to remove once no longer needed.
       const debugMode=/[?&]debug=1\b/.test(window.location.search);
       const baseMsg=terminalEngineError?t('statusEngineError'):t('statusFailedAfterRetries');
       if(debugMode){
@@ -704,10 +490,6 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
   if(legacyCanvas) legacyCanvas.style.display='none';
   applyStaticTexts();
 
-  // If this load followed an automatic engine refresh (see
-  // agdpMaybeRefreshEngine above), restore the user's typology selection
-  // and regenerate with the same seed, so the reload reads as routine
-  // continuity rather than a lost selection.
   (function agdpRestoreAfterRefresh(){
     let restoreType=null, restoreSeed=null;
     try{

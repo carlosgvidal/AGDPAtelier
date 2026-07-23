@@ -7,9 +7,6 @@ window.addEventListener('error',function(e){
   if(statusWrap)statusWrap.style.display='flex';
   if(statusBadge){
     statusBadge.className='agdp-status-badge';
-    // Technical detail (e.message) is never shown publicly — it belongs in
-    // the console/telemetry, not in the customer-facing interface. Full
-    // detail is still logged below for internal diagnosis.
     statusBadge.textContent='The engine is adjusting the configuration — generate another variant.';
   }
   console.error('AGDP Atelier '+AGDP_APP_VERSION+' · error global',e);
@@ -146,6 +143,10 @@ const SeededVariation=(()=>{
         p.articulationOffset=(signed(rng)>=0?1:-1)*(68+sv*94);
         p.crownArc=range(rng,18,58);
         p.asymmetry=clamp((p.asymmetry||.1)+sv*.28,0,.72);
+      }else if(p.mutation.mode==='compression'){
+        p.smoothness=clamp((p.smoothness||.5)*(1-sv*.58),.04,1);
+        p.surfaceRelief=(p.surfaceRelief||.05)*(1+sv*1.12);
+        p.longitudinal=clamp((p.longitudinal||.5)*(1+sv*.72),0,1);
       }else if(p.mutation.mode==='proliferation'){
         p.nodes=Math.min(6,(p.nodes||0)+Math.round(1+sv*3));
         p.rivets=Math.min(5,(p.rivets||0)+Math.round(sv*3));
@@ -171,6 +172,26 @@ const SeededVariation=(()=>{
     }else if(p.type==='cufflinks'){
       p.holes=integer(rng,0,1);p.nodes=integer(rng,0,4);p.crown=false;p.spikes=0;
       p.nodeVolume=Math.min(p.nodeVolume,4.5);
+    }else if(p.type==='haircomb'){
+      // The comb's teeth and spine are fixed, safety-driven geometry
+      // (see configurator.geometry.js's makeHairCombManifold) and never
+      // read any of these seed-driven fields. Only the crown consults
+      // featureWeights/mutation, so limits here exist purely to keep the
+      // crown's own decoration proportionate to a modest hair accessory
+      // rather than to suppress any structural risk (there is none to
+      // suppress -- the risk-bearing geometry is locked upstream of the
+      // seed entirely).
+      p.holes=0; p.crown=false; p.spikes=0;
+      p.nodes=integer(rng,0,4);
+      p.nodeVolume=Math.min(p.nodeVolume,3.2);
+    }else if(p.type==='hoopEarring'){
+      // Same principle: the hook/ring/socket are fixed safety geometry
+      // (see makeHoopEarringManifold) untouched by the seed. Only the
+      // body/crown (built via the shared makeFaceManifold) is decorated,
+      // so its limits mirror cufflinks/pendant's modest, compact scale
+      // rather than a full ring/bangle's larger decorative budget.
+      p.holes=integer(rng,0,1);p.nodes=integer(rng,0,3);p.crown=false;p.spikes=0;
+      p.nodeVolume=Math.min(p.nodeVolume,3.5);
     }
     return p;
   }
@@ -197,10 +218,12 @@ const AGDP_PROPORTION_SYSTEM=Object.freeze({
   envelopeRangesMm:Object.freeze({
     pendant:Object.freeze([23.5,40]),
     cufflinks:Object.freeze([15,25]),
-    chokerTorque:Object.freeze([6,14]),
-    chokerSculptural:Object.freeze([28,52]),
-    chokerCervical:Object.freeze([34,58]),
-    headpiece:Object.freeze([18,42])
+    // ADDED: haircomb's editable envelope is the CROWN height only (the
+    // teeth/spine are fixed and outside this system entirely); hoopEarring's
+    // envelope is its decorated body, matching cufflinks' modest scale
+    // since both reuse the same shared makeFaceManifold body builder.
+    haircomb:Object.freeze([30,58]),
+    hoopEarring:Object.freeze([15,25])
   }),
   projectionRangesMm:Object.freeze({
     ring:Object.freeze([2.2,4.8]),
@@ -209,10 +232,8 @@ const AGDP_PROPORTION_SYSTEM=Object.freeze({
     earCuff:Object.freeze([2.2,4.8]),
     pendant:Object.freeze([3.2,7.2]),
     cufflinks:Object.freeze([3.2,7.0]),
-    chokerTorque:Object.freeze([3.8,6.0]),
-    chokerSculptural:Object.freeze([4.2,7.2]),
-    chokerCervical:Object.freeze([4.6,7.2]),
-    headpiece:Object.freeze([2.8,5.4])
+    haircomb:Object.freeze([2.6,5.5]),
+    hoopEarring:Object.freeze([2.6,5.5])
   })
 });
 
@@ -221,10 +242,7 @@ const ProportionEngine=(()=>{
   function normalizeCrownMass(x){return clamp(((x==null?1.75:x)-1.0)/3.8,0,1);}
   function normalizeNodeVolume(x){return clamp(((x==null?1.45:x)-1.0)/4.2,0,1);}
   function profileKey(p){
-    if(p.type!=='choker')return p.type;
-    if(p.chokerProfile==='torque')return 'chokerTorque';
-    if(p.chokerProfile==='cervical')return 'chokerCervical';
-    return 'chokerSculptural';
+    return p.type;
   }
   function rangeFor(table,key,fallback){return table[key]||fallback;}
   function apply(params){
@@ -273,34 +291,28 @@ const ProportionEngine=(()=>{
 
     if(widthRange){
       p.bandWidth=wearableWidthMm;
-    }else if(p.type==='choker'){
-      // BUG FIX: this generic envelope system used to unconditionally
-      // overwrite bandWidth/chokerWallMm/chokerFrontProjection, silently
-      // discarding the carefully-tuned per-profile dimensions ui.js sets
-      // for torque/cervical/sculptural (chokerProfile is only present
-      // once that profile selection has run). Diagnosed via Node.js
-      // harness: chokers were coming out 5-15x their target weight
-      // because this override replaced each profile's fixed wall/height
-      // with a generic, seed-random 3.8-7.2mm value regardless of which
-      // profile was actually chosen.
-      if(!p.chokerProfile){
-        p.bandWidth=envelopeHeightMm;
-        p.chokerWallMm=projectionDepthMm;
-        p.chokerFrontProjection=clamp(projectionDepthMm/Math.max(70,p.mainSize||100),.018,.095);
-      }
-    }else if(p.type==='headpiece'){
-      // Same bug, same fix: respect the profile system's own dimensions
-      // once headProfile has been set, rather than overwriting them here.
-      if(!p.headProfile){
-        p.bandWidth=envelopeHeightMm;
-        p.headWallMm=projectionDepthMm;
-        p.headFrontProjection=clamp(projectionDepthMm/Math.max(100,p.mainSize||140),.015,.052);
-      }
     }else if(p.type==='pendant'){
       p.mainSize=clamp(p.mainSize||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
       p.bandWidth=projectionDepthMm;
     }else if(p.type==='cufflinks'){
       p.mainSize=clamp(p.mainSize||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
+      p.bandWidth=projectionDepthMm;
+    }else if(p.type==='haircomb'){
+      // Only the crown's own height is governed by this system —
+      // combTopHeightMm, not mainSize (which is the fixed-teeth overall
+      // width and is set directly by ui.js's COMB_SIZES, never by the
+      // seed). Respecting a UI-set combTopHeightMm if present, same
+      // pattern as choker/headpiece's own profile-driven dimensions used
+      // to (see the historical note removed below for why that override
+      // pattern matters).
+      if(p.combTopHeightMm==null){
+        p.combTopHeightMm=clamp(p.combTopHeightMm||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
+      }
+    }else if(p.type==='hoopEarring'){
+      // mainSize here is the hoop's OWN outer diameter (fixed-ish, set by
+      // ui.js sizing), never the seed-driven envelope — only the
+      // decorated body's own implicit scale (via bandWidth as a depth
+      // proxy for makeFaceManifold's th argument) comes from this system.
       p.bandWidth=projectionDepthMm;
     }
     return p;
@@ -311,7 +323,7 @@ window.AGDP_PROPORTION_SYSTEM=AGDP_PROPORTION_SYSTEM;
 window.ProportionEngine=ProportionEngine;
 
 window.AGDP_GEOMETRY_CONSTRAINTS_V157=Object.freeze({
-  geometryRevision:'v203',
+  geometryRevision:'v200',
   minimumBridgeDiameterMm:1.4,
   minimumNeckClearanceMm:2.0,
   minimumHeadClearanceMm:2.5,
@@ -331,11 +343,22 @@ const SurfaceTopologyProfiles=Object.freeze({
   ring:Object.freeze({domain:'annular',u:'circumference',v:'width',closed:true,flow:'circumferential',relief:.90,voids:.72,rails:1.00,nodes:.72,edgeReserve:.10}),
   bangle:Object.freeze({domain:'annular',u:'circumference',v:'width',closed:true,flow:'circumferential',relief:1.00,voids:.82,rails:1.00,nodes:.82,edgeReserve:.09}),
   cuffBracelet:Object.freeze({domain:'openAnnular',u:'arc',v:'width',closed:false,flow:'circumferential',relief:1.00,voids:.70,rails:1.00,nodes:.82,edgeReserve:.16}),
-  choker:Object.freeze({domain:'cervicalShell',u:'cervicalArc',v:'height',closed:false,flow:'cervical',relief:.82,voids:.62,rails:.88,nodes:.72,edgeReserve:.18}),
-  headpiece:Object.freeze({domain:'cranialBand',u:'cranialArc',v:'height',closed:false,flow:'cranial',relief:.86,voids:.66,rails:.92,nodes:.80,edgeReserve:.18}),
   pendant:Object.freeze({domain:'sculpturalPendantVolume',u:'massField',v:'contour',closed:true,flow:'volumetric',relief:1.08,voids:.78,rails:.62,nodes:1.00,edgeReserve:.16}),
   cufflinks:Object.freeze({domain:'compactFace',u:'radial',v:'contour',closed:true,flow:'radial',relief:.96,voids:.70,rails:.55,nodes:.92,edgeReserve:.14}),
-  earCuff:Object.freeze({domain:'openAnnular',u:'arc',v:'width',closed:false,flow:'circumferential',relief:.72,voids:.45,rails:.80,nodes:.70,edgeReserve:.22})
+  earCuff:Object.freeze({domain:'openAnnular',u:'arc',v:'width',closed:false,flow:'circumferential',relief:.72,voids:.45,rails:.80,nodes:.70,edgeReserve:.22}),
+  // ADDED: haircomb's profile describes its CROWN only — the domain is a
+  // compact decorated face much like cufflinks (a sculptural volume sitting
+  // atop a fixed structural anchor), not an annular/circumferential flow,
+  // since the comb has no loop to wrap. voids stay low (0 in practice,
+  // since holes is force-zeroed for this type upstream) and rails are
+  // similarly de-emphasized since the crown has no rail system of its own.
+  haircomb:Object.freeze({domain:'compactFace',u:'radial',v:'contour',closed:true,flow:'radial',relief:.94,voids:.20,rails:.35,nodes:.85,edgeReserve:.12}),
+  // ADDED: hoopEarring's profile describes its decorated body, built via
+  // the same shared makeFaceManifold as cufflinks/pendant -- so it uses
+  // an identical compactFace/radial domain, distinguished mainly by a
+  // slightly lower relief ceiling (the body sits on a thin ring, not a
+  // thick band, so very deep relief risks visually overwhelming the hoop).
+  hoopEarring:Object.freeze({domain:'compactFace',u:'radial',v:'contour',closed:true,flow:'radial',relief:.88,voids:.55,rails:.50,nodes:.90,edgeReserve:.14})
 });
 function surfaceTopologyProfile(type){
   return SurfaceTopologyProfiles[type]||SurfaceTopologyProfiles.ring;
@@ -368,6 +391,13 @@ function adaptTopologyToSurface(params){
   });
   if(p.type==='earCuff'){
     p.holes=Math.min(p.holes,2);
+  }
+  if(p.type==='haircomb'){
+    // Teeth/spine are fixed and outside the seed's reach entirely (see
+    // makeHairCombManifold); this belt-and-suspenders zero here just
+    // ensures no accidental perforation param ever reaches the crown
+    // either, since the crown was never designed to carry through-holes.
+    p.holes=0;
   }
   return p;
 }
@@ -447,21 +477,6 @@ window.GenerationLayers = GenerationLayers;
    compression, tension, suspension, mass, void) and edges carrying a
    structural relation (loop, bridge, surround, traverse, interrupt) with
    their own properties (rigidity, torsion, width, continuity).
-
-   There are no discrete families here. The graph's own composition is
-   measured into continuous structural intensities (bridge presence, void
-   presence, node/mass presence, organism/curvature presence, loop
-   continuity) and every one of those intensities is blended into every
-   piece, of every category, by the same rules — exactly the same
-   "campo formal continuo" principle this engine already applies to
-   featureWeights, extended one level upstream of it. A ring, a comb, and
-   a money clip all read the same graph the same way; only their existing
-   per-type geometry builders differ, never the rules that feed them.
-
-   A universal structural-safety pass (enforceStructuralSafety) is applied
-   to every compiled piece regardless of type, so that no seed can ever
-   produce a fragile or dangerous result — this is a hard floor, not a
-   diagnostic suggestion.
    ========================================================================= */
 const LoadGraphEngine = (()=>{
   const NODE_ROLES = ['support','articulation','compression','tension','suspension','mass','void'];
@@ -469,11 +484,6 @@ const LoadGraphEngine = (()=>{
 
   function rngFor(seed,tag){ return SeededVariation.createGenerator(String(seed||'AGDP')+'|loadgraph|'+tag); }
 
-  // ---- Graph construction --------------------------------------------------
-  // A ring/bangle/etc's principal loop is always present (Regla 1: debe
-  // existir un loop principal). Everything else is attached to it. The
-  // graph is built once per seed, identically in shape for every category —
-  // only the geometry that later reads it differs.
   function buildLoadGraph(seed, type){
     const rng = rngFor(seed, type);
     const nodes = [];
@@ -485,10 +495,6 @@ const LoadGraphEngine = (()=>{
     const loopContinuity = 0.55+0.45*rng();
     edges.push({ from:'loop0', to:'loop0', type:'loop', rigidity:0.8+0.2*rng(), torsion:rng()<0.35?rng()*0.35:0, width:1, continuity:loopContinuity });
 
-    // Secondary structural nodes: 1-4, each with a genuine structural role,
-    // never a purely decorative one (Regla 3, Regla 8: primitives never
-    // appear pure/unmodified — every node's geometry is derived from its
-    // role + attributes, not a bare sphere/cube).
     const secondaryCount = 1+Math.floor(rng()*4);
     const rolePool = ['articulation','compression','tension','suspension','mass','void'];
     for (let i=0;i<secondaryCount;i++){
@@ -503,17 +509,10 @@ const LoadGraphEngine = (()=>{
         fn: role
       };
       nodes.push(node);
-      // Every node connects to the loop — Regla 2: no existen elementos
-      // aislados, todo debe conectarse.
       edges.push({ from:'loop0', to:node.id, type: role==='void' ? 'traverse' : 'surround',
         rigidity:0.3+0.6*rng(), torsion:0, width:0.3+0.5*rng(), continuity:0.5+0.5*rng() });
     }
 
-    // Bridges are present in every graph to some continuous degree — never
-    // gated behind an exclusive category. Even a graph that ends up with
-    // zero explicit bridge edges still contributes a near-zero (not
-    // undefined) bridge intensity, so downstream code never has to branch
-    // on "does this piece have bridges or not."
     const bridgeCount = Math.floor(rng()*3) + (rng()<0.55 ? 1 : 0);
     for (let i=0;i<bridgeCount && nodes.length>=2;i++){
       const a = nodes[1+Math.floor(rng()*(nodes.length-1))];
@@ -523,7 +522,6 @@ const LoadGraphEngine = (()=>{
         rigidity:0.6+0.4*rng(), torsion:0, width:0.4+0.5*rng(), continuity:0.4+0.4*rng() });
     }
 
-    // Exactly one semantic event/center is guaranteed (Regla 7).
     let eventNode = nodes.slice(1).sort((a,b)=>b.radius-a.radius)[0];
     if (!eventNode){
       eventNode = { id:'event0', role:'mass', u:0.5, radialOffset:0, radius:0.8, curvature:0.6, thickness:0.7, fn:'mass' };
@@ -532,10 +530,6 @@ const LoadGraphEngine = (()=>{
     }
     eventNode.isEvent = true;
 
-    // Regla 6 enforcement, by construction: mass must compensate —
-    // asymmetry is allowed, imbalance is not. If multiple mass/compression
-    // nodes would all sit near maximum radius simultaneously, scale the
-    // secondary ones down so exactly one can carry the dominant weight.
     const massCandidates = nodes.filter(n=>n.role==='mass'||n.role==='compression');
     if (massCandidates.length>1){
       const dominant = massCandidates.reduce((best,n)=>n.radius>best.radius?n:best, massCandidates[0]);
@@ -550,11 +544,6 @@ const LoadGraphEngine = (()=>{
     return graph;
   }
 
-  // ---- Continuous structural measurement -----------------------------------
-  // No classification, no exclusive category: every one of these reads
-  // 0..1 and every one of them is present, in some measure, in every
-  // graph. This is what actually feeds every piece of every category —
-  // the same five numbers, read the same way, everywhere.
   function measureIntensities(nodes, edges){
     const bridgeEdges = edges.filter(e=>e.type==='bridge');
     const traverseEdges = edges.filter(e=>e.type==='traverse');
@@ -573,11 +562,6 @@ const LoadGraphEngine = (()=>{
     return Object.freeze({ bridge, void: voidI, node, suspension, continuity, organism });
   }
 
-  // ---- Rule audit -----------------------------------------------------------
-  // Structural-safety diagnostics, computed for every graph regardless of
-  // category. These no longer gate a "family" — they simply must all pass,
-  // for every piece, every time (enforced for real in
-  // enforceStructuralSafety below, not just reported here).
   function auditRules(graph){
     const { nodes, edges } = graph;
     const loopEdges = edges.filter(e=>e.type==='loop');
@@ -589,11 +573,6 @@ const LoadGraphEngine = (()=>{
     const rule4 = nodes.every(n=>n.thickness>=0.2 && n.thickness<=1.6);
     const rule5 = edges.filter(e=>e.type==='traverse').every(e=>e.width>0.2);
     const massRoles = nodes.filter(n=>n.role==='mass'||n.role==='compression');
-    // A real weighted centroid, not "one small mass among several proves
-    // balance": radius^3 as a volume proxy, projected onto each node's own
-    // angular position — the centroid must not sit far from the loop's
-    // own middle, which a single dominant, off-center mass would violate
-    // even if some other node happens to be small.
     const rule6 = (()=>{
       if (massRoles.length<=1) return true;
       let sumW=0, sumWU=0;
@@ -604,14 +583,7 @@ const LoadGraphEngine = (()=>{
     })();
     const rule7 = nodes.some(n=>n.isEvent);
     const rule8 = nodes.every(n=>n.fn && n.fn!=='rawPrimitive');
-    // Surface texture complexity is handled at the material layer, not
-    // here — but the graph's own size is a real, checkable ceiling on
-    // accumulated detail, not a permanently-true placeholder.
     const rule9 = nodes.length <= 8;
-    // Complexity from repeated simple relations, not from accumulating
-    // one-off detail: at least one edge type must actually repeat, not
-    // just "as many edges as nodes" (which says nothing about whether
-    // any of it repeats).
     const rule10 = (()=>{
       if (edges.length>nodes.length) return true;
       if (edges.length<nodes.length) return false;
@@ -624,12 +596,6 @@ const LoadGraphEngine = (()=>{
     return results;
   }
 
-  // ---- Universal continuous feed into every category -----------------------
-  // The same five intensities blend into the same featureWeights and
-  // structural fields for every type — ring, bangle, choker, comb, clip,
-  // money clip, cufflinks, everything. No branch on category, no branch
-  // on a discrete family. Differences between pieces come only from the
-  // seed's own numbers, never from a selected code path.
   function applyGraphToParams(params, graph){
     const p = Object.assign({}, params);
     const I = graph.intensities;
@@ -646,10 +612,6 @@ const LoadGraphEngine = (()=>{
     fw.continuity= clamp(((fw.continuity||0.7)+ I.continuity*0.5) / 1.4, 0.35, 1);
     p.featureWeights = Object.freeze(fw);
 
-    // Direct structural fields, blended continuously rather than switched:
-    // every ring/bangle/cuff can carry some rail/bridge structure, every
-    // piece can carry some perforation, every piece can carry some node
-    // mass — proportional to the graph, never gated by category or family.
     p.railCount = Math.max(0, Math.round((p.railCount||0) + I.bridge*2.4));
     p.holes = Math.max(0, Math.round((p.holes||0) + I.void*3.2));
     p.nodes = Math.max(0, Math.round((p.nodes||0) + (I.node+I.suspension)*2.2));
@@ -662,16 +624,9 @@ const LoadGraphEngine = (()=>{
     return p;
   }
 
-  // ---- Universal structural safety (hard floor, every category) -----------
-  // This is not a diagnostic — it is a correction applied to every
-  // compiled piece, regardless of type, so a seed can never produce a
-  // fragile or dangerous result. It mirrors the manufacturing minimums
-  // already used elsewhere in this engine (AGDP_MIN_WALL_MM /
-  // AGDP_STRUCTURAL_WALL_MM) but expressed at the parameter level, before
-  // any geometry is built, so every builder benefits from it identically.
   function enforceStructuralSafety(p){
-    const MIN_WALL = 0.8;      // mm, matches AGDP_MIN_WALL_MM
-    const MIN_STRUCT = 1.3;    // mm, matches AGDP_STRUCTURAL_WALL_MM
+    const MIN_WALL = 0.8;
+    const MIN_STRUCT = 1.3;
     const q = Object.assign({}, p);
 
     q.bandWidth = Math.max(q.bandWidth||0, MIN_STRUCT*2.4);
@@ -683,18 +638,11 @@ const LoadGraphEngine = (()=>{
       q.nodeVolume = Math.max(q.nodeVolume||0, 1.1);
     }
     if (q.holes>0){
-      // Perforations must leave enough solid material between them to
-      // remain structurally participant, never a lattice thin enough to
-      // fail — cap hole count relative to available circumference rather
-      // than letting the continuous blend push it unbounded.
       q.holes = Math.min(q.holes, 5);
     }
     q.railCount = Math.min(q.railCount||0, 4);
     q.frames = Math.min(q.frames||0, 0.9);
 
-    // Mass-balance floor (Regla 6), re-applied at the parameter level so
-    // it holds even after the graph's own intensities have been blended
-    // in and further modified by per-type overrides.
     if (q.nodeVolume>2.6 && q.crownMass>2.6){
       q.crownMass = 2.0+ (q.crownMass%0.6);
     }
@@ -706,11 +654,6 @@ const LoadGraphEngine = (()=>{
 window.LoadGraphEngine = LoadGraphEngine;
 
 
-// AGDP v0.200: packaging orientation optimization.
-// Before evaluating manufacturing envelope, search the oriented bounding box
-// that minimizes the packaging volume. Only reject a large piece if no tested
-// orientation fits the provider limits. Orientation affects only packaging,
-// never the exported geometry.
 window.AGDP_PACKAGING_POLICY=Object.freeze({
   optimizeOrientation:true,
   optimizeBeforeReject:true,
