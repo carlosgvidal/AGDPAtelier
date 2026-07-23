@@ -2183,16 +2183,32 @@ async function makeCufflinksManifold(wasm, p) {
     const root=cufflinkPostPoint(0);
     target.push(cylZ(0,0,rootRadius,rearFaceZ-rootDepth,rearFaceZ+minFeature*.55));
     target.push(sphereAt(wasm,[0,0,rearFaceZ-minFeature*.35],rootRadius,32));
+    // BUG FIX (preventive, confirmed live risk): this used to be a chain of
+    // independent cylinderBetween capsules (one per segment) with filler
+    // spheres (postRadius*1.04) stitched at each joint to visually hide the
+    // seam between them -- the same construction pattern diagnosed in the
+    // hair comb's crest, where a capsule's own radius exceeding the spacing
+    // between consecutive path points produces blocky, self-intersecting
+    // facets rather than a smooth continuous surface. Checked with this
+    // function's own real constants (postRadius=2.6mm, spacing=postLength/
+    // segments=1.5mm): ratio = 1.73x, ABOVE the 1.37x that already produced
+    // visible faceting in the comb crest before its fix -- so this was a
+    // live risk in the post, not a hypothetical one. Replaced with a single
+    // continuous tube (shared vertex rings between consecutive
+    // cross-sections, same mechanism as variableEllipticalTubeMesh already
+    // used for the comb's crown) which cannot develop this defect
+    // regardless of radius/spacing ratio, and no longer needs the filler
+    // spheres that were papering over the old seams.
     const segments=14;
-    let previous=[root[0],root[1],rearFaceZ-rootDepth*.42];
+    const postPathPts=[[root[0],root[1],rearFaceZ-rootDepth*.42]];
     for(let i=1;i<=segments;i++){
       const raw=cufflinkPostPoint(i/segments);
-      const current=[raw[0],raw[1],raw[2]-rootDepth*.18];
-      target.push(cylinderBetween(wasm,previous,current,postRadius,32));
-      if(i<segments)target.push(sphereAt(wasm,current,postRadius*1.04,28));
-      previous=current;
+      postPathPts.push([raw[0],raw[1],raw[2]-rootDepth*.18]);
     }
-    const pivot=previous;
+    const postRadii=postPathPts.map(()=>[postRadius,postRadius]);
+    const postMesh=variableEllipticalTubeMesh(postPathPts, postRadii, 24, false);
+    target.push(meshToManifold(wasm, postMesh.V, postMesh.F));
+    const pivot=postPathPts[postPathPts.length-1];
     const hingeRadius=Math.max(1.7,postRadius*1.8);
     target.push(sphereAt(wasm,pivot,hingeRadius,32));
     target.push(box(pivot[0],pivot[1],pivot[2],toggleLength,toggleWidth,toggleThickness));
