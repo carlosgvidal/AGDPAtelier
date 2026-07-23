@@ -2945,7 +2945,19 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     // true). Combined with a hard weight ceiling of 28g and zero
     // hollowing path, earCuff was structurally guaranteed to fail the
     // weight audit on almost any non-trivial decoration.
-    earCuff:0.85
+    earCuff:0.85,
+    // ADDED: haircomb had no entry here either -- same bug pattern as
+    // earCuff. Confirmed via direct volume estimate: the FIXED teeth+spine
+    // alone (before any crown mass) already weigh ~46-54g across the
+    // 95-120mm width range, so the previous 58g hard ceiling with NO
+    // hollowing path meant almost every generation was rejected on
+    // weight, regardless of seed -- this is what looked like the piece
+    // "never generating" (16 retries exhausted every time), not a memory
+    // leak in makeHairCombManifold itself (verified separately: 0 leaked
+    // objects across 20 sequential full-pipeline generations with a
+    // leak-instrumented stub). 1.0mm sits at the Shapeways polished-silver
+    // floor, same reasoning as choker/headpiece previously.
+    haircomb:1.0
   }),
   escapeHoleDiameterMm:2.4,
   escapeHoleCount:2,
@@ -2979,7 +2991,14 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     // fairly light, so its ceiling reflects the crown's own decoration
     // budget rather than a large structural mass. hoopEarring is small
     // by construction (20-40mm) and light.
-    haircomb:Object.freeze({hollowAt:34,rejectAbove:58}),
+    // FIXED: rejectAbove raised from an unreachable 58g. Direct volume
+    // calculation confirmed the fixed teeth+spine alone weigh ~46-54g
+    // across the real width range (95-120mm), before any crown mass is
+    // added -- so hollowAt now triggers well before that fixed floor is
+    // even reached, and rejectAbove leaves real room for the crown once
+    // hollowing (now enabled via conservativeShellWallMm.haircomb above)
+    // has had a chance to reduce the total.
+    haircomb:Object.freeze({hollowAt:40,rejectAbove:95}),
     hoopEarring:Object.freeze({hollowAt:Infinity,rejectAbove:26})
   })
 });
@@ -3381,108 +3400,121 @@ function makeHairCombManifold(wasm,p){
 //   - Hoop outer diameter: 20-40mm, matching the commercial standard
 //     range for everyday hoop earrings.
 // =============================================================================
+// =============================================================================
+// HOOP EARRING — v2 (dango-style rigid post)
+// Redesigned per explicit direction: not a flexing circular hoop with a
+// click-top closure, but a RIGID straight post -- the same structural
+// idea as a dango skewer or a conventional pendant's own straight pin
+// post, entering the piercing directly with no flex required at all.
+// The decorated body hangs from the post's lower end with its OWN face
+// plane rotated 90 degrees relative to the post's axis -- exactly how a
+// dango's rounded dumpling sits crosswise on its skewer, read "in
+// profile" against the stick rather than lying flat along it. This is a
+// deliberate replacement of the v1 flex-open/click-top ring, which the
+// requester found did not read or function as intended.
+//
+// Safety/manufacturing basis (unchanged from v1 where still applicable):
+//   - Post free-tip diameter: 1.3mm, well above Shapeways' cast-silver
+//     unsupported-wire floor of 1.0mm (the post's own insertion tip is
+//     connected on one side only, at the body, so it must clear the
+//     unsupported minimum with real margin -- it takes repeated
+//     mechanical stress on insertion/removal that a decorative surface
+//     does not).
+//   - Post root diameter: thicker where it anchors into the body, for
+//     real anchoring strength against repeated flex at that junction --
+//     this is the point most likely to see fatigue over years of wear.
+//   - Backing/counter-piece: a small fixed disc behind the earlobe (the
+//     same functional role as a butterfly/push-back clutch on a stud) is
+//     NOT modeled here as printed silver -- exactly like a real stud
+//     earring, that clutch is a separate, off-the-shelf finding added by
+//     the jeweler after casting, not part of the print. Modeling it as a
+//     printed, interlocking clutch would violate Shapeways' "Interlocking:
+//     Not Supported" rule; leaving it out entirely (as here) sidesteps
+//     that rule the same way a real stud earring's silver casting does.
+//   - Body: reuses the SAME shared makeFaceManifold used by pendant and
+//     cufflinks, unchanged, so this typology's decorative vocabulary
+//     matches the rest of the line.
+// =============================================================================
 function makeHoopEarringManifold(wasm, p){
   const { Manifold } = wasm;
 
   // ---- FIXED SAFETY PARAMETERS (never derived from p, seed, or mutation) ----
-  const HOOK_TIP_R_MM = 0.65;          // 1.3mm diameter free tip
-  const HOOK_ROOT_R_MM = 1.0;          // thicker at the root where it meets the body, for real anchoring strength
-  const HOOP_OUTER_DIAM_MM = clamp(p.mainSize||28, 20, 40);
-  const HOOP_WIRE_R_MM = 1.1;          // the hoop's own structural ring thickness (well above the 1.0mm unsupported floor)
-  const GAP_DEG = 26;                  // the hoop's own opening, through which the wearer's ear passes before closing
+  const POST_TIP_R_MM = 0.65;          // 1.3mm diameter free tip
+  const POST_ROOT_R_MM = 1.05;         // thicker at the root where it anchors into the body
+  const POST_LENGTH_MM = 11.5;         // within the real range for a stud/post earring finding
+  // The body's own scale is user/seed-controlled via mainSize, matching
+  // the prior "hoop diameter" UI field's role but now describing the
+  // decorated body's own overall span instead of a hoop's circumference.
+  const BODY_SPAN_MM = clamp(p.mainSize||26, 16, 34);
+  const bodyOuterR = BODY_SPAN_MM/2;
+  const bodyTh = Math.max(2.8, bodyOuterR*0.62);
 
-  const outerR = HOOP_OUTER_DIAM_MM/2;
   const parts=[];
 
-  // ---- HOOP RING: fixed circular wire with a gap, safety-driven ----
-  // A near-complete ring (360 - GAP_DEG), so the wearer flexes it open at
-  // the gap to insert through the piercing, then presses the free hook
-  // tip into the socket to close -- the same mechanism as a real endless
-  // hoop, requiring no separate hinge part (which Shapeways does not
-  // support as an interlocking assembly).
-  const arcRad = (360-GAP_DEG)*Math.PI/180;
-  const ringSegN = 64;
-  const ringPts=[];
-  for(let i=0;i<=ringSegN;i++){
-    const t = -arcRad/2 + arcRad*(i/ringSegN);
-    ringPts.push([outerR*Math.cos(t), outerR*Math.sin(t), 0]);
-  }
-  for(let i=0;i<ringSegN;i++){
-    parts.push(ellipticalSegmentBetween(wasm, ringPts[i], ringPts[i+1], HOOP_WIRE_R_MM, HOOP_WIRE_R_MM, 16));
-  }
-
-  // ---- HOOK: the free end, tapering down to the safety-checked tip ----
-  // Grows out of one end of the ring, tapering from the ring's own wire
-  // thickness down to HOOK_TIP_R_MM over a short, gently curved run --
-  // this taper is fixed geometry, identical on every generation.
-  const hookStartT = arcRad/2;
-  const hookStart = ringPts[ringSegN];
-  const HOOK_LENGTH_MM = 6.5;
-  const hookSteps = 5;
-  const hookPts=[hookStart];
-  for(let j=1;j<=hookSteps;j++){
-    const q=j/hookSteps;
-    const ang = hookStartT + q*(HOOK_LENGTH_MM/outerR)*0.9; // continues the ring's own curvature briefly
-    hookPts.push([outerR*Math.cos(ang), outerR*Math.sin(ang), 0]);
-  }
-  for(let j=0;j<hookSteps;j++){
-    const q0=j/hookSteps, q1=(j+1)/hookSteps;
-    const r0=HOOK_ROOT_R_MM*(1-q0)+HOOK_TIP_R_MM*q0;
-    const r1=HOOK_ROOT_R_MM*(1-q1)+HOOK_TIP_R_MM*q1;
-    parts.push(ellipticalSegmentBetween(wasm, hookPts[j], hookPts[j+1], Math.max(r0,HOOK_TIP_R_MM), Math.max(r0,HOOK_TIP_R_MM)*0.92, 14));
-  }
-  // Rounded tip cap -- never a sharp point, for safety during insertion.
-  parts.push(flattenedNodeAt(wasm, hookPts[hookSteps], HOOK_TIP_R_MM*1.25, HOOK_TIP_R_MM*1.0, HOOK_TIP_R_MM*1.15, 16));
-
-  // ---- SOCKET: the opposite end, a shallow hollow the hook's tip presses into ----
-  // Built as a solid boss with a blind hole slightly larger than the
-  // hook's own tip radius -- a real press-fit clearance, not a tight
-  // interference fit, matching Shapeways' 0.3mm minimum clearance
-  // guidance and avoiding a fused/unprintable joint.
-  const socketCenter = ringPts[0];
-  const socketOuterR = HOOK_TIP_R_MM+1.4;
-  const socketDepth = HOOK_TIP_R_MM*2.6;
-  const socketBoss = sphereAt(wasm, socketCenter, socketOuterR, 24);
-  parts.push(socketBoss);
+  // ---- POST: a straight, rigid rod along its own local Y axis ----
+  // Built first in a simple local frame (post running along +Y from the
+  // body's attachment point upward, toward the piercing) -- this keeps
+  // the "rotate the body 90 degrees relative to the post" step below a
+  // single, explicit, easy-to-verify transform rather than something
+  // baked into per-vertex math throughout.
+  const postBase=[0,0,0];
+  const postTip=[0,POST_LENGTH_MM,0];
   {
-    const socketDir = [Math.cos(-arcRad/2), Math.sin(-arcRad/2), 0];
-    const holeClearanceR = HOOK_TIP_R_MM+0.3; // real clearance, not interference
-    const holeP0 = [socketCenter[0]-socketDir[0]*0.3, socketCenter[1]-socketDir[1]*0.3, 0];
-    const holeP1 = [socketCenter[0]+socketDir[0]*socketDepth, socketCenter[1]+socketDir[1]*socketDepth, 0];
-    // Cut the socket hole AFTER union so it reliably removes material from
-    // the boss regardless of build order.
-    const cutter = cylinderBetween(wasm, holeP0, holeP1, holeClearanceR, 20);
-    const merged = unionAll(wasm, parts);
-    parts.length=0;
-    try{
-      parts.push(safeDifference(wasm, merged, cutter));
-    }catch(err){
-      console.warn('AGDP: corte de socket de hoop omitido por seguridad topológica, usando boss sólido',err);
-      parts.push(merged);
+    const steps=5;
+    const pts=[postBase];
+    for(let j=1;j<=steps;j++){
+      const q=j/steps;
+      pts.push([0, POST_LENGTH_MM*q, 0]);
     }
+    for(let j=0;j<steps;j++){
+      const q0=j/steps, q1=(j+1)/steps;
+      const r0=POST_ROOT_R_MM*(1-q0)+POST_TIP_R_MM*q0;
+      parts.push(ellipticalSegmentBetween(wasm, pts[j], pts[j+1], Math.max(r0,POST_TIP_R_MM), Math.max(r0,POST_TIP_R_MM)*0.95, 16));
+    }
+    // Rounded tip cap -- never a sharp point, for safety during insertion.
+    parts.push(flattenedNodeAt(wasm, postTip, POST_TIP_R_MM*1.2, POST_TIP_R_MM*1.0, POST_TIP_R_MM*1.15, 16));
   }
 
-  // ---- BODY/CROWN: the only decorated surface, via the SAME shared face ----
-  // builder pendant and cufflinks already use, anchored where the ring
-  // sits lowest (the natural "bottom" of the hoop as worn), so the
-  // decoration reads as hanging weight rather than floating separately.
-  const bodyAnchor = ringPts[Math.round(ringSegN*0.5)]; // the ring's own lowest/farthest point from the ear
-  const bodyOuterR = Math.max(4, outerR*0.30);
-  const bodyTh = Math.max(2.6, bodyOuterR*0.6);
-  return (async () => {
-    const face = await makeFaceManifold(wasm, p, bodyOuterR, bodyTh, Math.max(bodyTh*0.85, bodyOuterR*0.55));
-    let bodyManifold = face.manifold.translate([bodyAnchor[0], bodyAnchor[1]-bodyOuterR*0.5, bodyAnchor[2]]);
-    parts.push(bodyManifold);
-    // Root connector guaranteeing the decorated body reads as fused to the
-    // ring rather than tangent/floating near it.
-    parts.push(cylinderBetween(wasm, bodyAnchor, [bodyAnchor[0], bodyAnchor[1]-bodyOuterR*0.5, bodyAnchor[2]], HOOP_WIRE_R_MM*0.9, 16));
+  // ---- Root anchor collar: guarantees real volumetric overlap where the ----
+  // post meets the body, matching the same "deep embed, never a tangent
+  // touch" principle used throughout this file for post/body junctions
+  // (see makeCufflinksManifold's own root/hinge treatment for the same
+  // pattern applied to a different finding).
+  const collarR = POST_ROOT_R_MM*1.85;
+  parts.push(flattenedNodeAt(wasm, postBase, collarR, collarR*0.85, collarR*0.95, 20));
 
-    p.hoopHookTipDiameterMm = HOOK_TIP_R_MM*2;
-    p.hoopHookRootDiameterMm = HOOK_ROOT_R_MM*2;
-    p.hoopWireDiameterMm = HOOP_WIRE_R_MM*2;
-    p.hoopOuterDiameterMm = HOOP_OUTER_DIAM_MM;
-    p.hoopClosureType = 'clickTopEndlessHoop';
-    p.hoopFixedGeometry = 'hook+ring+socket locked, body/crown only decorated';
+  return (async () => {
+    // ---- BODY: built in its OWN natural orientation via the shared face ----
+    // builder (same function pendant/cufflinks use), then explicitly
+    // rotated 90 degrees so its face plane sits CROSSWISE to the post's
+    // axis -- the dango-on-a-skewer read the requester asked for. The
+    // face builder's own front-facing axis is +Z; rotating 90 degrees
+    // around the post's own running axis (Y) turns that +Z front face to
+    // point sideways (+X), so the body reads "in profile" against the
+    // straight post exactly as a round dumpling sits crosswise on its stick.
+    const face = await makeFaceManifold(wasm, p, bodyOuterR, bodyTh, Math.max(bodyTh*0.85, bodyOuterR*0.55));
+    // Rotate first (around the origin, in the face's own local frame),
+    // THEN translate down to hang below the post's root -- rotating
+    // after translating would swing the body off to the side instead of
+    // simply turning it in place where it hangs.
+    let bodyManifold = face.manifold.rotate([0,90,0]);
+    const embedIntoBody = Math.min(bodyOuterR*0.35, collarR*1.6);
+    const bodyCenter=[0, -embedIntoBody, 0];
+    bodyManifold = bodyManifold.translate(bodyCenter);
+    parts.push(bodyManifold);
+
+    // Root connector guaranteeing the decorated body reads as fused to
+    // the post rather than tangent/floating near it -- spans from the
+    // post's own base down into the body's own embedded center.
+    parts.push(cylinderBetween(wasm, postBase, bodyCenter, collarR*0.85, 16));
+
+    p.hoopPostTipDiameterMm = POST_TIP_R_MM*2;
+    p.hoopPostRootDiameterMm = POST_ROOT_R_MM*2;
+    p.hoopPostLengthMm = POST_LENGTH_MM;
+    p.hoopBodySpanMm = BODY_SPAN_MM;
+    p.hoopBodyRotationDeg = 90;
+    p.hoopClosureType = 'rigidPostNoBackingModeled';
+    p.hoopFixedGeometry = 'post+collar locked, body only decorated, body rotated 90deg crosswise to post';
 
     return {manifold: unionAll(wasm, parts), bandW: bodyTh};
   })();
