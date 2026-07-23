@@ -1,5 +1,5 @@
 'use strict';
-const AGDP_APP_VERSION='0.202';
+const AGDP_APP_VERSION='0.201';
 window.AGDP_APP_VERSION=AGDP_APP_VERSION;
 window.addEventListener('error',function(e){
   const statusWrap=document.getElementById('agdpStatusWrap');
@@ -311,7 +311,7 @@ window.AGDP_PROPORTION_SYSTEM=AGDP_PROPORTION_SYSTEM;
 window.ProportionEngine=ProportionEngine;
 
 window.AGDP_GEOMETRY_CONSTRAINTS_V157=Object.freeze({
-  geometryRevision:'v202',
+  geometryRevision:'v200',
   minimumBridgeDiameterMm:1.4,
   minimumNeckClearanceMm:2.0,
   minimumHeadClearanceMm:2.5,
@@ -371,21 +371,6 @@ function adaptTopologyToSurface(params){
   }
   return p;
 }
-const AGDP_MESH_RESOLUTION_POLICY=Object.freeze({
-  minimum:64,
-  maximum:256,
-  chordTargetMm:.32,
-  forPiece(p){
-    const characteristic=Math.max(12,Number(p.mainSize)||24,Number(p.bandWidth)||0);
-    const circumference=Math.PI*characteristic;
-    const complexity=1+.22*clamp(p.faceting||0,0,1)+.18*clamp(p.surfaceRelief||0,0,.3)/.3+.12*clamp((p.nodes||0)/6,0,1);
-    const raw=Math.ceil(circumference/this.chordTargetMm*complexity);
-    const even=raw+(raw%2);
-    return Math.max(this.minimum,Math.min(this.maximum,even));
-  }
-});
-window.AGDP_MESH_RESOLUTION_POLICY=AGDP_MESH_RESOLUTION_POLICY;
-
 const GenerationLayers=(()=>{
   function topology(params){
     const profile=surfaceTopologyProfile(params.type);
@@ -433,7 +418,6 @@ const GenerationLayers=(()=>{
       frames:sf.articulation.frames,rivets:sf.articulation.rivets,screws:sf.articulation.screws,hinges:sf.articulation.hinges,
       articulationCoverage:sf.articulation.coverage,articulationOffset:sf.articulation.offset
     });
-    p.segments=AGDP_MESH_RESOLUTION_POLICY.forPiece(p);
     const spec=silverSpec(p.printProfile||'silverPolished');
     p.minFeature=Math.max(spec.wall,p.minFeature||spec.wall);
     if(p.railCount>0)p.railHeight=Math.max(p.railHeight||spec.supportedWire,spec.supportedWire);
