@@ -453,22 +453,38 @@ function domeShellMesh(rimRFn, heightFn, seg, radSeg, indentFn) {
   for (let i=0;i<seg;i++) { topGrid[i]=[]; for (let j=0;j<=radSeg;j++) topGrid[i][j]=V[top[i][j]]; }
   return {V,F,topGrid};
 }
+function annularPrismMesh(origin, ex, ey, ez, innerU, innerV, outerU, outerV, thickness, segN) {
+  const seg=Math.max(64,Math.round(segN||96));
+  const half=thickness*.5;
+  const V=[],F=[];
+  const frontOuter=[],frontInner=[],backOuter=[],backInner=[];
+  const point=(u,v,w)=>[
+    origin[0]+ex[0]*u+ey[0]*v+ez[0]*w,
+    origin[1]+ex[1]*u+ey[1]*v+ez[1]*w,
+    origin[2]+ex[2]*u+ey[2]*v+ez[2]*w
+  ];
+  for(let i=0;i<seg;i++){
+    const a=2*Math.PI*i/seg,c=Math.cos(a),sn=Math.sin(a);
+    frontOuter.push(V.length);V.push(point(outerU*c,outerV*sn, half));
+    frontInner.push(V.length);V.push(point(innerU*c,innerV*sn, half));
+    backOuter.push(V.length);V.push(point(outerU*c,outerV*sn,-half));
+    backInner.push(V.length);V.push(point(innerU*c,innerV*sn,-half));
+  }
+  const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
+  for(let i=0;i<seg;i++){
+    const j=(i+1)%seg;
+    q(frontOuter[i],frontOuter[j],frontInner[j],frontInner[i]);
+    q(backOuter[i],backInner[i],backInner[j],backOuter[j]);
+    q(frontOuter[i],backOuter[i],backOuter[j],frontOuter[j]);
+    q(frontInner[i],frontInner[j],backInner[j],backInner[i]);
+  }
+  return {V,F};
+}
 function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN) {
-  const { Manifold } = wasm;
-  // The bail body and its bore must use the exact same angular tessellation.
-  // A high, shared segment count removes the visibly polygonal inner opening
-  // without changing any sphere/node geometry or the global CSG workload.
-  const resolvedSegments = Math.max(96, Math.round(segN || 96));
-  const outer = Manifold.cylinder(thickness, ro, ro, resolvedSegments, true);
-  // Extend the cutter well beyond both faces so the subtraction never ends
-  // coplanar with the bail caps, which otherwise leaves broken rim triangles.
-  const inner = Manifold.cylinder(thickness * 2.4, ri, ri, resolvedSegments, true);
-  let ring = safeDifference(wasm, outer, inner);
-  const nx=ez[0],ny=ez[1],nz=ez[2];
-  const thetaDeg = Math.acos(clamp(nz,-1,1)) * 180/Math.PI;
-  const phiDeg = Math.atan2(ny,nx) * 180/Math.PI;
-  ring = ring.rotate([0,thetaDeg,0]).rotate([0,0,phiDeg]);
-  return ring.translate(origin);
+  // The opening is part of the source topology. No subtraction is performed,
+  // so the inner rim cannot inherit triangulation from a transverse boolean.
+  const mesh=annularPrismMesh(origin,ex,ey,ez,ri,ri,ro,ro,thickness,segN);
+  return meshToManifold(wasm,mesh.V,mesh.F);
 }
 // General mesh cleanup: merges vertices within a tight tolerance (1
 // micron -- far below any real jewelry feature size, so this cannot
@@ -1792,9 +1808,18 @@ async function makePendantManifold(wasm, p) {
   addMember([-shoulderX,shoulderY,0],[-flankX,flankY,0],shoulderR);
   addMember([ shoulderX,shoulderY,0],[ flankX,flankY,0],shoulderR);
 
-  const crown=Manifold.cylinder(bandWidth,crownOuterR,crownOuterR,48,true)
-    .scale([1,.88+.08*organic,1]).translate(crownCenter);
-  parts.push(crown);
+  // Native annular bail, oriented on the chain axis (X). The round opening
+  // is generated as topology rather than cut from a disk by a transverse CSG.
+  const bailOuterY=crownOuterR*(.88+.08*organic);
+  const bailMesh=annularPrismMesh(
+    crownCenter,
+    [0,1,0],[0,0,1],[1,0,0],
+    passageR,passageR,
+    bailOuterY,crownOuterR,
+    bandWidth,
+    96
+  );
+  parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
   // A continuous saddle below the tunnel creates a guaranteed load path
   // between both shoulders and the crown after subtraction. Its Y
@@ -1821,9 +1846,7 @@ async function makePendantManifold(wasm, p) {
   let preflight=validate(mesh.V,mesh.F,{type:'pendant-annular-preflight',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
   if(preflight.components!==1||!preflight.manifoldOK)throw new Error('AGDP annular pendant core failed continuity validation');
 
-  const tunnelHalf=crownOuterR+Math.max(tunnelWall,bandWidth*.75);
-  const passage=cylinderBetween(wasm,[-tunnelHalf,crownCenter[1],0],[tunnelHalf,crownCenter[1],0],passageR,128);
-  manifold=safeDifference(wasm,manifold,passage);
+  // No passage subtraction: the chain opening already exists in the bail mesh.
 
   const finalMesh=manifoldToMesh(manifold);
   const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
