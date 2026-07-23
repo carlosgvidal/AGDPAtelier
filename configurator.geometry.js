@@ -481,41 +481,11 @@ function annularPrismMesh(origin, ex, ey, ez, innerU, innerV, outerU, outerV, th
   return {V,F};
 }
 
-function toroidalBailMesh(origin, innerR, outerR, axialThickness, ringSegments, tubeSegments) {
-  const uSeg=Math.max(96,Math.round(ringSegments||128));
-  const vSeg=Math.max(18,Math.round(tubeSegments||24));
-  const majorR=(innerR+outerR)*.5;
-  const radialTube=Math.max((outerR-innerR)*.5,AGDP_MIN_WALL_MM*.55);
-  const axialTube=Math.max(axialThickness*.5,AGDP_MIN_WALL_MM*.55);
-  const V=[],F=[];
-  for(let i=0;i<uSeg;i++){
-    const u=2*Math.PI*i/uSeg,cu=Math.cos(u),su=Math.sin(u);
-    for(let j=0;j<vSeg;j++){
-      const v=2*Math.PI*j/vSeg,cv=Math.cos(v),sv=Math.sin(v);
-      const localR=majorR+radialTube*cv;
-      V.push([
-        origin[0]+axialTube*sv,
-        origin[1]+localR*cu,
-        origin[2]+localR*su
-      ]);
-    }
-  }
-  for(let i=0;i<uSeg;i++){
-    const ni=(i+1)%uSeg;
-    for(let j=0;j<vSeg;j++){
-      const nj=(j+1)%vSeg;
-      const a=i*vSeg+j,b=ni*vSeg+j,c=ni*vSeg+nj,d=i*vSeg+nj;
-      F.push([a,b,c],[a,c,d]);
-    }
-  }
-  return {V,F};
-}
-
 function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cornerSegments) {
   const cs=Math.max(10,Math.round(cornerSegments||18));
   const halfD=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
-  const outerCorner=Math.min(outerW,outerH)*.22;
-  const innerCorner=Math.min(innerW,innerH)*.24;
+  const outerCorner=Math.min(outerW,outerH)*.105;
+  const innerCorner=Math.min(innerW,innerH)*.12;
   function loop(w,h,r){
     const pts=[];
     const cx=w*.5-r, cy=h*.5-r;
@@ -1901,10 +1871,10 @@ async function makePendantManifold(wasm, p) {
   // Straight framed bail generated directly as one closed shell in the same
   // XY plane as the shoulders. The aperture is part of the source topology:
   // no cylindrical subtraction and no torus/shoulder plane mismatch.
-  const frameOuterW=crownOuterR*2.04;
-  const frameOuterH=crownOuterR*2.18;
-  const frameInnerW=passageR*2;
-  const frameInnerH=passageR*2.12;
+  const frameOuterW=crownOuterR*1.78;
+  const frameOuterH=crownOuterR*2.62;
+  const frameInnerW=passageR*1.88;
+  const frameInnerH=passageR*2.42;
   const bailMesh=roundedRectFrameMesh(
     crownCenter,
     frameOuterW,
@@ -1912,7 +1882,7 @@ async function makePendantManifold(wasm, p) {
     frameInnerW,
     frameInnerH,
     bandWidth,
-    20
+    12
   );
   parts.push(meshToManifold(wasm,bailMesh.V,bailMesh.F));
 
@@ -1955,7 +1925,7 @@ async function makePendantManifold(wasm, p) {
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
   p.pendantBodyHeightMm=finalAudit.bounds.dim[1];
   p.pendantBodyDepthMm=finalAudit.bounds.dim[2];
-  p.pendantSuspension='integratedRoundedFrame';
+  p.pendantSuspension='integratedRectangularFrame';
   p.pendantPassageDiameterMm=passageR*2;
   p.pendantTotalHeightMm=finalAudit.bounds.dim[1];
   p.pendantBaseGeometry='ringDerivedClosedAnnularCore';
