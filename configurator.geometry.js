@@ -3548,62 +3548,97 @@ function makeHairCombManifold(wasm,p){
 function makeHoopEarringManifold(wasm, p){
   const HOOK_TIP_R_MM = 0.45;
   const HOOK_ROOT_R_MM = 0.78;
-  const HOOK_STRAIGHT_MM = 5.5;
+  const HOOK_RISE_MM = 5.8;
   const HOOK_BEND_R_MM = 4.8;
-  const HOOK_EXIT_MM = 4.5;
+  const HOOK_INSERTION_MM = 11.5;
+  const HOOK_TAIL_FLARE_MM = 1.0;
   const BODY_SPAN_MM = clamp(p.mainSize||26, 16, 34);
-  const bodyOuterR = BODY_SPAN_MM/2;
-  const bodyTh = Math.max(2.8, bodyOuterR*0.62);
+  const BODY_DEPTH_MM = clamp(p.bandWidth||4.8, 3.6, 7.2);
 
   return (async () => {
-    const parts=[];
-    const face = await makeFaceManifold(wasm, p, bodyOuterR, bodyTh, Math.max(bodyTh*0.85, bodyOuterR*0.55));
-    const bodyManifold = face.manifold.rotate([0,90,0]);
-    parts.push(bodyManifold);
+    const I=(p.loadGraph&&p.loadGraph.intensities)||{bridge:.35,void:.25,node:.35,suspension:.3,continuity:.75,organism:.5};
+    const architectural=clamp(p.architectural||0,0,1);
+    const outerR=BODY_SPAN_MM*.5;
+    const annularWall=clamp(BODY_SPAN_MM*(.105+.035*architectural+.025*I.node),3.2,6.2);
+    const innerR=Math.max(outerR-annularWall,outerR*.48);
+    const bandWidth=Math.max(BODY_DEPTH_MM,(p.minFeature||.8)*3.2);
+    const ringParams=Object.assign({},p,{
+      type:'pendantAnnularCore',
+      mainSize:innerR*2,
+      bandWidth,
+      holes:Math.min(2,p.holes||0),
+      railCount:Math.min(2,p.railCount||0),
+      crown:false,
+      spikes:0,
+      opening:0
+    });
+    const built=await buildBandGeometryManifold(wasm,ringParams,{
+      type:'pendantAnnularCore',innerD:innerR*2,width:bandWidth,closed:true,opening:0
+    });
 
+    const bodyManifold=built.manifold.rotate([0,90,0]);
+    const parts=[bodyManifold];
+
+    const rootEmbed=Math.max(annularWall*.42,(p.minFeature||.8)*.65);
+    const root=[0,outerR-rootEmbed,0];
+    const riseY=root[1]+HOOK_RISE_MM;
     const hookPts=[];
     const hookRadii=[];
-    const root=[0,bodyOuterR*0.72,0];
-    const straightSteps=4;
-    for(let i=0;i<=straightSteps;i++){
-      const q=i/straightSteps;
-      hookPts.push([0,root[1]+HOOK_STRAIGHT_MM*q,0]);
-      const r=HOOK_ROOT_R_MM*(1-q*0.28);
-      hookRadii.push([r,r*0.96]);
+
+    const riseSteps=6;
+    for(let i=0;i<=riseSteps;i++){
+      const q=i/riseSteps;
+      hookPts.push([0,root[1]+HOOK_RISE_MM*q,0]);
+      const r=HOOK_ROOT_R_MM+(HOOK_ROOT_R_MM*.78-HOOK_ROOT_R_MM)*q;
+      hookRadii.push([r,r*.96]);
     }
-    const bendCenter=[HOOK_BEND_R_MM,root[1]+HOOK_STRAIGHT_MM,0];
-    const bendSteps=10;
+
+    const bendCenter=[HOOK_BEND_R_MM,riseY,0];
+    const bendSteps=20;
     for(let i=1;i<=bendSteps;i++){
       const q=i/bendSteps;
-      const a=Math.PI-(Math.PI/2)*q;
+      const a=Math.PI-Math.PI*q;
       hookPts.push([
         bendCenter[0]+HOOK_BEND_R_MM*Math.cos(a),
         bendCenter[1]+HOOK_BEND_R_MM*Math.sin(a),
         0
       ]);
-      const r=HOOK_ROOT_R_MM*0.72*(1-q)+HOOK_TIP_R_MM*q;
-      hookRadii.push([r,r*0.96]);
+      const r=HOOK_ROOT_R_MM*.78+(HOOK_TIP_R_MM*1.18-HOOK_ROOT_R_MM*.78)*q;
+      hookRadii.push([r,r*.96]);
     }
-    const bendEnd=hookPts[hookPts.length-1];
-    const exitSteps=4;
-    for(let i=1;i<=exitSteps;i++){
-      const q=i/exitSteps;
-      hookPts.push([bendEnd[0]+HOOK_EXIT_MM*q,bendEnd[1],0]);
-      const r=HOOK_ROOT_R_MM*0.52*(1-q)+HOOK_TIP_R_MM*q;
-      hookRadii.push([r,r*0.96]);
+
+    const tailStart=hookPts[hookPts.length-1];
+    const tailSteps=12;
+    for(let i=1;i<=tailSteps;i++){
+      const q=i/tailSteps;
+      const eased=q*q*(3-2*q);
+      hookPts.push([
+        tailStart[0]+HOOK_TAIL_FLARE_MM*eased,
+        tailStart[1]-HOOK_INSERTION_MM*q,
+        0
+      ]);
+      const r=HOOK_TIP_R_MM*1.18+(HOOK_TIP_R_MM-HOOK_TIP_R_MM*1.18)*q;
+      hookRadii.push([r,r*.96]);
     }
-    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,20,false);
+
+    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,24,false);
     parts.push(meshToManifold(wasm,hookMesh.V,hookMesh.F));
+    parts.push(sphereAt(wasm,hookPts[hookPts.length-1],HOOK_TIP_R_MM,24));
 
-    p.hoopHookTipDiameterMm = HOOK_TIP_R_MM*2;
-    p.hoopHookRootDiameterMm = HOOK_ROOT_R_MM*2;
-    p.hoopHookBendRadiusMm = HOOK_BEND_R_MM;
-    p.hoopHookRotationDeg = 90;
-    p.hoopBodySpanMm = BODY_SPAN_MM;
-    p.hoopClosureType = 'continuousHook';
-    p.hoopFixedGeometry = 'continuous tapered hook rotated 90deg from the main body';
+    const manifold=unionAll(wasm,parts);
 
-    return {manifold:unionAll(wasm,parts),bandW:bodyTh};
+    p.hoopHookTipDiameterMm=HOOK_TIP_R_MM*2;
+    p.hoopHookRootDiameterMm=HOOK_ROOT_R_MM*2;
+    p.hoopHookBendRadiusMm=HOOK_BEND_R_MM;
+    p.hoopHookInsertionLengthMm=HOOK_INSERTION_MM;
+    p.hoopHookRotationDeg=90;
+    p.hoopBodySpanMm=BODY_SPAN_MM;
+    p.hoopBodyDepthMm=bandWidth;
+    p.hoopClosureType='completeFrenchHook';
+    p.hoopBodyGeometry='pendantAnnularCore';
+    p.hoopFixedGeometry='pendant-derived annular body with complete tapered French hook';
+
+    return {manifold,bandW:bandWidth};
   })();
 }
 
