@@ -3274,11 +3274,11 @@ function makeHairCombManifold(wasm,p){
     const y=FIXED_CRANIAL_CURVE_MM*(1-nx*nx);
     spinePts.push([x,y,0]);
   }
-  for(let i=0;i<n-1;i++){
-    parts.push(ellipticalSegmentBetween(wasm,spinePts[i],spinePts[i+1],SPINE_R_MM,SPINE_R_MM*0.78,16));
+  {
+    const spineRadii=spinePts.map(()=>[SPINE_R_MM,SPINE_R_MM*0.78]);
+    const spineMesh=variableEllipticalTubeMesh(spinePts,spineRadii,20,false);
+    parts.push(meshToManifold(wasm,spineMesh.V,spineMesh.F));
   }
-  parts.push(flattenedNodeAt(wasm,spinePts[0],SPINE_R_MM*1.2,SPINE_R_MM*0.9,SPINE_R_MM*1.05,16));
-  parts.push(flattenedNodeAt(wasm,spinePts[n-1],SPINE_R_MM*1.2,SPINE_R_MM*0.9,SPINE_R_MM*1.05,16));
 
   // ---- TEETH: fixed geometry, safety-driven, never touched by mutation ----
   function spinePointAt(x){
@@ -3309,17 +3309,14 @@ function makeHairCombManifold(wasm,p){
         root[2]-TOOTH_LENGTH_MM*q
       ]);
     }
-    for(let j=0;j<steps;j++){
+    const toothRadii=pts.map((_,j)=>{
       const q=j/steps;
-      const rx=TOOTH_ROOT_R_MM*(1-q)+TOOTH_TIP_R_MM*q;
-      const ry=rx*0.92;
-      parts.push(ellipticalSegmentBetween(wasm,pts[j],pts[j+1],rx,ry,14));
-    }
-    // Root fillet (anchors the tooth into the spine with real volumetric
-    // overlap) and a ROUNDED tip cap -- never a sharp point, for safety
-    // against scalp injury.
-    parts.push(flattenedNodeAt(wasm,root,TOOTH_ROOT_R_MM*1.15,TOOTH_ROOT_R_MM*0.85,TOOTH_ROOT_R_MM*1.05,16));
-    parts.push(flattenedNodeAt(wasm,pts[steps],TOOTH_TIP_R_MM*1.35,TOOTH_TIP_R_MM*1.05,TOOTH_TIP_R_MM*1.2,16));
+      const smooth=q*q*(3-2*q);
+      const rx=TOOTH_ROOT_R_MM*(1-smooth)+TOOTH_TIP_R_MM*smooth;
+      return [rx,rx*0.92];
+    });
+    const toothMesh=variableEllipticalTubeMesh(pts,toothRadii,18,false);
+    parts.push(meshToManifold(wasm,toothMesh.V,toothMesh.F));
   }
 
   // ---- CROWN: the only decorated surface, seed/feature-driven ----
@@ -3335,7 +3332,7 @@ function makeHairCombManifold(wasm,p){
   // (deep embed, guaranteed overlap) rather than floating a separate
   // volume near it.
   const crownAnchors=[];
-  const crownSamples=9;
+  const crownSamples=16;
   for(let s=0;s<=crownSamples;s++){
     const u=s/crownSamples;
     const x=-crownBaseR+crownBaseR*2*u;
@@ -3353,8 +3350,8 @@ function makeHairCombManifold(wasm,p){
   // in production. A single shared-ring tube can't develop that defect --
   // consecutive cross-sections blend by construction instead of each
   // being its own separate capped solid.
-  const crestPeakU = 0.5; // fixed centered peak (crown is symmetric by construction; asymmetry, if any, comes from decoration below)
-  const crestWidth = 0.32;
+  const crestPeakU = 0.5;
+  const crestWidth = 0.46;
   const crestPathPts = [];
   const crestRadii = [];
   for(let s=0;s<=crownSamples;s++){
@@ -3362,22 +3359,34 @@ function makeHairCombManifold(wasm,p){
     const distFromPeak=(q-crestPeakU)/crestWidth;
     const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.2);
     const a=crownAnchors[s];
-    crestPathPts.push([a[0], a[1]+CROWN_HEIGHT_MM*(0.55+0.35*dome*taperEdge), a[2]+CROWN_HEIGHT_MM*(0.05+0.10*vessel)]);
-    const rx=CROWN_HEIGHT_MM*(0.16+0.05*dome)*crownBoost*(0.45+0.55*taperEdge);
-    const ry=CROWN_HEIGHT_MM*(0.12+0.04*dome)*crownBoost*(0.45+0.55*taperEdge);
+    crestPathPts.push([a[0], a[1]+CROWN_HEIGHT_MM*(0.34+0.30*dome*taperEdge), a[2]+CROWN_HEIGHT_MM*(0.03+0.07*vessel)]);
+    const rx=CROWN_HEIGHT_MM*(0.11+0.04*dome)*crownBoost*(0.62+0.38*taperEdge);
+    const ry=CROWN_HEIGHT_MM*(0.085+0.03*dome)*crownBoost*(0.62+0.38*taperEdge);
     crestRadii.push([Math.max(1.2,rx), Math.max(1.0,ry)]);
   }
   {
     const crestMesh = variableEllipticalTubeMesh(crestPathPts, crestRadii, 18, false);
     parts.push(meshToManifold(wasm, crestMesh.V, crestMesh.F));
   }
-  // Root connectors, one per anchor, guaranteeing the crest reads as
-  // rising continuously out of the spine rather than floating near it --
-  // these stay as independent short segments (not part of the tube above)
-  // since they are short relative to their own radius and don't develop
-  // the same overlap defect the crest itself did.
-  for(let s=0;s<=crownSamples;s++){
-    parts.push(ellipticalSegmentBetween(wasm,crownAnchors[s],crestPathPts[s],SPINE_R_MM*0.75,SPINE_R_MM*0.6,12));
+  {
+    const lowerCrownPts=crownAnchors.map((a,i)=>{
+      const q=i/crownSamples;
+      const rise=Math.sin(Math.PI*q);
+      return [a[0],a[1]+SPINE_R_MM*0.45+CROWN_HEIGHT_MM*0.12*rise,a[2]+CROWN_HEIGHT_MM*0.02*rise];
+    });
+    const lowerCrownRadii=lowerCrownPts.map((_,i)=>{
+      const q=i/crownSamples;
+      const edge=0.72+0.28*Math.sin(Math.PI*q);
+      return [SPINE_R_MM*0.92*edge,SPINE_R_MM*0.68*edge];
+    });
+    const lowerCrownMesh=variableEllipticalTubeMesh(lowerCrownPts,lowerCrownRadii,18,false);
+    parts.push(meshToManifold(wasm,lowerCrownMesh.V,lowerCrownMesh.F));
+    for(let i=0;i<=crownSamples;i+=2){
+      const bridgePts=[lowerCrownPts[i],crestPathPts[i]];
+      const bridgeRadii=[[SPINE_R_MM*0.62,SPINE_R_MM*0.50],[SPINE_R_MM*0.48,SPINE_R_MM*0.40]];
+      const bridgeMesh=variableEllipticalTubeMesh(bridgePts,bridgeRadii,14,false);
+      parts.push(meshToManifold(wasm,bridgeMesh.V,bridgeMesh.F));
+    }
   }
 
   if(crownMode==='lattice' && lattice>0.16){
@@ -3537,102 +3546,64 @@ function makeHairCombManifold(wasm,p){
 //     matches the rest of the line.
 // =============================================================================
 function makeHoopEarringManifold(wasm, p){
-  const { Manifold } = wasm;
-
-  // ---- FIXED SAFETY PARAMETERS (never derived from p, seed, or mutation) ----
-  const POST_TIP_R_MM = 0.65;          // 1.3mm diameter free tip
-  const POST_ROOT_R_MM = 1.05;         // thicker at the root where it anchors into the body
-  const POST_LENGTH_MM = 11.5;         // within the real range for a stud/post earring finding
-  // The body's own scale is user/seed-controlled via mainSize, matching
-  // the prior "hoop diameter" UI field's role but now describing the
-  // decorated body's own overall span instead of a hoop's circumference.
+  const HOOK_TIP_R_MM = 0.45;
+  const HOOK_ROOT_R_MM = 0.78;
+  const HOOK_STRAIGHT_MM = 5.5;
+  const HOOK_BEND_R_MM = 4.8;
+  const HOOK_EXIT_MM = 4.5;
   const BODY_SPAN_MM = clamp(p.mainSize||26, 16, 34);
   const bodyOuterR = BODY_SPAN_MM/2;
   const bodyTh = Math.max(2.8, bodyOuterR*0.62);
 
-  const parts=[];
-
-  // ---- POST: a straight, rigid rod along its own local Y axis ----
-  // Built first in a simple local frame (post running along +Y from the
-  // body's attachment point upward, toward the piercing) -- this keeps
-  // the "rotate the body 90 degrees relative to the post" step below a
-  // single, explicit, easy-to-verify transform rather than something
-  // baked into per-vertex math throughout.
-  const postBase=[0,0,0];
-  const postTip=[0,POST_LENGTH_MM,0];
-  {
-    const steps=5;
-    const pts=[postBase];
-    for(let j=1;j<=steps;j++){
-      const q=j/steps;
-      pts.push([0, POST_LENGTH_MM*q, 0]);
-    }
-    for(let j=0;j<steps;j++){
-      const q0=j/steps, q1=(j+1)/steps;
-      const r0=POST_ROOT_R_MM*(1-q0)+POST_TIP_R_MM*q0;
-      parts.push(ellipticalSegmentBetween(wasm, pts[j], pts[j+1], Math.max(r0,POST_TIP_R_MM), Math.max(r0,POST_TIP_R_MM)*0.95, 16));
-    }
-    // Rounded tip cap -- never a sharp point, for safety during insertion.
-    parts.push(flattenedNodeAt(wasm, postTip, POST_TIP_R_MM*1.2, POST_TIP_R_MM*1.0, POST_TIP_R_MM*1.15, 16));
-  }
-
-  // ---- Root anchor collar: guarantees real volumetric overlap where the ----
-  // post meets the body, matching the same "deep embed, never a tangent
-  // touch" principle used throughout this file for post/body junctions
-  // (see makeCufflinksManifold's own root/hinge treatment for the same
-  // pattern applied to a different finding).
-  const collarR = POST_ROOT_R_MM*1.85;
-  parts.push(flattenedNodeAt(wasm, postBase, collarR, collarR*0.85, collarR*0.95, 20));
-
   return (async () => {
-    // ---- BODY: built in its OWN natural orientation via the shared face ----
-    // builder (same function pendant/cufflinks use), then explicitly
-    // rotated 90 degrees so its face plane sits CROSSWISE to the post's
-    // axis -- the dango-on-a-skewer read the requester asked for. The
-    // face builder's own front-facing axis is +Z; rotating 90 degrees
-    // around the post's own running axis (Y) turns that +Z front face to
-    // point sideways (+X), so the body reads "in profile" against the
-    // straight post exactly as a round dumpling sits crosswise on its stick.
+    const parts=[];
     const face = await makeFaceManifold(wasm, p, bodyOuterR, bodyTh, Math.max(bodyTh*0.85, bodyOuterR*0.55));
-    // Rotate first (around the origin, in the face's own local frame),
-    // THEN translate down to hang below the post's root -- rotating
-    // after translating would swing the body off to the side instead of
-    // simply turning it in place where it hangs.
-    let bodyManifold = face.manifold.rotate([0,90,0]);
-    // BUG FIX: the previous embedIntoBody = min(bodyOuterR*0.35, collarR*1.6)
-    // made the body's CENTER sit only ~3mm below the post's base regardless
-    // of body size, while the body itself extends +-bodyOuterR from that
-    // center -- so at every tested size (16-34mm) the post's base ended up
-    // BURIED 5-14mm inside the body's own volume instead of visibly
-    // protruding above it. Confirmed numerically before this fix. A real
-    // dango's stick visibly emerges from the dumpling on at least one
-    // side; the fix places the body's center far enough below the post's
-    // base that the post's own length clears the body's near edge, with
-    // only a small FIXED overlap (not size-dependent) for a guaranteed
-    // solid union at the junction.
-    const JUNCTION_OVERLAP_MM = 2.2;
-    const bodyDropFromPostBase = Math.max(0, POST_LENGTH_MM - JUNCTION_OVERLAP_MM) + bodyOuterR;
-    const bodyCenter=[0, -bodyDropFromPostBase, 0];
-    bodyManifold = bodyManifold.translate(bodyCenter);
+    const bodyManifold = face.manifold.rotate([0,90,0]);
     parts.push(bodyManifold);
 
-    // Root connector guaranteeing the decorated body reads as fused to
-    // the post rather than tangent/floating near it -- spans from the
-    // post's own base down past the body's near edge into its embedded
-    // interior, so the two volumes have real overlap regardless of the
-    // gap the corrected placement above now leaves visible.
-    const connectorEnd=[0, -(bodyDropFromPostBase-bodyOuterR*0.4), 0];
-    parts.push(cylinderBetween(wasm, postBase, connectorEnd, collarR*0.85, 16));
+    const hookPts=[];
+    const hookRadii=[];
+    const root=[0,bodyOuterR*0.72,0];
+    const straightSteps=4;
+    for(let i=0;i<=straightSteps;i++){
+      const q=i/straightSteps;
+      hookPts.push([0,root[1]+HOOK_STRAIGHT_MM*q,0]);
+      const r=HOOK_ROOT_R_MM*(1-q*0.28);
+      hookRadii.push([r,r*0.96]);
+    }
+    const bendCenter=[HOOK_BEND_R_MM,root[1]+HOOK_STRAIGHT_MM,0];
+    const bendSteps=10;
+    for(let i=1;i<=bendSteps;i++){
+      const q=i/bendSteps;
+      const a=Math.PI-(Math.PI/2)*q;
+      hookPts.push([
+        bendCenter[0]+HOOK_BEND_R_MM*Math.cos(a),
+        bendCenter[1]+HOOK_BEND_R_MM*Math.sin(a),
+        0
+      ]);
+      const r=HOOK_ROOT_R_MM*0.72*(1-q)+HOOK_TIP_R_MM*q;
+      hookRadii.push([r,r*0.96]);
+    }
+    const bendEnd=hookPts[hookPts.length-1];
+    const exitSteps=4;
+    for(let i=1;i<=exitSteps;i++){
+      const q=i/exitSteps;
+      hookPts.push([bendEnd[0]+HOOK_EXIT_MM*q,bendEnd[1],0]);
+      const r=HOOK_ROOT_R_MM*0.52*(1-q)+HOOK_TIP_R_MM*q;
+      hookRadii.push([r,r*0.96]);
+    }
+    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,20,false);
+    parts.push(meshToManifold(wasm,hookMesh.V,hookMesh.F));
 
-    p.hoopPostTipDiameterMm = POST_TIP_R_MM*2;
-    p.hoopPostRootDiameterMm = POST_ROOT_R_MM*2;
-    p.hoopPostLengthMm = POST_LENGTH_MM;
+    p.hoopHookTipDiameterMm = HOOK_TIP_R_MM*2;
+    p.hoopHookRootDiameterMm = HOOK_ROOT_R_MM*2;
+    p.hoopHookBendRadiusMm = HOOK_BEND_R_MM;
+    p.hoopHookRotationDeg = 90;
     p.hoopBodySpanMm = BODY_SPAN_MM;
-    p.hoopBodyRotationDeg = 90;
-    p.hoopClosureType = 'rigidPostNoBackingModeled';
-    p.hoopFixedGeometry = 'post+collar locked, body only decorated, body rotated 90deg crosswise to post';
+    p.hoopClosureType = 'continuousHook';
+    p.hoopFixedGeometry = 'continuous tapered hook rotated 90deg from the main body';
 
-    return {manifold: unionAll(wasm, parts), bandW: bodyTh};
+    return {manifold:unionAll(wasm,parts),bandW:bodyTh};
   })();
 }
 
