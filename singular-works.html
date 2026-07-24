@@ -10,6 +10,9 @@
 <body>
 
 <div id="agdp-header-mount"></div>
+<script>
+fetch("agdp-header.html").then(r=>r.text()).then(h=>{document.getElementById("agdp-header-mount").outerHTML=h;});
+</script>
 
 <header class="doc-hero" id="top">
   <div class="doc-eyebrow">Archive</div>
@@ -90,9 +93,10 @@
 </section>
 
 <div id="agdp-footer-mount"></div>
-
 <script>
-/* Reuse the same header/footer loader from manifesto.html and commissions.html */
+fetch("agdp-footer.html")
+  .then(r=>r.text())
+  .then(f=>{document.getElementById("agdp-footer-mount").outerHTML=f;});
 </script>
 
 </body>
