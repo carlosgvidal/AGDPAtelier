@@ -3319,247 +3319,153 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 //     behaves as a structural anchor rather than "one more tooth."
 // =============================================================================
 function makeHairCombManifold(wasm,p){
-  const { Manifold } = wasm;
+  const TOOTH_COUNT = 9;
+  const TOOTH_SPACING_MM = 7.2;
+  const TOOTH_ROOT_R_MM = 1.42;
+  const TOOTH_TIP_R_MM = 0.78;
+  const TOOTH_LENGTH_MM = 39;
+  const CROWN_HEIGHT_MM = Math.max(28, Math.min(42, p.combTopHeightMm||36));
+  const PLATE_DEPTH_MM = 2.6;
+  const LOWER_RAIL_MM = 5.2;
+  const SIDE_MARGIN_MM = 5.4;
+  const width = TOOTH_SPACING_MM*(TOOTH_COUNT-1)+SIDE_MARGIN_MM*2;
+  const cranialCurve = 4.8;
 
-  // ---- FIXED SAFETY PARAMETERS (never derived from p, seed, or mutation) ----
-  const TOOTH_COUNT = 10;              // within the 8-12 commercial range
-  const TOOTH_SPACING_MM = 7.0;        // within the 6-8mm wide-tooth safe range
-  const TOOTH_ROOT_R_MM = 1.45;        // root diameter ~2.9mm (2.6-3.0mm target)
-  const TOOTH_TIP_R_MM = 0.85;         // tip diameter ~1.7mm, always rounded (flattenedNodeAt cap), never pointed
-  const TOOTH_LENGTH_MM = 34;          // within 30-40mm range
-  const TOOTH_INSERTION_DEG = 16;      // fabrication convergence angle, within 14-18deg range
-  const SPINE_R_MM = Math.max(TOOTH_ROOT_R_MM*2.1, 3.2); // >=2x tooth root, structural anchor
-  const CROWN_HEIGHT_MM = Math.max(30, p.combTopHeightMm||42);
-  const width = TOOTH_SPACING_MM*(TOOTH_COUNT-1) + TOOTH_ROOT_R_MM*2*3; // enough margin past the end teeth
-
-  // ---- Decoration inputs: ONLY consulted for the crown, never for teeth/spine ----
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-crown');
-  const dome=featureIntensity(p,'dome'), vessel=featureIntensity(p,'vessel');
-  const lattice=featureIntensity(p,'lattice'), cellular=featureIntensity(p,'cellular');
-  const wrapped=featureIntensity(p,'wrapped'), cage=featureIntensity(p,'cage');
-  const inter=featureIntensity(p,'interweave'), continuity=featureIntensity(p,'continuity');
-  const crownMode=pickStructuralTreatment(p, 'haircomb-crown');
-  const crownMul=StructuralKit.treatmentMultipliers(crownMode);
-
+  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-crown-v2');
+  const dome=featureIntensity(p,'dome');
+  const vessel=featureIntensity(p,'vessel');
+  const lattice=featureIntensity(p,'lattice');
+  const cellular=featureIntensity(p,'cellular');
+  const wrapped=featureIntensity(p,'wrapped');
+  const inter=featureIntensity(p,'interweave');
+  const continuity=featureIntensity(p,'continuity');
   const parts=[];
 
-  // ---- SPINE: fixed straight bar, no seed influence on its own shape ----
-  // A gentle, fixed cranial curve (not user-editable) so the comb follows
-  // a real head's curvature rather than sitting as a flat rigid bar --
-  // this is a safety/wearability constant, not a decorative choice.
-  const FIXED_CRANIAL_CURVE_MM = 6.0;
-  const spinePts=[];
-  const n=28;
-  for(let i=0;i<n;i++){
-    const u=i/(n-1);
-    const x=-width/2+width*u;
-    const nx=x/(width/2);
-    const y=FIXED_CRANIAL_CURVE_MM*(1-nx*nx);
-    spinePts.push([x,y,0]);
+  function cranialY(x){
+    const nx=x/(width*0.5);
+    return cranialCurve*(1-nx*nx);
   }
-  {
-    const spineRadii=spinePts.map(()=>[SPINE_R_MM,SPINE_R_MM*0.78]);
-    const spineMesh=variableEllipticalTubeMesh(spinePts,spineRadii,20,false);
-    parts.push(meshToManifold(wasm,spineMesh.V,spineMesh.F));
+  function lowerZ(x){
+    const nx=x/(width*0.5);
+    return 1.5+2.3*(1-nx*nx);
+  }
+  function topZ(x){
+    const nx=clamp(x/(width*0.5),-1,1);
+    const center=Math.pow(Math.max(0,1-nx*nx),0.62);
+    const shoulders=
+      2.6*Math.exp(-Math.pow((nx-0.56)/0.19,2))+
+      2.6*Math.exp(-Math.pow((nx+0.56)/0.19,2));
+    const restrainedVariation=(rng()-0.5)*0.8*(0.35+0.65*center);
+    return lowerZ(x)+LOWER_RAIL_MM+CROWN_HEIGHT_MM*(0.36+0.64*center)*0.68+shoulders+restrainedVariation;
   }
 
-  // ---- TEETH: fixed geometry, safety-driven, never touched by mutation ----
-  function spinePointAt(x){
-    const nx=x/(width/2);
-    const y=FIXED_CRANIAL_CURVE_MM*(1-nx*nx);
-    return [x,y,0];
-  }
-  const insertionRad=TOOTH_INSERTION_DEG*Math.PI/180;
-  const usableHalf=(width/2)-TOOTH_ROOT_R_MM*2;
-  for(let k=0;k<TOOTH_COUNT;k++){
-    const u = TOOTH_COUNT===1?0.5:k/(TOOTH_COUNT-1);
-    const x0 = -usableHalf+usableHalf*2*u;
-    const base = spinePointAt(x0);
-    const root=[base[0], base[1]+SPINE_R_MM*0.2, base[2]];
-    // Slight, FIXED convergence toward the comb's own centerline (a real
-    // comb's teeth angle very slightly inward, not straight-parallel) --
-    // this is a fabrication constant, same for every tooth regardless of seed.
-    const lateral = x0/(usableHalf||1);
-    const lean = Math.tan(insertionRad)*TOOTH_LENGTH_MM;
-    const sideConverge = -lateral*3.0; // fixed, small, safety-oriented convergence
-    const steps=6;
-    const pts=[root];
-    for(let j=1;j<=steps;j++){
-      const q=j/steps, ease=q*q*(3-2*q);
-      pts.push([
-        x0+sideConverge*ease,
-        root[1]-lean*q,
-        root[2]-TOOTH_LENGTH_MM*q
-      ]);
+  {
+    const samples=72;
+    const V=[],F=[];
+    const frontBottom=[],frontTop=[],backBottom=[],backTop=[];
+    const halfD=PLATE_DEPTH_MM*0.5;
+    for(let i=0;i<=samples;i++){
+      const u=i/samples;
+      const x=-width*0.5+width*u;
+      const y=cranialY(x);
+      const zb=lowerZ(x);
+      const zt=Math.max(zb+LOWER_RAIL_MM,topZ(x));
+      frontBottom.push(V.length); V.push([x,y-halfD,zb]);
+      frontTop.push(V.length);    V.push([x,y-halfD,zt]);
+      backBottom.push(V.length);  V.push([x,y+halfD,zb]);
+      backTop.push(V.length);     V.push([x,y+halfD,zt]);
     }
-    const toothRadii=pts.map((_,j)=>{
+    const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
+    for(let i=0;i<samples;i++){
+      q(frontBottom[i],frontBottom[i+1],frontTop[i+1],frontTop[i]);
+      q(backBottom[i],backTop[i],backTop[i+1],backBottom[i+1]);
+      q(frontTop[i],frontTop[i+1],backTop[i+1],backTop[i]);
+      q(frontBottom[i],backBottom[i],backBottom[i+1],frontBottom[i+1]);
+    }
+    q(frontBottom[0],frontTop[0],backTop[0],backBottom[0]);
+    q(frontBottom[samples],backBottom[samples],backTop[samples],frontTop[samples]);
+    parts.push(meshToManifold(wasm,V,F));
+  }
+
+  const usableHalf=(TOOTH_SPACING_MM*(TOOTH_COUNT-1))*0.5;
+  for(let k=0;k<TOOTH_COUNT;k++){
+    const u=TOOTH_COUNT===1?0.5:k/(TOOTH_COUNT-1);
+    const x0=-usableHalf+2*usableHalf*u;
+    const lateral=x0/(usableHalf||1);
+    const rootZ=lowerZ(x0)+2.1;
+    const rootY=cranialY(x0);
+    const sideFan=lateral*2.7;
+    const pts=[];
+    const radii=[];
+    const steps=10;
+    for(let j=0;j<=steps;j++){
       const q=j/steps;
-      const smooth=q*q*(3-2*q);
-      const rx=TOOTH_ROOT_R_MM*(1-smooth)+TOOTH_TIP_R_MM*smooth;
-      return [rx,rx*0.92];
-    });
-    const toothMesh=variableEllipticalTubeMesh(pts,toothRadii,18,false);
+      const ease=q*q*(3-2*q);
+      pts.push([
+        x0+sideFan*ease,
+        rootY+1.8*q+4.4*q*q,
+        rootZ-TOOTH_LENGTH_MM*q
+      ]);
+      const taper=Math.pow(q,0.92);
+      const r=TOOTH_ROOT_R_MM*(1-taper)+TOOTH_TIP_R_MM*taper;
+      radii.push([r,r*0.86]);
+    }
+    const toothMesh=variableEllipticalTubeMesh(pts,radii,20,false);
     parts.push(meshToManifold(wasm,toothMesh.V,toothMesh.F));
   }
 
-  // ---- CROWN: the only decorated surface, seed/feature-driven ----
-  // Built as a distinct volume sitting above the spine, using the same
-  // structural-treatment vocabulary (solid/volumetric/lattice) already
-  // shared across ring/comb/clip/cufflinks, so this typology's decoration
-  // reads as part of the same design language rather than a one-off.
-  const crownCenter=[0, FIXED_CRANIAL_CURVE_MM*0.4, CROWN_HEIGHT_MM*0.5];
-  const crownBaseR = width*0.5;
-  const crownBoost = crownMul.thicknessBoost;
-
-  // Anchor the crown's own base directly onto the spine's real geometry
-  // (deep embed, guaranteed overlap) rather than floating a separate
-  // volume near it.
-  const crownAnchors=[];
-  const crownSamples=16;
-  for(let s=0;s<=crownSamples;s++){
-    const u=s/crownSamples;
-    const x=-crownBaseR+crownBaseR*2*u;
-    const base=spinePointAt(clamp(x,-width/2,width/2));
-    crownAnchors.push([base[0], base[1]+SPINE_R_MM*0.3, base[2]]);
-  }
-  // A continuous crest riding above the spine's own anchors, built as ONE
-  // continuous tube with a per-point (rx,ry) cross-section rather than a
-  // chain of independent capsule segments -- the previous approach
-  // (ellipticalSegmentBetween per span) let each segment's own end cap
-  // poke through its neighbor's volume whenever the cross-section radius
-  // exceeded the anchor spacing (confirmed numerically: up to 1.37x at
-  // the crest's own peak, for realistic CROWN_HEIGHT_MM/crownBoost
-  // values), producing the blocky, self-intersecting, faceted lumps seen
-  // in production. A single shared-ring tube can't develop that defect --
-  // consecutive cross-sections blend by construction instead of each
-  // being its own separate capped solid.
-  const crestPeakU = 0.5;
-  const crestWidth = 0.46;
-  const crestPathPts = [];
-  const crestRadii = [];
-  for(let s=0;s<=crownSamples;s++){
-    const q=s/crownSamples;
-    const distFromPeak=(q-crestPeakU)/crestWidth;
-    const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.2);
-    const a=crownAnchors[s];
-    crestPathPts.push([a[0], a[1]+CROWN_HEIGHT_MM*(0.34+0.30*dome*taperEdge), a[2]+CROWN_HEIGHT_MM*(0.03+0.07*vessel)]);
-    const rx=CROWN_HEIGHT_MM*(0.11+0.04*dome)*crownBoost*(0.62+0.38*taperEdge);
-    const ry=CROWN_HEIGHT_MM*(0.085+0.03*dome)*crownBoost*(0.62+0.38*taperEdge);
-    crestRadii.push([Math.max(1.2,rx), Math.max(1.0,ry)]);
-  }
   {
-    const crestMesh = variableEllipticalTubeMesh(crestPathPts, crestRadii, 18, false);
-    parts.push(meshToManifold(wasm, crestMesh.V, crestMesh.F));
-  }
-  {
-    const lowerCrownPts=crownAnchors.map((a,i)=>{
-      const q=i/crownSamples;
-      const rise=Math.sin(Math.PI*q);
-      return [a[0],a[1]+SPINE_R_MM*0.45+CROWN_HEIGHT_MM*0.12*rise,a[2]+CROWN_HEIGHT_MM*0.02*rise];
-    });
-    const lowerCrownRadii=lowerCrownPts.map((_,i)=>{
-      const q=i/crownSamples;
-      const edge=0.72+0.28*Math.sin(Math.PI*q);
-      return [SPINE_R_MM*0.92*edge,SPINE_R_MM*0.68*edge];
-    });
-    const lowerCrownMesh=variableEllipticalTubeMesh(lowerCrownPts,lowerCrownRadii,18,false);
-    parts.push(meshToManifold(wasm,lowerCrownMesh.V,lowerCrownMesh.F));
-    for(let i=0;i<=crownSamples;i+=2){
-      const bridgePts=[lowerCrownPts[i],crestPathPts[i]];
-      const bridgeRadii=[[SPINE_R_MM*0.62,SPINE_R_MM*0.50],[SPINE_R_MM*0.48,SPINE_R_MM*0.40]];
-      const bridgeMesh=variableEllipticalTubeMesh(bridgePts,bridgeRadii,14,false);
-      parts.push(meshToManifold(wasm,bridgeMesh.V,bridgeMesh.F));
+    const pts=[],radii=[];
+    const samples=48;
+    for(let i=0;i<=samples;i++){
+      const u=i/samples;
+      const x=-width*0.5+width*u;
+      pts.push([x,cranialY(x)-PLATE_DEPTH_MM*0.18,lowerZ(x)+2.1]);
+      const edge=0.86+0.14*Math.sin(Math.PI*u);
+      radii.push([1.55*edge,1.18*edge]);
     }
+    const mesh=variableEllipticalTubeMesh(pts,radii,18,false);
+    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
   }
 
-  if(crownMode==='lattice' && lattice>0.16){
-    for(let s=0;s<crownSamples-1;s+=2){
-      const a=crownAnchors[s], b=crownAnchors[Math.min(crownSamples,s+2)];
-      parts.push(ellipticalSegmentBetween(wasm,
-        [a[0],a[1]+CROWN_HEIGHT_MM*0.3,a[2]],
-        [b[0],b[1]+CROWN_HEIGHT_MM*0.7,b[2]],
-        SPINE_R_MM*(0.5+0.3*lattice), SPINE_R_MM*0.4, 12));
-    }
-  }
-  if(wrapped>0.18){
-    const strands=1+Math.round(wrapped*2);
-    for(let sIdx=0;sIdx<strands;sIdx++){
-      const pts=[];
-      for(let s=0;s<=crownSamples;s++){
-        const u=s/crownSamples, mix=0.3+0.4*sIdx/Math.max(1,strands-1);
-        const base=crownAnchors[s];
-        pts.push([base[0], base[1]+CROWN_HEIGHT_MM*(0.3+0.5*mix), base[2]+CROWN_HEIGHT_MM*0.08*Math.sin(u*Math.PI*2+sIdx)]);
-      }
-      const mesh=tubeAlongPathMesh(pts,Math.max(AGDP_MIN_WALL_MM*0.75,SPINE_R_MM*(0.32+0.18*wrapped)),10,false);
-      parts.push(meshToManifold(wasm,mesh.V,mesh.F));
-    }
-  }
-  const nodeCount = crownMode==='solid' ? 0 : Math.max(1,Math.round(1+cellular*3+inter*1.5));
-  for(let k=0;k<nodeCount;k++){
-    const u=(k+1)/(nodeCount+1);
-    const idx=Math.round(u*crownSamples);
-    const base=crownAnchors[Math.min(crownSamples,idx)];
-    const rr=SPINE_R_MM*(0.9+0.5*cellular+0.2*rng());
-    parts.push(flattenedNodeAt(wasm,
-      [base[0], base[1]+CROWN_HEIGHT_MM*(0.6+0.25*rng()), base[2]+CROWN_HEIGHT_MM*0.1],
-      rr*(1.0+0.18*vessel), rr*(0.62+0.18*dome), rr*(0.82+0.2*continuity), 16));
-  }
-  // Mandatory event-mass, same shared function every typology uses for its
-  // own semantic center -- lives on the crown only, per spec.
-  {
-    const idx=Math.round(crestPeakU*crownSamples);
-    const base=crownAnchors[idx];
-    const center=[base[0], base[1]+CROWN_HEIGHT_MM*0.68, base[2]+CROWN_HEIGHT_MM*0.12];
-    parts.push(StructuralKit.buildEventMass(wasm, center, CROWN_HEIGHT_MM, dome, vessel));
+  const reliefDepth=0.38+0.34*Math.max(dome,vessel,continuity);
+  const reliefCount=Math.max(3,Math.min(7,3+Math.round((cellular+inter+wrapped+lattice)*1.6)));
+  for(let i=0;i<reliefCount;i++){
+    const u=(i+1)/(reliefCount+1);
+    const x=-width*0.36+width*0.72*u;
+    const z0=lowerZ(x)+LOWER_RAIL_MM+5.0;
+    const z1=Math.min(topZ(x)-3.2,z0+7.0+5.0*(0.5+0.5*Math.sin((i+1)*1.7)));
+    if(z1<=z0+1.0) continue;
+    const pts=[
+      [x,cranialY(x)-PLATE_DEPTH_MM*0.5-reliefDepth*0.35,z0],
+      [x+(i%2?1.8:-1.8),cranialY(x)-PLATE_DEPTH_MM*0.5-reliefDepth,z1]
+    ];
+    const r=0.74+0.18*Math.max(cellular,inter,lattice);
+    const mesh=variableEllipticalTubeMesh(pts,[[r,r*0.72],[r*0.82,r*0.62]],14,false);
+    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
   }
 
-  // Mutations: crown only, exactly as the existing comb already restricts
-  // (teeth are functional and are never touched).
-  if(p.mutation && p.mutation.active){
-    const sv=p.mutation.severity;
-    const crownTopPts = crownAnchors.map((a,i)=>{
-      const q=(i+0.5)/crownSamples;
-      const distFromPeak=(q-crestPeakU)/crestWidth;
-      const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.2);
-      return [a[0], a[1]+CROWN_HEIGHT_MM*(0.55+0.35*dome*taperEdge), a[2]+CROWN_HEIGHT_MM*(0.05+0.10*vessel)];
-    });
-    if(p.mutation.mode==='hypertrophy'){
-      const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-hypertrophy');
-      const idx=Math.floor(hRng()*crownTopPts.length);
-      const massR=CROWN_HEIGHT_MM*(0.16+0.18*sv);
-      parts.push(flattenedNodeAt(wasm,crownTopPts[idx],massR*(1.2+0.2*vessel),massR*(0.85+0.2*dome),massR*(0.95+0.2*dome),22));
-    }else if(p.mutation.mode==='proliferation'){
-      const pRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-proliferation');
-      const anchor=crownTopPts[Math.floor(pRng()*crownTopPts.length)];
-      const colonyCount=5+Math.round(sv*7);
-      for(let k=0;k<colonyCount;k++){
-        const jitter=CROWN_HEIGHT_MM*0.2;
-        const pt=[anchor[0]+(pRng()*2-1)*jitter, anchor[1]+(pRng()*2-1)*jitter*0.6, anchor[2]+(pRng()*2-1)*jitter*0.5];
-        const r=Math.max(0.5, CROWN_HEIGHT_MM*(0.03+0.02*pRng()));
-        parts.push(flattenedNodeAt(wasm,pt,r,r*0.85,r*0.9,10));
-      }
-    }else if(p.mutation.mode==='erosion'){
-      const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-erosion');
-      const cutters=[];
-      const count=2+Math.round(sv*3);
-      for(let k=0;k<count;k++){
-        const idx=Math.floor(eRng()*crownTopPts.length);
-        const vr=Math.max(1.0, CROWN_HEIGHT_MM*(0.08+0.08*sv));
-        cutters.push(sphereAt(wasm,crownTopPts[idx],vr,24));
-      }
-      if(cutters.length){
-        try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(safeDifference(wasm,merged,unionAll(wasm,cutters))); }
-        catch(err){ console.warn('AGDP: erosión de cabezal de peineta omitida por seguridad topológica',err); }
-      }
-    }
+  {
+    const centerZ=lowerZ(0)+LOWER_RAIL_MM+CROWN_HEIGHT_MM*0.37;
+    const medallionR=Math.max(3.6,Math.min(6.2,CROWN_HEIGHT_MM*0.14));
+    parts.push(flattenedNodeAt(
+      wasm,
+      [0,cranialY(0)-PLATE_DEPTH_MM*0.5-reliefDepth*0.72,centerZ],
+      medallionR,
+      medallionR*0.38,
+      medallionR*0.94,
+      28
+    ));
   }
 
   p.hairCombToothCount=TOOTH_COUNT;
   p.hairCombToothSpacingMm=TOOTH_SPACING_MM;
   p.hairCombToothRootDiameterMm=TOOTH_ROOT_R_MM*2;
   p.hairCombToothTipDiameterMm=TOOTH_TIP_R_MM*2;
-  p.hairCombSpineDiameterMm=SPINE_R_MM*2;
-  p.hairCombFixedGeometry='teeth+spine locked, crown only decorated';
+  p.hairCombCrownDepthMm=PLATE_DEPTH_MM;
+  p.hairCombCrownHeightMm=CROWN_HEIGHT_MM;
+  p.hairCombFixedGeometry='continuous curved plate + integrated tapered teeth';
+  p.hairCombGeneratorVersion='haircomb-v2';
 
   return {manifold:unionAll(wasm,parts), bandW:CROWN_HEIGHT_MM};
 }
