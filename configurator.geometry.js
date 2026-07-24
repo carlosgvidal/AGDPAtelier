@@ -368,57 +368,111 @@ function tubeAlongPathMesh(points, radius, ringSegN, closed) {
 // ~1.37x at the crest's own peak), which independent capsules cannot
 // tolerate but a shared-ring tube handles by construction.
 function variableEllipticalTubeMesh(points, radii, ringSegN, closed){
-  ringSegN = Math.max(ringSegN||8,6);
-  const n = points.length;
-  const V=[], F=[];
-  function tri(a,b,c){F.push([a,b,c]);}
+  ringSegN=Math.max(Math.round(ringSegN||8),8);
+  closed=!!closed;
+  if(!Array.isArray(points)||!Array.isArray(radii)||points.length!==radii.length||points.length<(closed?3:2)){
+    throw new Error('variableEllipticalTubeMesh: invalid path/radii input');
+  }
+
+  // Remove consecutive coincident samples before frame construction. A zero-
+  // length segment makes the old projected-frame transport collapse to a
+  // zero vector, producing coincident ring vertices and degenerate triangles.
+  const cleanPoints=[];
+  const cleanRadii=[];
+  const EPS2=1e-12;
+  for(let i=0;i<points.length;i++){
+    const q=points[i];
+    const r=radii[i];
+    if(!q||q.length<3||!r||r.length<2||!q.every(Number.isFinite)||!r.every(Number.isFinite)){
+      throw new Error('variableEllipticalTubeMesh: non-finite sample');
+    }
+    if(cleanPoints.length){
+      const a=cleanPoints[cleanPoints.length-1];
+      const dx=q[0]-a[0],dy=q[1]-a[1],dz=q[2]-a[2];
+      if(dx*dx+dy*dy+dz*dz<=EPS2){
+        cleanRadii[cleanRadii.length-1]=[Math.max(cleanRadii[cleanRadii.length-1][0],r[0]),Math.max(cleanRadii[cleanRadii.length-1][1],r[1])];
+        continue;
+      }
+    }
+    cleanPoints.push([q[0],q[1],q[2]]);
+    cleanRadii.push([Math.max(1e-4,r[0]),Math.max(1e-4,r[1])]);
+  }
+  if(cleanPoints.length<(closed?3:2)) throw new Error('variableEllipticalTubeMesh: collapsed path');
+
+  const n=cleanPoints.length,V=[],F=[];
+  const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  const length=a=>Math.hypot(a[0],a[1],a[2]);
+  const norm=a=>{const l=length(a);return l>1e-12?[a[0]/l,a[1]/l,a[2]/l]:null;};
   const tangents=[];
   for(let i=0;i<n;i++){
-    const prev=points[closed?(i-1+n)%n:Math.max(0,i-1)], next=points[closed?(i+1)%n:Math.min(n-1,i+1)];
-    const d=[next[0]-prev[0],next[1]-prev[1],next[2]-prev[2]];
-    const l=Math.hypot(d[0],d[1],d[2])||1;
-    tangents.push([d[0]/l,d[1]/l,d[2]/l]);
+    const prev=cleanPoints[closed?(i-1+n)%n:Math.max(0,i-1)];
+    const next=cleanPoints[closed?(i+1)%n:Math.min(n-1,i+1)];
+    let t=norm([next[0]-prev[0],next[1]-prev[1],next[2]-prev[2]]);
+    if(!t){
+      const fallback=i>0?tangents[i-1]:norm([cleanPoints[1][0]-cleanPoints[0][0],cleanPoints[1][1]-cleanPoints[0][1],cleanPoints[1][2]-cleanPoints[0][2]]);
+      t=fallback||[1,0,0];
+    }
+    tangents.push(t);
   }
-  function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
-  function norm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}
-  let ref=[0,0,1]; if(Math.abs(tangents[0][2])>0.9) ref=[1,0,0];
-  let e1=norm(cross(ref,tangents[0])), e2=cross(tangents[0],e1);
+
+  // Rotation-minimising frame transport. Unlike repeated projection, this
+  // remains stable through tight bends and near-orthogonal tangent changes.
+  let ref=Math.abs(tangents[0][2])<0.85?[0,0,1]:[0,1,0];
+  let e1=norm(cross(ref,tangents[0]))||[1,0,0];
+  let e2=norm(cross(tangents[0],e1))||[0,1,0];
   const rings=[];
   for(let i=0;i<n;i++){
     if(i>0){
-      const tn=tangents[i], dot=e1[0]*tn[0]+e1[1]*tn[1]+e1[2]*tn[2];
-      const proj=[e1[0]-tn[0]*dot,e1[1]-tn[1]*dot,e1[2]-tn[2]*dot];
-      e1=norm(proj); e2=cross(tn,e1);
+      const t0=tangents[i-1],t1=tangents[i];
+      const axis=cross(t0,t1);
+      const sinA=length(axis),cosA=clamp(dot(t0,t1),-1,1);
+      if(sinA>1e-10){
+        const k=[axis[0]/sinA,axis[1]/sinA,axis[2]/sinA];
+        const rotate=v=>{
+          const kv=cross(k,v),kd=dot(k,v),one=1-cosA;
+          return [v[0]*cosA+kv[0]*sinA+k[0]*kd*one,v[1]*cosA+kv[1]*sinA+k[1]*kd*one,v[2]*cosA+kv[2]*sinA+k[2]*kd*one];
+        };
+        e1=rotate(e1);
+      }else if(cosA<0){
+        e1=[-e1[0],-e1[1],-e1[2]];
+      }
+      const projected=[e1[0]-t1[0]*dot(e1,t1),e1[1]-t1[1]*dot(e1,t1),e1[2]-t1[2]*dot(e1,t1)];
+      e1=norm(projected)||norm(cross(Math.abs(t1[2])<0.85?[0,0,1]:[0,1,0],t1))||[1,0,0];
+      e2=norm(cross(t1,e1))||[0,1,0];
     }
-    const rx=radii[i][0], ry=radii[i][1];
-    const ring=[];
+    const rx=cleanRadii[i][0],ry=cleanRadii[i][1],ring=[];
     for(let k=0;k<ringSegN;k++){
-      const ang=2*Math.PI*k/ringSegN, c=Math.cos(ang), s=Math.sin(ang);
+      const a=2*Math.PI*k/ringSegN,c=Math.cos(a),sn=Math.sin(a);
       ring.push(V.length);
       V.push([
-        points[i][0]+ (e1[0]*c*rx+e2[0]*s*ry),
-        points[i][1]+ (e1[1]*c*rx+e2[1]*s*ry),
-        points[i][2]+ (e1[2]*c*rx+e2[2]*s*ry)
+        cleanPoints[i][0]+e1[0]*c*rx+e2[0]*sn*ry,
+        cleanPoints[i][1]+e1[1]*c*rx+e2[1]*sn*ry,
+        cleanPoints[i][2]+e1[2]*c*rx+e2[2]*sn*ry
       ]);
     }
     rings.push(ring);
   }
-  const segCount = closed?n:n-1;
+  const segCount=closed?n:n-1;
   for(let i=0;i<segCount;i++){
-    const a=rings[i], b=rings[(i+1)%n];
+    const a=rings[i],b=rings[(i+1)%n];
     for(let k=0;k<ringSegN;k++){
       const kp=(k+1)%ringSegN;
-      tri(a[k],a[kp],b[kp]); tri(a[k],b[kp],b[k]);
+      F.push([a[k],a[kp],b[kp]],[a[k],b[kp],b[k]]);
     }
   }
   if(!closed){
-    const capA=V.length; V.push(points[0].slice());
-    for(let k=0;k<ringSegN;k++){const kp=(k+1)%ringSegN; tri(capA,rings[0][kp],rings[0][k]);}
-    const capB=V.length; V.push(points[n-1].slice());
-    for(let k=0;k<ringSegN;k++){const kp=(k+1)%ringSegN; tri(capB,rings[n-1][k],rings[n-1][kp]);}
+    const capA=V.length;V.push(cleanPoints[0].slice());
+    const capB=V.length;V.push(cleanPoints[n-1].slice());
+    for(let k=0;k<ringSegN;k++){
+      const kp=(k+1)%ringSegN;
+      F.push([capA,rings[0][kp],rings[0][k]]);
+      F.push([capB,rings[n-1][k],rings[n-1][kp]]);
+    }
   }
   return {V,F};
 }
+
 function simpleAnnularBandMesh(innerR, outerR, zCenter, width, seg, arcRad, closed) {
   arcRad = arcRad===undefined ? 2*Math.PI : arcRad;
   closed = closed===undefined ? true : closed;
@@ -3548,7 +3602,7 @@ function makeHairCombManifold(wasm,p){
 function makeHoopEarringManifold(wasm, p){
   const HOOK_TIP_R_MM = 0.45;
   const HOOK_SHAFT_R_MM = 0.58;
-  const HOOK_ROOT_R_MM = 0.82;
+  const HOOK_ROOT_R_MM = 0.88;
   const HOOK_RISE_MM = 6.2;
   const HOOK_BEND_R_MM = 5.2;
   const HOOK_INSERTION_MM = 12.0;
@@ -3564,27 +3618,17 @@ function makeHoopEarringManifold(wasm, p){
     const innerR=Math.max(outerR-annularWall,outerR*.48);
     const bandWidth=Math.max(BODY_DEPTH_MM,(p.minFeature||.8)*3.2);
     const ringParams=Object.assign({},p,{
-      type:'pendantAnnularCore',
-      mainSize:innerR*2,
-      bandWidth,
-      holes:Math.min(2,p.holes||0),
-      railCount:Math.min(2,p.railCount||0),
-      nodes:0,
-      rivets:0,
-      screws:0,
-      crown:false,
-      spikes:0,
-      opening:0
+      type:'pendantAnnularCore', mainSize:innerR*2, bandWidth,
+      holes:Math.min(2,p.holes||0), railCount:Math.min(2,p.railCount||0),
+      nodes:0, rivets:0, screws:0, crown:false, spikes:0, opening:0
     });
     const built=await buildBandGeometryManifold(wasm,ringParams,{
       type:'pendantAnnularCore',innerD:innerR*2,width:bandWidth,closed:true,opening:0
     });
-
     let bodyManifold=built.manifold.rotate([0,90,0]);
 
-    // Earring-safe nodules are generated outside the shared band pipeline.
-    // Each nodule includes a radial support that penetrates the annular wall,
-    // and all nodules are fused into one manifold before the single body union.
+    // Nodules are fused as overlapping rounded volumes only. No capped
+    // cylinders, tangent contacts or local cutters are used in this typology.
     const earringNodeCount=Math.max(0,Math.round(p.nodes||0));
     if(earringNodeCount>0){
       const cov=clamp((p.articulationCoverage||120)*Math.PI/180,0.35,Math.PI*1.65);
@@ -3593,20 +3637,17 @@ function makeHoopEarringManifold(wasm, p){
       for(let k=0;k<earringNodeCount;k++){
         const u=earringNodeCount===1?.5:k/(earringNodeCount-1);
         const t=center-cov*.5+cov*u;
-        const nodeR=Math.max(AGDP_MIN_WALL_MM*.72,0.45+(p.nodeVolume||0)*.3);
-        const depthOffset=(k%2?1:-1)*bandWidth*.18;
+        const nodeR=Math.max(AGDP_MIN_WALL_MM*.78,0.50+(p.nodeVolume||0)*.28);
+        const depthOffset=(k%2?1:-1)*bandWidth*.14;
         const radialDir=[0,Math.sin(t),-Math.cos(t)];
-        const supportStartR=Math.max(innerR+annularWall*.08,outerR-annularWall*.88);
-        const nodeCenterR=outerR+nodeR*.30;
-        const supportStart=[depthOffset,radialDir[1]*supportStartR,radialDir[2]*supportStartR];
+        const anchorR=outerR-nodeR*.72;
+        const bridgeR=outerR-nodeR*.18;
+        const nodeCenterR=outerR+nodeR*.28;
+        const anchor=[depthOffset,radialDir[1]*anchorR,radialDir[2]*anchorR];
+        const bridge=[depthOffset,radialDir[1]*bridgeR,radialDir[2]*bridgeR];
         const nodeCenter=[depthOffset,radialDir[1]*nodeCenterR,radialDir[2]*nodeCenterR];
-        const supportEnd=[
-          depthOffset,
-          radialDir[1]*(nodeCenterR+nodeR*.42),
-          radialDir[2]*(nodeCenterR+nodeR*.42)
-        ];
-        const supportR=Math.max(AGDP_MIN_WALL_MM*.68,nodeR*.68);
-        nodeParts.push(cylinderBetween(wasm,supportStart,supportEnd,supportR,32));
+        nodeParts.push(sphereAt(wasm,anchor,nodeR*.78,48));
+        nodeParts.push(sphereAt(wasm,bridge,nodeR*.88,48));
         nodeParts.push(organicNodeAt(wasm,nodeCenter,nodeR,48,t+k*.73));
       }
       const nodeAssembly=unionAll(wasm,nodeParts);
@@ -3616,73 +3657,48 @@ function makeHoopEarringManifold(wasm, p){
       bodyManifold=mergedBody;
     }
 
-    // Build the support and hook as one continuous sweep. The first rings are
-    // embedded through the full annular wall and taper smoothly into the hook,
-    // avoiding faceted support blocks and multi-body intersections at the root.
+    // The hook is now one uninterrupted sweep whose enlarged first rings are
+    // embedded directly into the annular body. This removes the previous
+    // sphere-chain/root-bulb boolean stack, the principal source of dense
+    // local retriangulation and mirror-finish triangular reflections.
+    const rootEmbed=Math.max(annularWall*1.05,(p.minFeature||.8)*2.2);
+    const rootY=outerR-rootEmbed;
+    const shoulderY=outerR+HOOK_ROOT_R_MM*.52;
     const hookPts=[];
     const hookRadii=[];
-    const rootEmbed=Math.max(annularWall*.92,(p.minFeature||.8)*1.9);
-    const hookStartY=outerR-rootEmbed;
-    const shoulderY=outerR+HOOK_ROOT_R_MM*.62;
+    const hookStartY=rootY-annularWall*.16;
     const riseY=outerR+HOOK_RISE_MM;
-
-    const rootSteps=14;
-    for(let i=0;i<=rootSteps;i++){
-      const q=i/rootSteps;
-      const eased=q*q*(3-2*q);
-      hookPts.push([0,hookStartY+(shoulderY-hookStartY)*q,0]);
-      const rx=HOOK_ROOT_R_MM*1.42+(HOOK_ROOT_R_MM-HOOK_ROOT_R_MM*1.42)*eased;
-      const rz=HOOK_ROOT_R_MM*1.26+(HOOK_ROOT_R_MM-HOOK_ROOT_R_MM*1.26)*eased;
-      hookRadii.push([rx,rz]);
-    }
-
-    const riseSteps=16;
-    for(let i=1;i<=riseSteps;i++){
+    const riseSteps=18;
+    for(let i=0;i<=riseSteps;i++){
       const q=i/riseSteps;
       const eased=q*q*(3-2*q);
-      hookPts.push([0,shoulderY+(riseY-shoulderY)*q,0]);
+      hookPts.push([0,hookStartY+(riseY-hookStartY)*q,0]);
       const r=HOOK_ROOT_R_MM+(HOOK_SHAFT_R_MM-HOOK_ROOT_R_MM)*eased;
       hookRadii.push([r,r]);
     }
-
     const bendCenter=[HOOK_BEND_R_MM,riseY,0];
-    const bendSteps=36;
+    const bendSteps=48;
     for(let i=1;i<=bendSteps;i++){
       const q=i/bendSteps;
       const a=Math.PI-Math.PI*q;
-      hookPts.push([
-        bendCenter[0]+HOOK_BEND_R_MM*Math.cos(a),
-        bendCenter[1]+HOOK_BEND_R_MM*Math.sin(a),
-        0
-      ]);
+      hookPts.push([bendCenter[0]+HOOK_BEND_R_MM*Math.cos(a),bendCenter[1]+HOOK_BEND_R_MM*Math.sin(a),0]);
       const r=HOOK_SHAFT_R_MM+(HOOK_TIP_R_MM*1.12-HOOK_SHAFT_R_MM)*q;
       hookRadii.push([r,r]);
     }
-
     const tailStart=hookPts[hookPts.length-1];
-    const tailSteps=22;
+    const tailSteps=24;
     for(let i=1;i<=tailSteps;i++){
       const q=i/tailSteps;
       const eased=q*q*(3-2*q);
-      hookPts.push([
-        tailStart[0]+HOOK_TAIL_FLARE_MM*eased,
-        tailStart[1]-HOOK_INSERTION_MM*q,
-        0
-      ]);
+      hookPts.push([tailStart[0]+HOOK_TAIL_FLARE_MM*eased,tailStart[1]-HOOK_INSERTION_MM*q,0]);
       const r=HOOK_TIP_R_MM*1.12+(HOOK_TIP_R_MM-HOOK_TIP_R_MM*1.12)*q;
       hookRadii.push([r,r]);
     }
-
-    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,48,false);
+    const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,64,false);
     const hookManifold=meshToManifold(wasm,hookMesh.V,hookMesh.F);
-    const tipBulb=sphereAt(wasm,hookPts[hookPts.length-1],HOOK_TIP_R_MM,48);
-    const completeHook=wasm.Manifold.union(hookManifold,tipBulb);
-    try{ hookManifold.delete(); }catch(e){}
-    try{ tipBulb.delete(); }catch(e){}
-
-    const manifold=wasm.Manifold.union(bodyManifold,completeHook);
+    const manifold=wasm.Manifold.union(bodyManifold,hookManifold);
     try{ bodyManifold.delete(); }catch(e){}
-    try{ completeHook.delete(); }catch(e){}
+    try{ hookManifold.delete(); }catch(e){}
 
     p.hoopHookTipDiameterMm=HOOK_TIP_R_MM*2;
     p.hoopHookRootDiameterMm=HOOK_ROOT_R_MM*2;
@@ -3693,8 +3709,7 @@ function makeHoopEarringManifold(wasm, p){
     p.hoopBodyDepthMm=bandWidth;
     p.hoopClosureType='completeFrenchHook';
     p.hoopBodyGeometry='pendantAnnularCore';
-    p.hoopFixedGeometry='pendant-derived annular body with protected volumetric hook root';
-
+    p.hoopPairCount=2;
     return {manifold,bandW:bandWidth};
   })();
 }
@@ -3763,13 +3778,25 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.segmentedIntoParts = 3;
     p.segmentConnectorType = 'slidingDovetailRail';
     p.segmentConnectorRailMm = 'full-height';
+  } else if(p.type==='hoopEarring') {
+    const pairGap=Math.max(8,(p.hoopBodySpanMm||p.mainSize||26)+6);
+    const left=manifold.translate([-pairGap/2,0,0]);
+    const right=manifold.scale([-1,1,1]).translate([pairGap/2,0,0]);
+    const ml=manifoldToMeshHelper(left);
+    const mr=manifoldToMeshHelper(right);
+    V=ml.V.concat(mr.V);
+    F=ml.F.concat(mr.F.map(f=>[f[0]+ml.V.length,f[1]+ml.V.length,f[2]+ml.V.length]));
+    try{ left.delete(); }catch(e){}
+    try{ right.delete(); }catch(e){}
+    try{ manifold.delete(); }catch(e){}
+    manifold=null;
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
     manifold = null;
   }
 
-  const expectedComponents = p.type==='cufflinks' ? 2 : (isSegmentedType ? 3 : 1);
+  const expectedComponents = (p.type==='cufflinks'||p.type==='hoopEarring') ? 2 : (isSegmentedType ? 3 : 1);
   const connected = removeFloatingComponents(V, F, expectedComponents);
   V = connected.V; F = connected.F;
   if(connected.discarded && connected.discarded.length){
