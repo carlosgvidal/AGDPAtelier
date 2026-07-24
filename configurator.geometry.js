@@ -3181,6 +3181,11 @@ function manifoldBounds(manifold){
   return {mesh,b:bounds(mesh.V)};
 }
 function applyConservativeSilverHollowing(wasm,manifold,p){
+  if(p.type==='haircomb'){
+    p.silverHollowingApplied=false;
+    p.silverWeightProfile=silverWeightProfileKey(p);
+    return manifold;
+  }
   const profileKey=silverWeightProfileKey(p);
   const limits=AGDP_SILVER_HOLLOWING.thresholdsGrams[profileKey]||{hollowAt:Infinity,rejectAbove:Infinity};
   const before=manifoldBounds(manifold);
@@ -3319,155 +3324,245 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 //     behaves as a structural anchor rather than "one more tooth."
 // =============================================================================
 function makeHairCombManifold(wasm,p){
-  const TOOTH_COUNT = 9;
-  const TOOTH_SPACING_MM = 7.2;
-  const TOOTH_ROOT_R_MM = 1.42;
-  const TOOTH_TIP_R_MM = 0.78;
-  const TOOTH_LENGTH_MM = 39;
-  const CROWN_HEIGHT_MM = Math.max(28, Math.min(42, p.combTopHeightMm||36));
-  const PLATE_DEPTH_MM = 2.6;
-  const LOWER_RAIL_MM = 5.2;
-  const SIDE_MARGIN_MM = 5.4;
-  const width = TOOTH_SPACING_MM*(TOOTH_COUNT-1)+SIDE_MARGIN_MM*2;
-  const cranialCurve = 4.8;
-
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-crown-v2');
-  const dome=featureIntensity(p,'dome');
-  const vessel=featureIntensity(p,'vessel');
-  const lattice=featureIntensity(p,'lattice');
-  const cellular=featureIntensity(p,'cellular');
-  const wrapped=featureIntensity(p,'wrapped');
-  const inter=featureIntensity(p,'interweave');
-  const continuity=featureIntensity(p,'continuity');
+  /*
+   * HAIR COMB v4
+   * Structural envelope follows the dimensional ranges in the supplied
+   * AGDP infographic. The crown is the only generative/decorated zone.
+   * Teeth, roots and rear contact surface remain fixed and undecorated.
+   */
+  const WIDTH_MM=clamp(Number.isFinite(p.mainSize)?p.mainSize:100,95,120);
+  const CROWN_HEIGHT_MM=clamp(Number.isFinite(p.combTopHeightMm)?p.combTopHeightMm:48,45,60);
+  const CROWN_DEPTH_MM=clamp(Number.isFinite(p.combBodyWallMm)?p.combBodyWallMm:4.0,3.5,4.5);
+  const TOOTH_LENGTH_MM=clamp(Number.isFinite(p.combToothLengthMm)?p.combToothLengthMm:35,30,40);
+  const TOOTH_COUNT=Math.round(clamp(Number.isFinite(p.combToothCount)?p.combToothCount:8,7,9));
+  const TOOTH_DIAMETER_MM=clamp(Number.isFinite(p.combToothDiameterMm)?p.combToothDiameterMm:2.8,2.5,3.0);
+  const ROOT_TRANSITION_MM=clamp(Number.isFinite(p.combRootTransitionMm)?p.combRootTransitionMm:5.2,4.5,6.0);
+  const INNER_RADIUS_MM=Math.max(1.5,Number.isFinite(p.combInnerRadiusMm)?p.combInnerRadiusMm:1.8);
+  const SIDE_MARGIN_MM=clamp(WIDTH_MM*.075,6.5,9.0);
+  const TOOTH_SPAN_MM=WIDTH_MM-2*SIDE_MARGIN_MM;
+  const TOOTH_SPACING_MM=TOOTH_COUNT>1?TOOTH_SPAN_MM/(TOOTH_COUNT-1):0;
+  const SKULL_SAG_MM=clamp(Number.isFinite(p.combCranialCurveMm)?p.combCranialCurveMm:8.0,6.0,11.0);
+  const TOOTH_SWEEP_MM=clamp(Number.isFinite(p.combToothSweepMm)?p.combToothSweepMm:5.5,4.0,8.0);
+  const CROWN_SAMPLES=96;
   const parts=[];
 
-  function cranialY(x){
-    const nx=x/(width*0.5);
-    return cranialCurve*(1-nx*nx);
+  // Outward orientation check for every custom closed mesh before Manifold.
+  function orientClosedMesh(V,F){
+    let signed6=0;
+    for(const f of F){
+      const a=V[f[0]],b=V[f[1]],c=V[f[2]];
+      signed6 +=
+        a[0]*(b[1]*c[2]-b[2]*c[1])-
+        a[1]*(b[0]*c[2]-b[2]*c[0])+
+        a[2]*(b[0]*c[1]-b[1]*c[0]);
+    }
+    if(signed6<0){
+      for(let i=0;i<F.length;i++) F[i]=[F[i][0],F[i][2],F[i][1]];
+      signed6=-signed6;
+    }
+    return {V,F,signedVolumeMm3:signed6/6};
+  }
+
+  // Ergonomic curvature is intentionally opposite to the previous output:
+  // the crown center and tooth tips recede in -Y relative to the side ends.
+  function contactY(x){
+    const n=clamp(x/(WIDTH_MM*.5),-1,1);
+    return -SKULL_SAG_MM*(1-n*n);
   }
   function lowerZ(x){
-    const nx=x/(width*0.5);
-    return 1.5+2.3*(1-nx*nx);
+    const n=clamp(x/(WIDTH_MM*.5),-1,1);
+    return 2.0+2.2*(1-n*n);
   }
   function topZ(x){
-    const nx=clamp(x/(width*0.5),-1,1);
-    const center=Math.pow(Math.max(0,1-nx*nx),0.62);
-    const shoulders=
-      2.6*Math.exp(-Math.pow((nx-0.56)/0.19,2))+
-      2.6*Math.exp(-Math.pow((nx+0.56)/0.19,2));
-    const restrainedVariation=(rng()-0.5)*0.8*(0.35+0.65*center);
-    return lowerZ(x)+LOWER_RAIL_MM+CROWN_HEIGHT_MM*(0.36+0.64*center)*0.68+shoulders+restrainedVariation;
+    const n=clamp(x/(WIDTH_MM*.5),-1,1);
+    const central=Math.pow(Math.max(0,1-n*n),.66);
+    const shoulder=
+      2.1*Math.exp(-Math.pow((n-.56)/.19,2))+
+      2.1*Math.exp(-Math.pow((n+.56)/.19,2));
+    return lowerZ(x)+ROOT_TRANSITION_MM+CROWN_HEIGHT_MM*(.31+.69*central)+shoulder;
   }
 
+  // Crown base: one closed curved plate with explicit front/back winding.
+  // Decorations and operations are added only to this manifold afterward.
+  let crown;
   {
-    const samples=72;
     const V=[],F=[];
-    const frontBottom=[],frontTop=[],backBottom=[],backTop=[];
-    const halfD=PLATE_DEPTH_MM*0.5;
-    for(let i=0;i<=samples;i++){
-      const u=i/samples;
-      const x=-width*0.5+width*u;
-      const y=cranialY(x);
+    const innerBottom=[],innerTop=[],outerBottom=[],outerTop=[];
+    const halfD=CROWN_DEPTH_MM*.5;
+    for(let i=0;i<=CROWN_SAMPLES;i++){
+      const x=-WIDTH_MM*.5+WIDTH_MM*(i/CROWN_SAMPLES);
+      const y=contactY(x);
       const zb=lowerZ(x);
-      const zt=Math.max(zb+LOWER_RAIL_MM,topZ(x));
-      frontBottom.push(V.length); V.push([x,y-halfD,zb]);
-      frontTop.push(V.length);    V.push([x,y-halfD,zt]);
-      backBottom.push(V.length);  V.push([x,y+halfD,zb]);
-      backTop.push(V.length);     V.push([x,y+halfD,zt]);
+      const zt=Math.max(zb+ROOT_TRANSITION_MM,topZ(x));
+      innerBottom.push(V.length);V.push([x,y-halfD,zb]);
+      innerTop.push(V.length);V.push([x,y-halfD,zt]);
+      outerBottom.push(V.length);V.push([x,y+halfD,zb]);
+      outerTop.push(V.length);V.push([x,y+halfD,zt]);
     }
     const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
-    for(let i=0;i<samples;i++){
-      q(frontBottom[i],frontBottom[i+1],frontTop[i+1],frontTop[i]);
-      q(backBottom[i],backTop[i],backTop[i+1],backBottom[i+1]);
-      q(frontTop[i],frontTop[i+1],backTop[i+1],backTop[i]);
-      q(frontBottom[i],backBottom[i],backBottom[i+1],frontBottom[i+1]);
+    for(let i=0;i<CROWN_SAMPLES;i++){
+      q(innerBottom[i],innerTop[i],innerTop[i+1],innerBottom[i+1]);
+      q(outerBottom[i],outerBottom[i+1],outerTop[i+1],outerTop[i]);
+      q(innerTop[i],outerTop[i],outerTop[i+1],innerTop[i+1]);
+      q(innerBottom[i],innerBottom[i+1],outerBottom[i+1],outerBottom[i]);
     }
-    q(frontBottom[0],frontTop[0],backTop[0],backBottom[0]);
-    q(frontBottom[samples],backBottom[samples],backTop[samples],frontTop[samples]);
-    parts.push(meshToManifold(wasm,V,F));
+    q(innerBottom[0],outerBottom[0],outerTop[0],innerTop[0]);
+    q(innerBottom[CROWN_SAMPLES],innerTop[CROWN_SAMPLES],outerTop[CROWN_SAMPLES],outerBottom[CROWN_SAMPLES]);
+    const mesh=orientClosedMesh(V,F);
+    crown=meshToManifold(wasm,mesh.V,mesh.F);
   }
 
-  const usableHalf=(TOOTH_SPACING_MM*(TOOTH_COUNT-1))*0.5;
-  for(let k=0;k<TOOTH_COUNT;k++){
-    const u=TOOTH_COUNT===1?0.5:k/(TOOTH_COUNT-1);
-    const x0=-usableHalf+2*usableHalf*u;
-    const lateral=x0/(usableHalf||1);
-    const rootZ=lowerZ(x0)+2.1;
-    const rootY=cranialY(x0);
-    const sideFan=lateral*2.7;
-    const pts=[];
-    const radii=[];
-    const steps=10;
-    for(let j=0;j<=steps;j++){
-      const q=j/steps;
-      const ease=q*q*(3-2*q);
-      pts.push([
-        x0+sideFan*ease,
-        rootY+1.8*q+4.4*q*q,
-        rootZ-TOOTH_LENGTH_MM*q
-      ]);
-      const taper=Math.pow(q,0.92);
-      const r=TOOTH_ROOT_R_MM*(1-taper)+TOOTH_TIP_R_MM*taper;
-      radii.push([r,r*0.86]);
-    }
-    const toothMesh=variableEllipticalTubeMesh(pts,radii,20,false);
-    parts.push(meshToManifold(wasm,toothMesh.V,toothMesh.F));
-  }
-
+  // Crown-only decorative operations. They remain shallow, outside the rear
+  // contact surface and above the protected root-transition zone.
   {
-    const pts=[],radii=[];
-    const samples=48;
-    for(let i=0;i<=samples;i++){
-      const u=i/samples;
-      const x=-width*0.5+width*u;
-      pts.push([x,cranialY(x)-PLATE_DEPTH_MM*0.18,lowerZ(x)+2.1]);
-      const edge=0.86+0.14*Math.sin(Math.PI*u);
-      radii.push([1.55*edge,1.18*edge]);
+    const fw=p.featureWeights||{};
+    const cellular=featureIntensity(p,'cellular');
+    const lattice=featureIntensity(p,'lattice');
+    const inter=featureIntensity(p,'interweave');
+    const vessel=featureIntensity(p,'vessel');
+    const dome=featureIntensity(p,'dome');
+    const continuity=featureIntensity(p,'continuity');
+    const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-crown-v4');
+    const accentCount=Math.round(clamp(4+(cellular+lattice+inter+continuity)*1.4,4,8));
+    const accents=[];
+
+    for(let i=0;i<accentCount;i++){
+      const u=(i+1)/(accentCount+1);
+      const x=-WIDTH_MM*.38+WIDTH_MM*.76*u;
+      const z0=lowerZ(x)+ROOT_TRANSITION_MM+5.0;
+      const z1=Math.min(topZ(x)-4.0,z0+7.0+6.0*rng());
+      if(z1<=z0+1.5) continue;
+      const y=contactY(x)+CROWN_DEPTH_MM*.5;
+      const lean=(i%2?1:-1)*(1.4+1.2*rng());
+      const pts=[[x,y+.15,z0],[x+lean,y+.45,z1]];
+      const r=.72+.20*Math.max(cellular,lattice,inter);
+      const mesh=variableEllipticalTubeMesh(pts,[[r,r*.62],[r*.82,r*.54]],16,false);
+      accents.push(meshToManifold(wasm,mesh.V,mesh.F));
     }
-    const mesh=variableEllipticalTubeMesh(pts,radii,18,false);
-    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
-  }
 
-  const reliefDepth=0.38+0.34*Math.max(dome,vessel,continuity);
-  const reliefCount=Math.max(3,Math.min(7,3+Math.round((cellular+inter+wrapped+lattice)*1.6)));
-  for(let i=0;i<reliefCount;i++){
-    const u=(i+1)/(reliefCount+1);
-    const x=-width*0.36+width*0.72*u;
-    const z0=lowerZ(x)+LOWER_RAIL_MM+5.0;
-    const z1=Math.min(topZ(x)-3.2,z0+7.0+5.0*(0.5+0.5*Math.sin((i+1)*1.7)));
-    if(z1<=z0+1.0) continue;
-    const pts=[
-      [x,cranialY(x)-PLATE_DEPTH_MM*0.5-reliefDepth*0.35,z0],
-      [x+(i%2?1.8:-1.8),cranialY(x)-PLATE_DEPTH_MM*0.5-reliefDepth,z1]
-    ];
-    const r=0.74+0.18*Math.max(cellular,inter,lattice);
-    const mesh=variableEllipticalTubeMesh(pts,[[r,r*0.72],[r*0.82,r*0.62]],14,false);
-    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
-  }
-
-  {
-    const centerZ=lowerZ(0)+LOWER_RAIL_MM+CROWN_HEIGHT_MM*0.37;
-    const medallionR=Math.max(3.6,Math.min(6.2,CROWN_HEIGHT_MM*0.14));
-    parts.push(flattenedNodeAt(
+    const centralR=clamp(CROWN_HEIGHT_MM*.105,4.8,6.2);
+    accents.push(flattenedNodeAt(
       wasm,
-      [0,cranialY(0)-PLATE_DEPTH_MM*0.5-reliefDepth*0.72,centerZ],
-      medallionR,
-      medallionR*0.38,
-      medallionR*0.94,
-      28
+      [0,contactY(0)+CROWN_DEPTH_MM*.5+.35,lowerZ(0)+ROOT_TRANSITION_MM+CROWN_HEIGHT_MM*.39],
+      centralR,
+      .72+.28*Math.max(vessel,dome),
+      centralR*.92,
+      32
     ));
+
+    if(accents.length){
+      const decorated=unionAll(wasm,[crown,...accents]);
+      crown=decorated;
+    }
+  }
+  parts.push(crown);
+
+  // Fixed root rail. It is structural and receives no operations.
+  {
+    const V=[],F=[];
+    const iB=[],iT=[],oB=[],oT=[];
+    const railDepth=CROWN_DEPTH_MM;
+    const halfD=railDepth*.5;
+    for(let i=0;i<=CROWN_SAMPLES;i++){
+      const x=-WIDTH_MM*.5+WIDTH_MM*(i/CROWN_SAMPLES);
+      const y=contactY(x);
+      const z0=lowerZ(x)-.15;
+      const z1=z0+ROOT_TRANSITION_MM;
+      iB.push(V.length);V.push([x,y-halfD,z0]);
+      iT.push(V.length);V.push([x,y-halfD,z1]);
+      oB.push(V.length);V.push([x,y+halfD,z0]);
+      oT.push(V.length);V.push([x,y+halfD,z1]);
+    }
+    const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
+    for(let i=0;i<CROWN_SAMPLES;i++){
+      q(iB[i],iT[i],iT[i+1],iB[i+1]);
+      q(oB[i],oB[i+1],oT[i+1],oT[i]);
+      q(iT[i],oT[i],oT[i+1],iT[i+1]);
+      q(iB[i],iB[i+1],oB[i+1],oB[i]);
+    }
+    q(iB[0],oB[0],oT[0],iT[0]);
+    q(iB[CROWN_SAMPLES],iT[CROWN_SAMPLES],oT[CROWN_SAMPLES],oB[CROWN_SAMPLES]);
+    const mesh=orientClosedMesh(V,F);
+    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
   }
 
+  // Fixed ergonomic teeth: smooth taper, rounded tips, slight fan and the
+  // same -Y insertion direction as the crown. No decoration is permitted.
+  function makeToothMesh(xRoot,lateral){
+    const rings=15,seg=24;
+    const V=[],F=[],R=[];
+    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.52;
+    const yRoot=contactY(xRoot);
+    const fan=lateral*2.4;
+    for(let i=0;i<rings;i++){
+      const u=i/(rings-1);
+      const ease=u*u*(3-2*u);
+      const x=xRoot+fan*ease;
+      const y=yRoot-TOOTH_SWEEP_MM*(.22*u+.78*u*u);
+      const z=zRoot-TOOTH_LENGTH_MM*u;
+      const r0=TOOTH_DIAMETER_MM*.5;
+      const r1=Math.max(.72,r0*.53);
+      const taper=Math.pow(u,.90);
+      const rx=r0*(1-taper)+r1*taper;
+      const ry=rx*.86;
+      R[i]=[];
+      for(let k=0;k<seg;k++){
+        const a=2*Math.PI*k/seg;
+        R[i][k]=V.length;
+        V.push([x+rx*Math.cos(a),y+ry*Math.sin(a),z]);
+      }
+    }
+    for(let i=0;i<rings-1;i++){
+      for(let k=0;k<seg;k++){
+        const j=(k+1)%seg;
+        F.push([R[i][k],R[i][j],R[i+1][j]]);
+        F.push([R[i][k],R[i+1][j],R[i+1][k]]);
+      }
+    }
+    const root=V.length;
+    V.push([xRoot,yRoot,zRoot]);
+    for(let k=0;k<seg;k++){
+      const j=(k+1)%seg;
+      F.push([root,R[0][k],R[0][j]]);
+    }
+    const tip=V.length;
+    V.push([
+      xRoot+fan,
+      yRoot-TOOTH_SWEEP_MM,
+      zRoot-TOOTH_LENGTH_MM-.75
+    ]);
+    for(let k=0;k<seg;k++){
+      const j=(k+1)%seg;
+      F.push([R[rings-1][k],R[rings-1][j],tip]);
+    }
+    return orientClosedMesh(V,F);
+  }
+
+  for(let i=0;i<TOOTH_COUNT;i++){
+    const x=-TOOTH_SPAN_MM*.5+i*TOOTH_SPACING_MM;
+    const lateral=x/(TOOTH_SPAN_MM*.5||1);
+    const mesh=makeToothMesh(x,lateral);
+    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
+  }
+
+  p.hairCombWidthMm=WIDTH_MM;
+  p.hairCombCrownHeightMm=CROWN_HEIGHT_MM;
+  p.hairCombCrownDepthMm=CROWN_DEPTH_MM;
   p.hairCombToothCount=TOOTH_COUNT;
   p.hairCombToothSpacingMm=TOOTH_SPACING_MM;
-  p.hairCombToothRootDiameterMm=TOOTH_ROOT_R_MM*2;
-  p.hairCombToothTipDiameterMm=TOOTH_TIP_R_MM*2;
-  p.hairCombCrownDepthMm=PLATE_DEPTH_MM;
-  p.hairCombCrownHeightMm=CROWN_HEIGHT_MM;
-  p.hairCombFixedGeometry='continuous curved plate + integrated tapered teeth';
-  p.hairCombGeneratorVersion='haircomb-v2';
+  p.hairCombToothLengthMm=TOOTH_LENGTH_MM;
+  p.hairCombToothRootDiameterMm=TOOTH_DIAMETER_MM;
+  p.hairCombToothTipDiameterMm=Math.max(1.44,TOOTH_DIAMETER_MM*.53);
+  p.hairCombRootTransitionMm=ROOT_TRANSITION_MM;
+  p.hairCombInnerRadiusMm=INNER_RADIUS_MM;
+  p.hairCombCranialSagMm=SKULL_SAG_MM;
+  p.hairCombToothSweepMm=TOOTH_SWEEP_MM;
+  p.hairCombDecorationZone='crownOnly';
+  p.hairCombCurvatureAxis='Y';
+  p.hairCombCurvatureDirection='negativeY';
+  p.hairCombGeneratorVersion='haircomb-v4';
 
-  return {manifold:unionAll(wasm,parts), bandW:CROWN_HEIGHT_MM};
+  return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
 
 // =============================================================================
