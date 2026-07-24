@@ -3828,6 +3828,137 @@ function makeHairCombManifold(wasm,p){
       });
     }
     recordStage(crownManifold,'haircomb/crown-source');
+
+    /*
+     * HAIRCOMB v16 — discrete AGDP operations.
+     *
+     * v15 kept the crown manifold by translating the complete vocabulary into
+     * a single continuous normal-relief field. That solved self-intersection,
+     * but it also erased the categorical difference between voids, cavities,
+     * nodes, ribs and bridges. v16 retains the safe shell and applies those
+     * operations as real additions/subtractions on exposed surfaces only:
+     * exterior/front (+Y), crown/top (+Z), and lateral edges (±X). The cranial
+     * contact skin and the lower tooth-bond band receive no operation anchors.
+     */
+    const discreteAdds=[];
+    const discreteCuts=[];
+    const outerYAt=(x)=>contactY(x)+CROWN_DEPTH_MM*.5;
+    const safeZAt=(x,t=.58)=>{
+      const zb=lowerZ(x),zt=Math.max(zb+ROOT_TRANSITION_MM,topZ(x));
+      return zb+(zt-zb)*clamp(t,.20,.92);
+    };
+    const addNode=(center,r)=>{
+      discreteAdds.push(organicNodeAt(wasm,center,r,28,rng()*Math.PI*2));
+    };
+    const addMember=(a,b,r)=>{
+      discreteAdds.push(cylinderBetween(wasm,a,b,r,24));
+    };
+
+    // FRONT / EXTERIOR: nodes and ribs are embedded into +Y only.
+    const actualNodes=Math.max(0,Math.min(6,nodeCount||Math.round(rivetCount*.55)));
+    for(let i=0;i<actualNodes;i++){
+      const u=(i+1)/(actualNodes+1);
+      const x=-WIDTH_MM*.40+WIDTH_MM*.80*u;
+      const z=safeZAt(x,.34+.44*((i%2)?1:0));
+      const r=Math.max(AGDP_MIN_WALL_MM*.72,.85+(p.nodeVolume||0)*.34);
+      addNode([x,outerYAt(x)+r*.34,z],r);
+    }
+
+    const ribCount=Math.max(0,Math.min(7,railCount+Math.round(architectural*3)));
+    for(let i=0;i<ribCount;i++){
+      const u=(i+1)/(ribCount+1);
+      const x=-WIDTH_MM*.42+WIDTH_MM*.84*u;
+      const z0=safeZAt(x,.24),z1=safeZAt(x,.82);
+      const r=Math.max(AGDP_MIN_WALL_MM*.48,.58+sideRelief*.42);
+      const y=outerYAt(x)+r*.22;
+      addMember([x,y,z0],[x,y,z1],r);
+    }
+
+    // FRONT BRIDGES: raised members leave a genuine open void beneath them.
+    const bridgeCount=Math.max(0,Math.min(3,Math.round((lattice+inter+continuity)*1.25)));
+    for(let i=0;i<bridgeCount;i++){
+      const band=(i+1)/(bridgeCount+1);
+      const zRatio=.34+.44*band;
+      const half=WIDTH_MM*(.13+.045*i);
+      const cx=(i%2?-.12:.12)*WIDTH_MM;
+      const x0=clamp(cx-half,-WIDTH_MM*.43,WIDTH_MM*.43);
+      const x1=clamp(cx+half,-WIDTH_MM*.43,WIDTH_MM*.43);
+      const z0=safeZAt(x0,zRatio),z1=safeZAt(x1,zRatio);
+      const r=Math.max(AGDP_MIN_WALL_MM*.62,.72+.30*architectural);
+      const lift=CROWN_DEPTH_MM*(.72+.34*lattice);
+      const a=[x0,outerYAt(x0)+lift,z0];
+      const b=[x1,outerYAt(x1)+lift,z1];
+      addMember(a,b,r);
+      addMember([x0,outerYAt(x0)-r*.12,z0],a,r*.72);
+      addMember([x1,outerYAt(x1)-r*.12,z1],b,r*.72);
+      addNode(a,r*1.18); addNode(b,r*1.18);
+    }
+
+    // TOP EDGE: ribs/bridges project in +Z and never touch the lower bond face.
+    const topOps=Math.max(1,Math.min(4,Math.round(1+wrapped*2+cage*2)));
+    for(let i=0;i<topOps;i++){
+      const u=(i+1)/(topOps+1);
+      const x=-WIDTH_MM*.38+WIDTH_MM*.76*u;
+      const z=topZ(x);
+      const y0=contactY(x)-CROWN_DEPTH_MM*.12;
+      const y1=contactY(x)+CROWN_DEPTH_MM*.68;
+      const r=Math.max(AGDP_MIN_WALL_MM*.48,.56+.30*wrapped);
+      addMember([x,y0,z-r*.18],[x,y1,z+r*.72],r);
+      if(i%2===0) addNode([x,y1,z+r*.72],r*1.16);
+    }
+
+    // LATERAL EDGES: real ribs and nodes on both ±X exposed faces.
+    for(const side of [-1,1]){
+      const x=side*WIDTH_MM*.5;
+      const z0=safeZAt(x,.30),z1=safeZAt(x,.78);
+      const y=contactY(x)+CROWN_DEPTH_MM*.10;
+      const r=Math.max(AGDP_MIN_WALL_MM*.50,.60+.28*cage);
+      addMember([x-side*r*.18,y,z0],[x+side*r*.78,y,z1],r);
+      addNode([x+side*r*.78,y,z1],r*1.12);
+    }
+
+    // SHALLOW NEGATIVE OPERATIONS: cavities on exterior, top and sides. Their
+    // penetration is capped below crown depth, preserving the smooth interior.
+    const cavityCount=Math.max(0,Math.min(7,holeCount+Math.round(cellular*2)));
+    for(let i=0;i<cavityCount;i++){
+      const u=(i+1)/(cavityCount+1);
+      const x=-WIDTH_MM*.39+WIDTH_MM*.78*u;
+      const z=safeZAt(x,.28+.52*((i%3)/2));
+      const r=Math.max(AGDP_MIN_WALL_MM*.78,.90+.42*cellular);
+      discreteCuts.push(sphereAt(wasm,[x,outerYAt(x)+r*.62,z],r,28));
+    }
+    // At least one top and one lateral cavity when holes/cellular vocabulary is active.
+    if(cavityCount>0){
+      const tx=WIDTH_MM*.18*structuralPolarity;
+      const tr=Math.max(AGDP_MIN_WALL_MM*.82,1.0+.34*cellular);
+      discreteCuts.push(sphereAt(wasm,[tx,contactY(tx),topZ(tx)+tr*.68],tr,28));
+      for(const side of [-1,1]){
+        const sx=side*WIDTH_MM*.5;
+        const sr=Math.max(AGDP_MIN_WALL_MM*.74,.92+.28*cellular);
+        discreteCuts.push(sphereAt(wasm,[sx+side*sr*.68,contactY(sx),safeZAt(sx,.60)],sr,28));
+      }
+    }
+
+    if(discreteCuts.length){
+      try{
+        const cutters=unionAll(wasm,discreteCuts);
+        crownManifold=safeDifference(wasm,crownManifold,cutters);
+        recordStage(crownManifold,'haircomb/crown-discrete-cavities');
+      }catch(error){
+        throwHairCombFailure(p,'haircomb/crown-discrete-cavities',error,{cutters:discreteCuts.length});
+      }
+    }
+    if(discreteAdds.length){
+      try{
+        const additions=unionAll(wasm,discreteAdds);
+        crownManifold=wasm.Manifold.union(crownManifold,additions);
+        recordStage(crownManifold,'haircomb/crown-discrete-additions');
+      }catch(error){
+        throwHairCombFailure(p,'haircomb/crown-discrete-additions',error,{additions:discreteAdds.length});
+      }
+    }
+
+    p.hairCombOperationVersion='haircomb-v16-discrete-exposed-surfaces';
     parts.push(crownManifold);
   }
 
@@ -3918,7 +4049,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v15-crown-shell';
+  p.hairCombGeneratorVersion='haircomb-v16-discrete-operations';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4263,7 +4394,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v15-crown-shell';
+    p.hairCombGeneratorVersion='haircomb-v16-discrete-operations';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
