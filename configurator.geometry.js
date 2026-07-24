@@ -268,18 +268,17 @@ function concatenateSegmentMeshes(segmentManifolds){
   return { V, F };
 }
 
-// Builds an exported left/right pair directly from one validated unit mesh.
-// Mirroring is performed at mesh level and triangle winding is reversed on
-// the mirrored copy, avoiding the orientation ambiguity of a negative-scale
-// manifold transform. The two copies are concatenated, never boolean-unioned,
-// so the exported result is exactly two closed components.
-function mirroredPairMesh(unitV, unitF, centerSpacing){
+// Builds the customer-facing pair directly from one validated unit mesh.
+// Both copies preserve the same orientation and face the camera identically;
+// only their X position changes. The copies are concatenated rather than
+// boolean-unioned, so the result remains exactly two closed solids.
+function identicalFacingPairMesh(unitV, unitF, centerSpacing){
   const half=centerSpacing/2;
   const leftV=unitV.map(v=>[v[0]-half,v[1],v[2]]);
-  const rightV=unitV.map(v=>[-v[0]+half,v[1],v[2]]);
+  const rightV=unitV.map(v=>[v[0]+half,v[1],v[2]]);
   const offset=leftV.length;
   const leftF=unitF.map(f=>[f[0],f[1],f[2]]);
-  const rightF=unitF.map(f=>[f[0]+offset,f[2]+offset,f[1]+offset]);
+  const rightF=unitF.map(f=>[f[0]+offset,f[1]+offset,f[2]+offset]);
   return {V:leftV.concat(rightV),F:leftF.concat(rightF)};
 }
 function cylinderBetween(wasm, p0, p1, radius, segments) {
@@ -3580,49 +3579,29 @@ function makeHairCombManifold(wasm,p){
 //     range for everyday hoop earrings.
 // =============================================================================
 // =============================================================================
-// HOOP EARRING — v2 (dango-style rigid post)
-// Redesigned per explicit direction: not a flexing circular hoop with a
-// click-top closure, but a RIGID straight post -- the same structural
-// idea as a dango skewer or a conventional pendant's own straight pin
-// post, entering the piercing directly with no flex required at all.
-// The decorated body hangs from the post's lower end with its OWN face
-// plane rotated 90 degrees relative to the post's axis -- exactly how a
-// dango's rounded dumpling sits crosswise on its skewer, read "in
-// profile" against the stick rather than lying flat along it. This is a
-// deliberate replacement of the v1 flex-open/click-top ring, which the
-// requester found did not read or function as intended.
-//
-// Safety/manufacturing basis (unchanged from v1 where still applicable):
-//   - Post free-tip diameter: 1.3mm, well above Shapeways' cast-silver
-//     unsupported-wire floor of 1.0mm (the post's own insertion tip is
-//     connected on one side only, at the body, so it must clear the
-//     unsupported minimum with real margin -- it takes repeated
-//     mechanical stress on insertion/removal that a decorative surface
-//     does not).
-//   - Post root diameter: thicker where it anchors into the body, for
-//     real anchoring strength against repeated flex at that junction --
-//     this is the point most likely to see fatigue over years of wear.
-//   - Backing/counter-piece: a small fixed disc behind the earlobe (the
-//     same functional role as a butterfly/push-back clutch on a stud) is
-//     NOT modeled here as printed silver -- exactly like a real stud
-//     earring, that clutch is a separate, off-the-shelf finding added by
-//     the jeweler after casting, not part of the print. Modeling it as a
-//     printed, interlocking clutch would violate Shapeways' "Interlocking:
-//     Not Supported" rule; leaving it out entirely (as here) sidesteps
-//     that rule the same way a real stud earring's silver casting does.
-//   - Body: reuses the SAME shared makeFaceManifold used by pendant and
-//     cufflinks, unchanged, so this typology's decorative vocabulary
-//     matches the rest of the line.
+// HOOP EARRING — integrated French-hook pair
+// The decorated annular body and the hook are generated as one printable
+// solid per earring. The hook uses a conventional insertion diameter and a
+// buried, enlarged root transition so its union with the body has measurable
+// volume rather than a merely tangential contact. The exported pair contains
+// two identical front-facing copies for the customer preview.
 // =============================================================================
 function makeHoopEarringManifold(wasm, p){
-  const HOOK_TIP_R_MM = 0.45;
+  // Commercial configurator policy, expressed in millimetres. This is a
+  // product range rather than a claim of one universal international size.
+  const HOOP_BODY_MIN_OD_MM = 14;
+  const HOOP_BODY_MAX_OD_MM = 35;
+  const HOOP_BODY_DEFAULT_OD_MM = 24;
+  const HOOK_TIP_R_MM = 0.45;        // 0.90 mm insertion diameter
   const HOOK_SHAFT_R_MM = 0.58;
-  const HOOK_ROOT_R_MM = 0.88;
+  const HOOK_ROOT_R_MM = 1.00;
+  const HOOK_ROOT_OVERLAP_MM = 1.50;
+  const HOOK_MIN_OVERLAP_VOLUME_MM3 = 0.45;
   const HOOK_RISE_MM = 6.2;
   const HOOK_BEND_R_MM = 5.2;
   const HOOK_INSERTION_MM = 12.0;
   const HOOK_TAIL_FLARE_MM = 0.9;
-  const BODY_SPAN_MM = clamp(p.mainSize||26, 16, 34);
+  const BODY_SPAN_MM = clamp(Number.isFinite(p.mainSize)?p.mainSize:HOOP_BODY_DEFAULT_OD_MM, HOOP_BODY_MIN_OD_MM, HOOP_BODY_MAX_OD_MM);
   const BODY_DEPTH_MM = clamp(p.bandWidth||4.8, 3.6, 7.2);
 
   return (async () => {
@@ -3672,25 +3651,34 @@ function makeHoopEarringManifold(wasm, p){
       bodyManifold=mergedBody;
     }
 
-    // The hook is now one uninterrupted sweep whose enlarged first rings are
-    // embedded directly into the annular body. This removes the previous
-    // sphere-chain/root-bulb boolean stack, the principal source of dense
-    // local retriangulation and mirror-finish triangular reflections.
-    // Root the hook in the middle of the annular wall, not near or inside
-    // the aperture. The previous outerR-rootEmbed formula could place the
-    // first sweep rings at or below innerR on thick-wall seeds, leaving the
-    // hook as a separate solid after the boolean union.
-    const rootY=innerR+annularWall*.58;
+    // Build one uninterrupted hook sweep with a buried root. The first
+    // section travels through real annular material before emerging from the
+    // body, creating a measurable overlap volume and a gradual neck instead
+    // of a tangential point contact.
+    const rootInnerY=innerR+Math.max(annularWall*.24,HOOK_ROOT_OVERLAP_MM*.55);
+    const rootExitY=innerR+annularWall*.72;
     const hookPts=[];
     const hookRadii=[];
-    const hookStartY=rootY;
+    const rootSteps=12;
+    for(let i=0;i<=rootSteps;i++){
+      const q=i/rootSteps;
+      const eased=q*q*(3-2*q);
+      hookPts.push([
+        0,
+        rootInnerY+(rootExitY-rootInnerY)*eased,
+        HOOK_ROOT_OVERLAP_MM*.22*Math.sin(Math.PI*q)
+      ]);
+      const r=HOOK_ROOT_R_MM+(HOOK_SHAFT_R_MM-HOOK_ROOT_R_MM)*eased*.38;
+      hookRadii.push([r,r]);
+    }
     const riseY=outerR+HOOK_RISE_MM;
-    const riseSteps=18;
-    for(let i=0;i<=riseSteps;i++){
+    const riseSteps=22;
+    for(let i=1;i<=riseSteps;i++){
       const q=i/riseSteps;
       const eased=q*q*(3-2*q);
-      hookPts.push([0,hookStartY+(riseY-hookStartY)*q,0]);
-      const r=HOOK_ROOT_R_MM+(HOOK_SHAFT_R_MM-HOOK_ROOT_R_MM)*eased;
+      hookPts.push([0,rootExitY+(riseY-rootExitY)*q,0]);
+      const startR=HOOK_ROOT_R_MM+(HOOK_SHAFT_R_MM-HOOK_ROOT_R_MM)*.38;
+      const r=startR+(HOOK_SHAFT_R_MM-startR)*eased;
       hookRadii.push([r,r]);
     }
     const bendCenter=[HOOK_BEND_R_MM,riseY,0];
@@ -3713,20 +3701,38 @@ function makeHoopEarringManifold(wasm, p){
     }
     const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,64,false);
     const hookManifold=meshToManifold(wasm,hookMesh.V,hookMesh.F);
+
+    // Audit the actual shared volume before union. Connectivity alone cannot
+    // distinguish a robust root from a hairline neck, so reject any seed whose
+    // body/hook intersection falls below the structural threshold.
+    const overlapManifold=wasm.Manifold.intersection(bodyManifold,hookManifold);
+    const overlapMesh=manifoldToMesh(overlapManifold);
+    const hookOverlapVolumeMm3=Math.abs(meshVolumeMm3(overlapMesh.V,overlapMesh.F));
+    try{ overlapManifold.delete(); }catch(e){}
+    if(!Number.isFinite(hookOverlapVolumeMm3)||hookOverlapVolumeMm3<HOOK_MIN_OVERLAP_VOLUME_MM3){
+      try{ bodyManifold.delete(); }catch(e){}
+      try{ hookManifold.delete(); }catch(e){}
+      throw new Error('AGDP hoop hook/body overlap below structural minimum');
+    }
+
     const manifold=wasm.Manifold.union(bodyManifold,hookManifold);
     try{ bodyManifold.delete(); }catch(e){}
     try{ hookManifold.delete(); }catch(e){}
 
     p.hoopHookTipDiameterMm=HOOK_TIP_R_MM*2;
     p.hoopHookRootDiameterMm=HOOK_ROOT_R_MM*2;
+    p.hoopHookRootOverlapMm=HOOK_ROOT_OVERLAP_MM;
+    p.hoopHookBodyOverlapVolumeMm3=hookOverlapVolumeMm3;
     p.hoopHookBendRadiusMm=HOOK_BEND_R_MM;
     p.hoopHookInsertionLengthMm=HOOK_INSERTION_MM;
     p.hoopHookRotationDeg=90;
     p.hoopBodySpanMm=BODY_SPAN_MM;
     p.hoopBodyDepthMm=bandWidth;
-    p.hoopClosureType='completeFrenchHook';
+    p.hoopClosureType='integratedFrenchHook';
     p.hoopBodyGeometry='pendantAnnularCore';
     p.hoopPairCount=2;
+    p.hoopBodyCommercialRangeMm=[HOOP_BODY_MIN_OD_MM,HOOP_BODY_MAX_OD_MM];
+    p.hoopBodyDefaultMm=HOOP_BODY_DEFAULT_OD_MM;
     return {manifold,bandW:bandWidth};
   })();
 }
@@ -3810,9 +3816,10 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     const unitDepth=xs.length?Math.max(...xs)-Math.min(...xs):0;
     const minimumClearGapMm=6;
     const pairSpacing=Math.max((p.hoopBodySpanMm||p.mainSize||26)+minimumClearGapMm,unitDepth+minimumClearGapMm);
-    ({V,F}=mirroredPairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
+    ({V,F}=identicalFacingPairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
     p.hoopPairCenterSpacingMm=pairSpacing;
     p.hoopPairComponents=2;
+    p.hoopPairPresentation='identicalFrontFacing';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
