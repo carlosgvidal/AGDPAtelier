@@ -431,6 +431,11 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         const engineFailure=/fetch|network|import|module|failed to load|loading chunk|webassembly|wasm/i.test(message);
         if(engineFailure){terminalEngineError=e;break;}
         lastFailureReason=message||String(e)||lastFailureReason;
+        const hairCombDiagnosticFailure=selectedType==='haircomb' && (e&&e.agdpHairCombFailure || /^AGDP haircomb diagnostic failure at /.test(message));
+        if(hairCombDiagnosticFailure){
+          window.__AGDP_HAIRCOMB_FAILURE__=(e&&e.agdpHairCombFailure)||window.__AGDP_HAIRCOMB_FAILURE__||{message};
+          break;
+        }
       }
 
       if(attempt<AGDP_MAX_GEOMETRY_ATTEMPTS-1){

@@ -3454,6 +3454,35 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 //   - Spine: at least 2x the tooth's own root diameter, so it reads and
 //     behaves as a structural anchor rather than "one more tooth."
 // =============================================================================
+function recordHairCombFailure(p,stage,error,details){
+  const failure={
+    type:'haircomb',
+    stage,
+    message:String(error&&error.message||error||'Unknown haircomb failure'),
+    stack:error&&error.stack?String(error.stack):null,
+    params:JSON.parse(JSON.stringify(p||{})),
+    weightPolicy:{
+      profile:silverWeightProfileKey(p||{type:'haircomb'}),
+      hollowAt:AGDP_SILVER_HOLLOWING.thresholdsGrams.haircomb.hollowAt,
+      rejectAbove:AGDP_SILVER_HOLLOWING.thresholdsGrams.haircomb.rejectAbove,
+      informationalOnly:true,
+      hollowingBypassed:true
+    },
+    details:details||{},
+    timestamp:new Date().toISOString()
+  };
+  window.__AGDP_HAIRCOMB_FAILURE__=failure;
+  try{console.error('AGDP_HAIRCOMB_DIAGNOSTIC_FAILURE',failure);}catch(e){}
+  return failure;
+}
+function throwHairCombFailure(p,stage,error,details){
+  const failure=recordHairCombFailure(p,stage,error,details);
+  const wrapped=new Error('AGDP haircomb diagnostic failure at '+stage+': '+failure.message);
+  wrapped.cause=error;
+  wrapped.agdpHairCombFailure=failure;
+  throw wrapped;
+}
+
 function makeHairCombManifold(wasm,p){
   /*
    * HAIR COMB v9
@@ -3507,6 +3536,8 @@ function makeHairCombManifold(wasm,p){
   const X_SEG=112;
   const Z_SEG=28;
   const parts=[];
+  const hairCombDiagnostics=[];
+  const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
   const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v8');
 
@@ -3872,7 +3903,14 @@ function makeHairCombManifold(wasm,p){
     }
 
     const mesh=orientClosedMesh(V,F);
-    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
+    let crownManifold;
+    try{
+      crownManifold=meshToManifold(wasm,mesh.V,mesh.F);
+    }catch(error){
+      throwHairCombFailure(p,'haircomb/crown-source/meshToManifold',error,{vertices:mesh.V.length,triangles:mesh.F.length,diagnostic:diagnoseClosedTriangleMesh(mesh.V,mesh.F,'haircomb/crown-source/input')});
+    }
+    recordStage(crownManifold,'haircomb/crown-source');
+    parts.push(crownManifold);
   }
 
   // Teeth curve toward the head/contact side (-Y), opposite the crown's
@@ -3935,7 +3973,14 @@ function makeHairCombManifold(wasm,p){
     const x=-TOOTH_SPAN_MM*.5+i*TOOTH_SPACING_MM;
     const lateral=x/(TOOTH_SPAN_MM*.5||1);
     const mesh=makeToothMesh(x,lateral);
-    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
+    let toothManifold;
+    try{
+      toothManifold=meshToManifold(wasm,mesh.V,mesh.F);
+    }catch(error){
+      throwHairCombFailure(p,'haircomb/tooth-'+(i+1)+'/meshToManifold',error,{toothIndex:i+1,vertices:mesh.V.length,triangles:mesh.F.length,diagnostic:diagnoseClosedTriangleMesh(mesh.V,mesh.F,'haircomb/tooth-'+(i+1)+'/input')});
+    }
+    recordStage(toothManifold,'haircomb/tooth-'+(i+1)+'-source');
+    parts.push(toothManifold);
   }
 
   p.hairCombWidthMm=WIDTH_MM;
@@ -3955,9 +4000,39 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v9';
+  p.hairCombGeneratorVersion='haircomb-v10-diagnostic';
 
-  return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
+  // Progressive CSG exposes the first crown/tooth union that ceases to be a
+  // single closed solid. It replaces the opaque balanced unionAll() only for
+  // this typology. Geometry is otherwise unchanged.
+  let assembled=parts.shift();
+  recordStage(assembled,'haircomb/assembly-crown');
+  for(let i=0;i<parts.length;i++){
+    const tooth=parts[i];
+    let merged;
+    try{
+      merged=wasm.Manifold.union(assembled,tooth);
+    }catch(error){
+      hairCombDiagnostics.push({label:'haircomb/union-tooth-'+(i+1),ok:false,exception:String(error&&error.message||error)});
+      try{assembled.delete();}catch(e){}
+      try{tooth.delete();}catch(e){}
+      for(let j=i+1;j<parts.length;j++)try{parts[j].delete();}catch(e){}
+      p.hairCombDiagnostics=hairCombDiagnostics;
+      throwHairCombFailure(p,'haircomb/union-tooth-'+(i+1),error,{toothIndex:i+1,completedUnions:i,diagnostics:hairCombDiagnostics.slice()});
+    }
+    try{assembled.delete();}catch(e){}
+    try{tooth.delete();}catch(e){}
+    assembled=merged;
+    const report=recordStage(assembled,'haircomb/union-tooth-'+(i+1));
+    if(!report.ok){
+      for(let j=i+1;j<parts.length;j++)try{parts[j].delete();}catch(e){}
+      p.hairCombDiagnostics=hairCombDiagnostics;
+      throwHairCombFailure(p,'haircomb/post-union-tooth-'+(i+1)+'/topology',new Error('Topology audit failed'),{toothIndex:i+1,report,diagnostics:hairCombDiagnostics.slice()});
+    }
+  }
+  p.hairCombDiagnostics=hairCombDiagnostics;
+  p.hairCombFirstFailedStage=(hairCombDiagnostics.find(r=>!r.ok)||{}).label||null;
+  return {manifold:assembled,bandW:CROWN_HEIGHT_MM};
 }
 
 // =============================================================================
@@ -4232,18 +4307,45 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hoopPairComponents=2;
     p.hoopPairPresentation='asymmetricJewelleryProductComposition';
   } else if(p.type==='haircomb') {
-    // Hair-comb mass is informational and the builder already returns the
-    // authoritative manifold-3d CSG result. Export that result directly.
-    // Do not weld, reconstruct, hollow or apply an additional topology gate:
-    // those experimental passes introduced false "Not manifold" failures.
-    ({V,F}=manifoldToMeshHelper(manifold));
+    // Haircomb v9: canonicalize the final CSG result before the external
+    // validator sees it. The engine manifold is already a closed solid, but
+    // boolean unions between the crown and multiple tooth roots can preserve
+    // sub-micron coincident vertex copies. Welding these copies prevents false
+    // open-edge / non-manifold reports without altering visible geometry.
+    const rawHairCombMesh=manifoldToMeshHelper(manifold);
+    const rawHairCombWeightG=silverWeightGrams(meshVolumeMm3(rawHairCombMesh.V,rawHairCombMesh.F));
+    p.hairCombDiagnosticWeightG=rawHairCombWeightG;
+    p.hairCombWeightPolicy='informationalOnly';
+    const rawReport=diagnoseClosedTriangleMesh(rawHairCombMesh.V,rawHairCombMesh.F,'haircomb/final-raw');
+    console[rawReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rawReport.ok?'✓':'✗'),'haircomb/final-raw',rawReport);
     try{ manifold.delete(); }catch(e){}
     manifold=null;
-    p.silverHollowingApplied=false;
-    p.silverWeightProfile='haircomb';
-    p.silverWeightLimitG=Infinity;
-    p.hairCombTopologyRepair='none-authoritative-csg-export';
-    p.hairCombGeneratorVersion='haircomb-v13-weight-informational';
+    const canonicalHairComb=canonicalizeMeshForValidation(rawHairCombMesh.V,rawHairCombMesh.F,1e-5);
+    const canonicalReport=diagnoseClosedTriangleMesh(canonicalHairComb.V,canonicalHairComb.F,'haircomb/final-canonical');
+    console[canonicalReport.ok?'info':'error']('AGDP haircomb diagnostic '+(canonicalReport.ok?'✓':'✗'),'haircomb/final-canonical',canonicalReport);
+    if(!canonicalReport.ok){
+      p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport};
+      throwHairCombFailure(p,'haircomb/final-canonical/topology',new Error('Canonical topology audit failed'),{raw:rawReport,canonical:canonicalReport,weightG:rawHairCombWeightG});
+    }
+    // Round-trip through manifold-3d so triangle winding and edge incidence
+    // are regenerated from the canonical welded topology.
+    let rebuiltHairComb;
+    try{
+      rebuiltHairComb=meshToManifold(wasm,canonicalHairComb.V,canonicalHairComb.F);
+    }catch(error){
+      throwHairCombFailure(p,'haircomb/final-rebuild/meshToManifold',error,{weightG:rawHairCombWeightG,raw:rawReport,canonical:canonicalReport,canonicalization:{weldedVertices:canonicalHairComb.weldedVertices,removedDegenerate:canonicalHairComb.removedDegenerate,removedDuplicate:canonicalHairComb.removedDuplicate}});
+    }
+    ({V,F}=manifoldToMeshHelper(rebuiltHairComb));
+    const rebuiltReport=diagnoseClosedTriangleMesh(V,F,'haircomb/final-rebuilt');
+    console[rebuiltReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rebuiltReport.ok?'✓':'✗'),'haircomb/final-rebuilt',rebuiltReport);
+    try{ rebuiltHairComb.delete(); }catch(e){}
+    p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport,rebuilt:rebuiltReport};
+    if(!rebuiltReport.ok) throwHairCombFailure(p,'haircomb/final-rebuilt/topology',new Error('Rebuilt topology audit failed'),{weightG:rawHairCombWeightG,raw:rawReport,canonical:canonicalReport,rebuilt:rebuiltReport});
+    p.hairCombTopologyRepair='diagnosedSubMicronWeldAndManifoldRoundTrip';
+    p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
+    p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
+    p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
+    p.hairCombGeneratorVersion='haircomb-v10-diagnostic';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
@@ -4256,8 +4358,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   if(connected.discarded && connected.discarded.length){
     console.warn('AGDP: '+connected.discarded.length+' componente(s) descartado(s) de '+connected.totalComponents+' total — ', connected.discarded);
   }
-
-
   const extra = {
     type:p.type, innerD:(p.type==='ring'||p.type==='bangle'||p.type==='earCuff')?p.mainSize:(p.type==='cuffBracelet'?p.mainSize*0.85:0),
     bandW:p.bandWidth, holeCells:0, printProfile:p.printProfile, minFeature:p.minFeature,
@@ -4272,13 +4372,14 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     audit.weightLimitG=Infinity;
     audit.weightOK=true;
     audit.weightInformationalOnly=true;
+    audit.weightGateBypassed=true;
   }
   audit.hollowingApplied=!!p.silverHollowingApplied;
   audit.shellWallMm=p.silverShellWallMm||null;
   audit.escapeHoleDiameterMm=p.silverEscapeHoleDiameterMm||null;
   audit.escapeHoleCount=p.silverEscapeHoleCount||0;
   audit.weightBeforeHollowingG=p.silverWeightBeforeHollowingG||audit.silverG;
-  if(p.type!=='haircomb'&&!audit.weightOK){
+  if(!audit.weightOK){
     audit.ok=false;
     audit.warning='FALLA: masa de plata superior al límite ergonómico y económico';
   }
