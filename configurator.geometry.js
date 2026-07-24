@@ -844,6 +844,64 @@ function canonicalizeMeshForValidation(V,F,tolerance){
   return {V:CV,F:CF,weldedVertices:V.length-CV.length,removedDegenerate,removedDuplicate};
 }
 
+
+
+// Detailed topology audit used by the hair-comb diagnostic pipeline. This is
+// intentionally independent from window.validate so a failing intermediate
+// CSG stage can be identified before the final product audit is reached.
+function diagnoseClosedTriangleMesh(V,F,label){
+  const report={
+    label:String(label||'mesh'), vertices:Array.isArray(V)?V.length:0,
+    triangles:Array.isArray(F)?F.length:0, finite:true, invalidIndices:0,
+    degenerateTriangles:0, boundaryEdges:0, nonManifoldEdges:0,
+    connectedComponents:0, signedVolumeMm3:0, ok:false
+  };
+  if(!Array.isArray(V)||!Array.isArray(F)||V.length===0||F.length===0) return report;
+  const edgeUse=new Map();
+  const vertFaces=new Map();
+  const parent=new Int32Array(F.length);
+  for(let i=0;i<F.length;i++) parent[i]=i;
+  const find=x=>{while(parent[x]!==x){parent[x]=parent[parent[x]];x=parent[x];}return x;};
+  const unite=(a,b)=>{a=find(a);b=find(b);if(a!==b)parent[b]=a;};
+  const edge=(a,b)=>a<b?a+','+b:b+','+a;
+  let signed6=0;
+  for(let fi=0;fi<F.length;fi++){
+    const f=F[fi];
+    if(!f||f.length<3){report.invalidIndices++;continue;}
+    const a=f[0],b=f[1],c=f[2];
+    if(!Number.isInteger(a)||!Number.isInteger(b)||!Number.isInteger(c)||a<0||b<0||c<0||a>=V.length||b>=V.length||c>=V.length){report.invalidIndices++;continue;}
+    const va=V[a],vb=V[b],vc=V[c];
+    if(!va||!vb||!vc||!va.every(Number.isFinite)||!vb.every(Number.isFinite)||!vc.every(Number.isFinite)){report.finite=false;continue;}
+    const ab=[vb[0]-va[0],vb[1]-va[1],vb[2]-va[2]],ac=[vc[0]-va[0],vc[1]-va[1],vc[2]-va[2]];
+    const cr=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];
+    if(a===b||b===c||c===a||cr[0]*cr[0]+cr[1]*cr[1]+cr[2]*cr[2]<1e-20) report.degenerateTriangles++;
+    signed6 += va[0]*(vb[1]*vc[2]-vb[2]*vc[1])-va[1]*(vb[0]*vc[2]-vb[2]*vc[0])+va[2]*(vb[0]*vc[1]-vb[1]*vc[0]);
+    for(const [u,v] of [[a,b],[b,c],[c,a]]) edgeUse.set(edge(u,v),(edgeUse.get(edge(u,v))||0)+1);
+    for(const v of [a,b,c]){let arr=vertFaces.get(v);if(!arr){arr=[];vertFaces.set(v,arr);}arr.push(fi);}
+  }
+  for(const n of edgeUse.values()){if(n===1)report.boundaryEdges++;else if(n!==2)report.nonManifoldEdges++;}
+  for(const arr of vertFaces.values()) for(let i=1;i<arr.length;i++) unite(arr[0],arr[i]);
+  const roots=new Set();
+  for(let i=0;i<F.length;i++) roots.add(find(i));
+  report.connectedComponents=roots.size;
+  report.signedVolumeMm3=signed6/6;
+  report.ok=report.finite&&report.invalidIndices===0&&report.degenerateTriangles===0&&report.boundaryEdges===0&&report.nonManifoldEdges===0&&report.connectedComponents===1&&Math.abs(report.signedVolumeMm3)>1e-8;
+  return report;
+}
+function diagnoseManifoldStage(manifold,label){
+  try{
+    const mesh=manifoldToMesh(manifold);
+    const report=diagnoseClosedTriangleMesh(mesh.V,mesh.F,label);
+    const prefix=report.ok?'AGDP haircomb diagnostic ✓':'AGDP haircomb diagnostic ✗';
+    (report.ok?console.info:console.error)(prefix,label,report);
+    return report;
+  }catch(error){
+    const report={label:String(label||'manifold'),ok:false,exception:String(error&&error.message||error)};
+    console.error('AGDP haircomb diagnostic ✗',label,report);
+    return report;
+  }
+}
+
 function removeFloatingComponents(V,F,keepCount){
   keepCount=Math.max(1,keepCount||1);
   const vertFaces=new Map();
@@ -3449,6 +3507,8 @@ function makeHairCombManifold(wasm,p){
   const X_SEG=112;
   const Z_SEG=28;
   const parts=[];
+  const hairCombDiagnostics=[];
+  const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
   const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v8');
 
@@ -3814,7 +3874,9 @@ function makeHairCombManifold(wasm,p){
     }
 
     const mesh=orientClosedMesh(V,F);
-    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
+    const crownManifold=meshToManifold(wasm,mesh.V,mesh.F);
+    recordStage(crownManifold,'haircomb/crown-source');
+    parts.push(crownManifold);
   }
 
   // Teeth curve toward the head/contact side (-Y), opposite the crown's
@@ -3877,7 +3939,9 @@ function makeHairCombManifold(wasm,p){
     const x=-TOOTH_SPAN_MM*.5+i*TOOTH_SPACING_MM;
     const lateral=x/(TOOTH_SPAN_MM*.5||1);
     const mesh=makeToothMesh(x,lateral);
-    parts.push(meshToManifold(wasm,mesh.V,mesh.F));
+    const toothManifold=meshToManifold(wasm,mesh.V,mesh.F);
+    recordStage(toothManifold,'haircomb/tooth-'+(i+1)+'-source');
+    parts.push(toothManifold);
   }
 
   p.hairCombWidthMm=WIDTH_MM;
@@ -3897,9 +3961,39 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v9';
+  p.hairCombGeneratorVersion='haircomb-v10-diagnostic';
 
-  return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
+  // Progressive CSG exposes the first crown/tooth union that ceases to be a
+  // single closed solid. It replaces the opaque balanced unionAll() only for
+  // this typology. Geometry is otherwise unchanged.
+  let assembled=parts.shift();
+  recordStage(assembled,'haircomb/assembly-crown');
+  for(let i=0;i<parts.length;i++){
+    const tooth=parts[i];
+    let merged;
+    try{
+      merged=wasm.Manifold.union(assembled,tooth);
+    }catch(error){
+      hairCombDiagnostics.push({label:'haircomb/union-tooth-'+(i+1),ok:false,exception:String(error&&error.message||error)});
+      try{assembled.delete();}catch(e){}
+      try{tooth.delete();}catch(e){}
+      for(let j=i+1;j<parts.length;j++)try{parts[j].delete();}catch(e){}
+      p.hairCombDiagnostics=hairCombDiagnostics;
+      throw new Error('AGDP haircomb union failed at tooth '+(i+1)+': '+String(error&&error.message||error));
+    }
+    try{assembled.delete();}catch(e){}
+    try{tooth.delete();}catch(e){}
+    assembled=merged;
+    const report=recordStage(assembled,'haircomb/union-tooth-'+(i+1));
+    if(!report.ok){
+      for(let j=i+1;j<parts.length;j++)try{parts[j].delete();}catch(e){}
+      p.hairCombDiagnostics=hairCombDiagnostics;
+      throw new Error('AGDP haircomb topology failed after tooth '+(i+1)+'; inspect console report');
+    }
+  }
+  p.hairCombDiagnostics=hairCombDiagnostics;
+  p.hairCombFirstFailedStage=(hairCombDiagnostics.find(r=>!r.ok)||{}).label||null;
+  return {manifold:assembled,bandW:CROWN_HEIGHT_MM};
 }
 
 // =============================================================================
@@ -4180,19 +4274,31 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     // sub-micron coincident vertex copies. Welding these copies prevents false
     // open-edge / non-manifold reports without altering visible geometry.
     const rawHairCombMesh=manifoldToMeshHelper(manifold);
+    const rawReport=diagnoseClosedTriangleMesh(rawHairCombMesh.V,rawHairCombMesh.F,'haircomb/final-raw');
+    console[rawReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rawReport.ok?'✓':'✗'),'haircomb/final-raw',rawReport);
     try{ manifold.delete(); }catch(e){}
     manifold=null;
     const canonicalHairComb=canonicalizeMeshForValidation(rawHairCombMesh.V,rawHairCombMesh.F,1e-5);
+    const canonicalReport=diagnoseClosedTriangleMesh(canonicalHairComb.V,canonicalHairComb.F,'haircomb/final-canonical');
+    console[canonicalReport.ok?'info':'error']('AGDP haircomb diagnostic '+(canonicalReport.ok?'✓':'✗'),'haircomb/final-canonical',canonicalReport);
+    if(!canonicalReport.ok){
+      p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport};
+      throw new Error('AGDP haircomb canonical topology is invalid; inspect p.hairCombFinalDiagnostics');
+    }
     // Round-trip through manifold-3d so triangle winding and edge incidence
     // are regenerated from the canonical welded topology.
     const rebuiltHairComb=meshToManifold(wasm,canonicalHairComb.V,canonicalHairComb.F);
     ({V,F}=manifoldToMeshHelper(rebuiltHairComb));
+    const rebuiltReport=diagnoseClosedTriangleMesh(V,F,'haircomb/final-rebuilt');
+    console[rebuiltReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rebuiltReport.ok?'✓':'✗'),'haircomb/final-rebuilt',rebuiltReport);
     try{ rebuiltHairComb.delete(); }catch(e){}
-    p.hairCombTopologyRepair='subMicronWeldAndManifoldRoundTrip';
+    p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport,rebuilt:rebuiltReport};
+    if(!rebuiltReport.ok) throw new Error('AGDP haircomb rebuilt topology is invalid; inspect p.hairCombFinalDiagnostics');
+    p.hairCombTopologyRepair='diagnosedSubMicronWeldAndManifoldRoundTrip';
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v9';
+    p.hairCombGeneratorVersion='haircomb-v10-diagnostic';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
