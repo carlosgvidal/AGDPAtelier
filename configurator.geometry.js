@@ -2775,21 +2775,34 @@ function makeCombManifold(wasm,p){
     upper.push([x,y+depth*(.08+.16*dome)*archWave,zLower+localH+volumeLift]);
     mid.push([x,y+depth*.08*archWave,zLower+localH*(.42+.14*Math.sin(2*Math.PI*u+(p.variation?.phaseC||0)))]);
   }
-  for(let i=0;i<n-1;i++){
-    parts.push(ellipticalSegmentBetween(wasm,lower[i],lower[i+1],bodyR*(1.00+.18*continuity),bodyR*.72,16));
-    // El cuerpo superior ahora es una masa real y continua — no una
-    // versión apenas más gruesa de la red de tubos delgados que ya usa el
-    // riel inferior. El grosor es sustancialmente mayor (varias veces
-    // bodyR) y se afina hacia los extremos, leyendo como una cresta
-    // escultórica genuina en toda circunstancia, no solo en modo volumen.
-    {
-      const q=(i+0.5)/(n-1);
+  // Build the two principal rails as continuous shared-ring tubes. The
+  // previous implementation used one capped elliptical cylinder per span;
+  // once the crest radius exceeded the spacing between samples, neighboring
+  // caps penetrated one another and the subsequent boolean union could become
+  // non-manifold. A single tube has no internal caps and therefore removes the
+  // source of that topology failure.
+  {
+    const lowerRadii=lower.map(()=>[
+      bodyR*(1.00+.18*continuity),
+      bodyR*.72
+    ]);
+    const lowerMesh=variableEllipticalTubeMesh(lower,lowerRadii,18,false);
+    parts.push(meshToManifold(wasm,lowerMesh.V,lowerMesh.F));
+
+    const crestRadii=upper.map((_,i)=>{
+      const q=i/(n-1);
       const distFromPeak=(q-crestPeakU)/crestWidth;
       const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.3);
-      const crestRX=topH*(0.20+0.05*dome+0.04*vessel)*solidBoost*(0.42+0.58*taperEdge);
-      const crestRY=topH*(0.15+0.04*dome)*solidBoost*(0.42+0.58*taperEdge);
-      parts.push(ellipticalSegmentBetween(wasm,upper[i],upper[i+1],crestRX,crestRY,18));
-    }
+      return [
+        topH*(0.20+0.05*dome+0.04*vessel)*solidBoost*(0.42+0.58*taperEdge),
+        topH*(0.15+0.04*dome)*solidBoost*(0.42+0.58*taperEdge)
+      ];
+    });
+    const crestMesh=variableEllipticalTubeMesh(upper,crestRadii,24,false);
+    parts.push(meshToManifold(wasm,crestMesh.V,crestMesh.F));
+  }
+
+  for(let i=0;i<n-1;i++){
     if(upperBodyMode!=='lattice'){
       // La zona media, entre el riel inferior y la cresta, se rellena con
       // masa real en vez de quedar vacía salvo por cruces ocasionales —
@@ -2901,10 +2914,18 @@ function makeCombManifold(wasm,p){
       pts.push([x0+sideConverge*ease+sway*q,root[1]-lean*q+toothSweep*Math.sin(Math.PI*q)*(.72+.28*Math.abs(lateral)),root[2]-toothL*q-1.2*Math.sin(Math.PI*q)*Math.abs(lateral)]);
     }
     pts[steps][1]+=tipReturn;
-    for(let j=0;j<steps;j++){
-      const q=j/steps,rx=rootWidth*(1-q)+shaftWidth*q,ry=(bodyR*.72)*(1-q)+flat*q;
-      parts.push(ellipticalSegmentBetween(wasm,pts[j],pts[j+1],rx,ry,16));
-    }
+    // Each tooth is likewise one continuous tapered tube. This avoids six
+    // mutually intersecting capped capsules per tooth and keeps the root-to-tip
+    // transition watertight before it is joined to the lower rail.
+    const toothRadii=pts.map((_,j)=>{
+      const q=j/steps;
+      return [
+        rootWidth*(1-q)+shaftWidth*q,
+        (bodyR*.72)*(1-q)+flat*q
+      ];
+    });
+    const toothMesh=variableEllipticalTubeMesh(pts,toothRadii,18,false);
+    parts.push(meshToManifold(wasm,toothMesh.V,toothMesh.F));
     parts.push(flattenedNodeAt(wasm,root,rootWidth*1.08,bodyR*.82,rootWidth*.92,16));
     parts.push(flattenedNodeAt(wasm,pts[steps],shaftWidth*1.05,flat*1.05,shaftWidth*.92,16));
   }
