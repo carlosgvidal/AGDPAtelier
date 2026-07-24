@@ -3157,14 +3157,21 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     // fairly light, so its ceiling reflects the crown's own decoration
     // budget rather than a large structural mass. hoopEarring is small
     // by construction (20-40mm) and light.
-    // FIXED: rejectAbove raised from an unreachable 58g. Direct volume
-    // calculation confirmed the fixed teeth+spine alone weigh ~46-54g
-    // across the real width range (95-120mm), before any crown mass is
-    // added -- so hollowAt now triggers well before that fixed floor is
-    // even reached, and rejectAbove leaves real room for the crown once
-    // hollowing (now enabled via conservativeShellWallMm.haircomb above)
-    // has had a chance to reduce the total.
-    haircomb:Object.freeze({hollowAt:40,rejectAbove:95}),
+    // Hair-comb dimensions are governed by the dedicated ergonomic
+    // constructor. The global scaled-copy hollowing operation is deliberately
+    // disabled for this thin open typology because it cuts through teeth and
+    // crown. Consequently, finished mass is informational rather than a hard
+    // validity condition until a dedicated crown-only lightening operation is
+    // introduced and validated.
+    haircomb:Object.freeze({
+      // The supplied AGDP comb specification defines dimensions, wall
+      // thicknesses and structural transitions, but no maximum finished
+      // silver mass. Rejecting every comb above 95 g made the entire valid
+      // 95–120 mm range unreachable. Hair-comb mass remains reported in the
+      // audit/UI, but is no longer used as a geometry-validity gate.
+      hollowAt:Infinity,
+      rejectAbove:Infinity
+    }),
     hoopEarring:Object.freeze({hollowAt:Infinity,rejectAbove:26})
   })
 });
@@ -3563,7 +3570,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombDecorationZone='crownOnly';
   p.hairCombCurvatureAxis='Y';
   p.hairCombCurvatureDirection='negativeY';
-  p.hairCombGeneratorVersion='haircomb-v4.1';
+  p.hairCombGeneratorVersion='haircomb-v4.2';
 
   return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
