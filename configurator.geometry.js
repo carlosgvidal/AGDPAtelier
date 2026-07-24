@@ -3523,7 +3523,10 @@ function makeHairCombManifold(wasm,p){
     V.push([xRoot,yRoot,zRoot]);
     for(let k=0;k<seg;k++){
       const j=(k+1)%seg;
-      F.push([root,R[0][k],R[0][j]]);
+      // Root cap must oppose the first side ring. The previous order
+      // produced a locally inconsistent winding even though the total
+      // signed volume could still be made positive by flipping all faces.
+      F.push([root,R[0][j],R[0][k]]);
     }
     const tip=V.length;
     V.push([
@@ -3560,7 +3563,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombDecorationZone='crownOnly';
   p.hairCombCurvatureAxis='Y';
   p.hairCombCurvatureDirection='negativeY';
-  p.hairCombGeneratorVersion='haircomb-v4';
+  p.hairCombGeneratorVersion='haircomb-v4.1';
 
   return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
