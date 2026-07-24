@@ -24,9 +24,9 @@
   ];
   const HOOP_EARRING_SIZES = [
     {key:'s', outerDiamMm:20, label_es:'S · 20 mm', label_en:'S · 20 mm'},
-    {key:'m', outerDiamMm:26, label_es:'M · 26 mm', label_en:'M · 26 mm'},
-    {key:'l', outerDiamMm:34, label_es:'L · 34 mm', label_en:'L · 34 mm'},
-    {key:'xl', outerDiamMm:40, label_es:'XL · 40 mm', label_en:'XL · 40 mm'},
+    {key:'m', outerDiamMm:24, label_es:'M · 24 mm', label_en:'M · 24 mm'},
+    {key:'l', outerDiamMm:30, label_es:'L · 30 mm', label_en:'L · 30 mm'},
+    {key:'xl', outerDiamMm:35, label_es:'XL · 35 mm', label_en:'XL · 35 mm'},
   ];
   const PENDANT_SIZES = [
     {key:'sm', mainSize:23.5, label_es:'Pequeño · 23.5 mm', label_en:'Small · 23.5 mm'},
@@ -104,13 +104,13 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
       sizeHintPendant:'Tamaño de la placa. La apertura para cadena se ajusta abajo.',
       sizeHintHaircomb:'La talla controla el ancho total (fijo, con dientes y riel de seguridad estándar) y la altura del cabezal decorado.',
-      sizeHintHoopEarring:'La talla determina el diámetro exterior del aro. El gancho y el cierre son de calibre fijo por seguridad.',
+      sizeHintHoopEarring:'La talla determina el diámetro exterior del cuerpo decorado. El gancho francés mantiene dimensiones fijas de seguridad.',
       chainFitLabel:'Grosor de cadena',
       dimsTitle:'Medidas finales',
       dimInnerDiameter:'Diámetro interior', dimInnerWidth:'Ancho interior', dimInnerDepth:'Fondo interior', dimOpening:'Apertura posterior', dimWidth:'Ancho', dimHeight:'Alto', dimThickness:'Espesor', dimTargetWeight:'Rango de peso objetivo',
       dimTotalWidth:'Ancho total', dimCrownHeight:'Altura de cabezal', dimToothCount:'Número de dientes', dimToothSpacing:'Separación entre dientes', dimToothDiameter:'Diámetro de diente (raíz/punta)',
-      dimHoopOuterDiameter:'Diámetro exterior del aro', dimHoopWireDiameter:'Grosor del aro', dimHookTipDiameter:'Grosor de punta del gancho',
-      dimHoopBodySpan:'Diámetro del cuerpo', dimHoopPostLength:'Longitud del poste', dimHoopPostTipDiameter:'Grosor de punta del poste',
+      dimHoopBodySpan:'Diámetro del cuerpo', dimHoopBodyDepth:'Profundidad del cuerpo',
+      dimHookInsertionLength:'Longitud de inserción del gancho', dimHookTipDiameter:'Grosor de punta del gancho',
       dimOverall:'Dimensión total', dimPlate:'Placa', dimWeight:'Peso aprox. en plata',
       dimNominal:'Talla solicitada', dimDesign:'Diámetro de diseño (con compensación)',
       weightLight:'Colgante ligero', weightMedium:'Colgante medio', weightHeavy:'Colgante pesado — considerar mecanismo reforzado',
@@ -128,13 +128,13 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
       sizeHintPendant:'Plate size. Chain opening is set below.',
       sizeHintHaircomb:'Size controls overall width (fixed, with standard safety teeth and spine) and the decorated crown height.',
-      sizeHintHoopEarring:'Size determines the hoop\'s outer diameter. The hook and closure are fixed-gauge for safety.',
+      sizeHintHoopEarring:'Size determines the decorated body’s outer diameter. The French hook keeps fixed safety dimensions.',
       chainFitLabel:'Chain thickness',
       dimsTitle:'Final measurements',
       dimInnerDiameter:'Inner diameter', dimInnerWidth:'Inner width', dimInnerDepth:'Inner depth', dimOpening:'Rear opening', dimWidth:'Width', dimHeight:'Height', dimThickness:'Thickness', dimTargetWeight:'Target weight range',
       dimTotalWidth:'Overall width', dimCrownHeight:'Crown height', dimToothCount:'Tooth count', dimToothSpacing:'Tooth spacing', dimToothDiameter:'Tooth diameter (root/tip)',
-      dimHoopOuterDiameter:'Hoop outer diameter', dimHoopWireDiameter:'Hoop wire thickness', dimHookTipDiameter:'Hook tip thickness',
-      dimHoopBodySpan:'Body span', dimHoopPostLength:'Post length', dimHoopPostTipDiameter:'Post tip thickness',
+      dimHoopBodySpan:'Body diameter', dimHoopBodyDepth:'Body depth',
+      dimHookInsertionLength:'Hook insertion length', dimHookTipDiameter:'Hook tip thickness',
       dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
       dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
@@ -244,8 +244,9 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       rows.push([t('dimToothDiameter'), (cp.hairCombToothRootDiameterMm||2.9).toFixed(1)+' / '+(cp.hairCombToothTipDiameterMm||1.7).toFixed(1)+' mm']);
     } else if(params.type==='hoopEarring'){
       rows.push([t('dimHoopBodySpan'), (cp.hoopBodySpanMm||params.mainSize).toFixed(1)+' mm']);
-      rows.push([t('dimHoopPostLength'), (cp.hoopPostLengthMm||11.5).toFixed(1)+' mm']);
-      rows.push([t('dimHoopPostTipDiameter'), (cp.hoopPostTipDiameterMm||1.3).toFixed(1)+' mm']);
+      rows.push([t('dimHoopBodyDepth'), (cp.hoopBodyDepthMm||params.bandWidth).toFixed(1)+' mm']);
+      rows.push([t('dimHookInsertionLength'), (cp.hoopHookInsertionLengthMm||12.0).toFixed(1)+' mm']);
+      rows.push([t('dimHookTipDiameter'), (cp.hoopHookTipDiameterMm||0.9).toFixed(1)+' mm']);
     } else if(params.type==='cuffBracelet'){
       rows.push([t('dimInnerWidth'), (params.mainSize*1.20).toFixed(1)+' mm']);
       rows.push([t('dimInnerDepth'), (params.mainSize*0.85).toFixed(1)+' mm']);

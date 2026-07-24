@@ -269,9 +269,12 @@ function concatenateSegmentMeshes(segmentManifolds){
 }
 
 // Builds the customer-facing pair directly from one validated unit mesh.
-// Both copies preserve the same orientation and face the camera identically;
-// only their X position changes. The copies are concatenated rather than
-// boolean-unioned, so the result remains exactly two closed solids.
+// The unit already leaves makeHoopEarringManifold in its intended display
+// orientation: the decorated annular body occupies the frontal YZ plane,
+// while the French hook recedes through the XY plane behind it. Do not apply
+// an additional quarter-turn here; that turn makes the body appear edge-on.
+// Only the horizontal presentation offset is added. The copies are
+// concatenated rather than boolean-unioned, preserving exactly two solids.
 function identicalFacingPairMesh(unitV, unitF, centerSpacing){
   const half=centerSpacing/2;
   const leftV=unitV.map(v=>[v[0]-half,v[1],v[2]]);
@@ -3819,7 +3822,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     ({V,F}=identicalFacingPairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
     p.hoopPairCenterSpacingMm=pairSpacing;
     p.hoopPairComponents=2;
-    p.hoopPairPresentation='identicalFrontFacing';
+    p.hoopPairPresentation='annularBodiesFrontHooksRear';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
