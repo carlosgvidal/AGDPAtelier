@@ -18,17 +18,19 @@ function meshToManifold(wasm, V, F) {
     if (mesh && typeof mesh.delete === 'function') mesh.delete();
   }
 }
+
 function manifoldToMesh(manifoldObj) {
   const out = manifoldObj.getMesh();
   try {
-  const V = [], F = [];
-  for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
-  for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
-  return { V, F };
-} finally {
-  if (out && typeof out.delete === 'function') out.delete();
+    const V = [], F = [];
+    for (let i = 0; i < out.vertProperties.length; i += 3) V.push([out.vertProperties[i], out.vertProperties[i+1], out.vertProperties[i+2]]);
+    for (let i = 0; i < out.triVerts.length; i += 3) F.push([out.triVerts[i], out.triVerts[i+1], out.triVerts[i+2]]);
+    return { V, F };
+  } finally {
+    if (out && typeof out.delete === 'function') out.delete();
+  }
 }
-}
+
 function unionAll(wasm, manifolds) {
   const { Manifold } = wasm;
   let list = manifolds.filter(m => m && !m.isEmpty());
@@ -48,6 +50,7 @@ function unionAll(wasm, manifolds) {
   }
   return list[0];
 }
+
 function safeDifference(wasm, a, b) {
   const result = wasm.Manifold.difference(a, b);
   try{ a.delete(); }catch(e){}
@@ -55,21 +58,6 @@ function safeDifference(wasm, a, b) {
   return result;
 }
 
-/* =========================================================================
-   HOOKED-SEGMENT SPLIT (choker / headpiece)
-   Shapeways' silver lost-wax casting has a maximum bounding box of
-   89x89x100mm (confirmed against their published spec, 2026-07). A choker
-   or headpiece at any dimension realistic for actual wear (verified
-   against comparable rigid wire chokers on the market: 114-165mm
-   diameter) categorically exceeds this in every orientation -- confirmed
-   empirically via full 3D rotation search, not assumed. Splitting into
-   3 wedge-cut segments, each fitted with a simple wire hook-and-eye
-   clasp at the two joints, is the customer-assemblable alternative:
-   no soldering, no workshop step, no tools -- the wearer closes it the
-   same way they would any hook-and-eye choker clasp. Verified: 2 segments
-   does not fit even with optimized orientation (106mm+ minimum); 3
-   segments fits every time with per-segment orientation.
-   ========================================================================= */
 function wedgeCutterMesh(t0, t1, radius, height){
   const cx0=radius*Math.cos(t0), cy0=radius*Math.sin(t0);
   const cx1=radius*Math.cos(t1), cy1=radius*Math.sin(t1);
@@ -78,15 +66,7 @@ function wedgeCutterMesh(t0, t1, radius, height){
   const F=[[0,1,2],[3,5,4],[0,2,5],[0,5,3],[0,3,4],[0,4,1],[1,4,5],[1,5,2]];
   return {V,F};
 }
-// REDESIGNED per updated request: a genuine sliding dovetail rail joint
-// instead of a press-fit post/socket. A trapezoidal rail -- narrow where
-// it meets the segment's surface, wider at its outer tip -- slides
-// lengthwise (along Z, the sliding axis) into a matching trapezoidal
-// groove cut into the adjacent segment. Once slid into place, the
-// dovetail's own shape mechanically blocks radial separation (the wide
-// tip cannot pass back out through the narrower groove opening), while
-// still allowing assembly via a simple lengthwise slide -- a real,
-// load-bearing mechanical joint, not a decorative press-fit.
+
 function dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, zLen, zCenterOffset){
   const hz = zLen/2;
   const z0 = zCenterOffset - hz, z1 = zCenterOffset + hz;
@@ -97,56 +77,39 @@ function dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, r
       anchor[2] + zOff
     ];
   }
-  // 8 vertices: 4 corners (base-left, base-right, tip-left, tip-right) at
-  // each of the two Z ends.
   const V = [
     corner(baseHalfW, 0, z0, -1), corner(baseHalfW, 0, z0, 1),
     corner(tipHalfW, railHeight, z0, 1), corner(tipHalfW, railHeight, z0, -1),
     corner(baseHalfW, 0, z1, -1), corner(baseHalfW, 0, z1, 1),
     corner(tipHalfW, railHeight, z1, 1), corner(tipHalfW, railHeight, z1, -1)
   ];
-  // Quad faces (as triangle pairs): near cap, far cap, and the 4 sides.
   const F = [
-    [0,1,2],[0,2,3],       // near cap (z0)
-    [4,6,5],[4,7,6],       // far cap (z1)
-    [0,4,5],[0,5,1],       // base side
-    [1,5,6],[1,6,2],       // tangent+ side
-    [2,6,7],[2,7,3],       // tip side
-    [3,7,4],[3,4,0]        // tangent- side
+    [0,1,2],[0,2,3],
+    [4,6,5],[4,7,6],
+    [0,4,5],[0,5,1],
+    [1,5,6],[1,6,2],
+    [2,6,7],[2,7,3],
+    [3,7,4],[3,4,0]
   ];
   return {V,F};
 }
-// REDESIGNED per direct feedback (with a wood tongue-and-groove joint as
-// reference): a single continuous rail spanning nearly the full height
-// of the cut face, instead of two small localized rail pairs. The
-// previous two-point design held the segments together at only two
-// small contact patches; a full-height rail gives dramatically more
-// contact area and rigidity, matching how a real sliding wood joint is
-// built -- solid along its whole length, not just pinned at a couple of
-// points.
+
 function buildDovetailRailFull(wasm, anchor, wall, zMin, zMax){
   const rr = Math.hypot(anchor[0],anchor[1])||1;
   const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
   const tangentDir = [-radialDir[1], radialDir[0], 0];
   const baseHalfW = wall*0.9, tipHalfW = wall*1.5, railHeight = wall*1.9;
-  // Small margin at each end of the cut face so the rail's own end caps
-  // stay comfortably embedded in real material rather than reaching
-  // exactly to the surface edge.
   const margin = Math.max(1.0, wall*0.5);
   const railLen = Math.max(4, (zMax-zMin) - 2*margin);
   const zCenter = (zMin+zMax)/2 - anchor[2];
   const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen, zCenter);
   return meshToManifold(wasm, mesh.V, mesh.F);
 }
+
 function cutDovetailGrooveFull(wasm, segmentManifold, anchor, wall, zMin, zMax){
   const rr = Math.hypot(anchor[0],anchor[1])||1;
   const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
   const tangentDir = [-radialDir[1], radialDir[0], 0];
-  // Groove is slightly larger than the rail on every dimension for a
-  // real sliding clearance fit (not a tight press-fit): +0.25mm on the
-  // width dimensions, +0.3mm extra depth so the rail's tip does not
-  // bottom out, and +1mm extra length so the rail can fully enter
-  // without jamming at the very end of its travel.
   const baseHalfW = wall*0.9+0.25, tipHalfW = wall*1.5+0.25, railHeight = wall*1.9+0.3;
   const margin = Math.max(1.0, wall*0.5);
   const railLen = Math.max(4, (zMax-zMin) - 2*margin);
@@ -155,12 +118,7 @@ function cutDovetailGrooveFull(wasm, segmentManifold, anchor, wall, zMin, zMax){
   const cutter = meshToManifold(wasm, mesh.V, mesh.F);
   return safeDifference(wasm, segmentManifold, cutter);
 }
-// Anchors the connector on the segment's OWN real cut-face geometry
-// (mid-radius, mid-height of the vertices actually lying on the cut
-// plane) rather than an assumed/computed position -- correct regardless
-// of how the seed's own decorations shape that particular cut. Now also
-// returns the face's real Z range so the rail/groove can span nearly its
-// full height.
+
 function findCutFaceAnchor(V, targetAngle, tol){
   tol = tol||0.02;
   const candidates = V.filter(v=>Math.abs(Math.atan2(v[1],v[0])-targetAngle)<tol);
@@ -171,35 +129,15 @@ function findCutFaceAnchor(V, targetAngle, tol){
   const point = [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
   return { point, minZ, maxZ };
 }
-// Cuts a completed choker/headpiece manifold into 3 wedge segments and
-// attaches a dovetail-rail-pair (odd joints) / matching-groove-pair
-// (even joints) at each of the 2 internal cuts, alternating so every
-// joint is exactly one rail-bearing face meeting one groove-bearing
-// face. Returns an array of 3 manifolds, each independently a valid,
-// printable, single closed solid.
+
 function splitIntoHookedSegments(wasm, manifold, wall){
   const { Manifold } = wasm;
   const mesh = manifoldToMesh(manifold);
   const angles = mesh.V.map(v=>Math.atan2(v[1],v[0]));
   const minA = Math.min(...angles), maxA = Math.max(...angles);
   const span = (maxA-minA)/3;
-  // Tiny, deliberately "ugly" (non-round) perturbation on the 2 internal
-  // cut angles only, confirmed necessary via direct STL mesh analysis:
-  // when a cutting plane's angle coincides almost exactly with an
-  // existing vertex's own angle in the decorated surface, the boolean
-  // intersection produces a cluster of near-zero-area triangles all
-  // converging on that one point (found: 30 triangles sharing a single
-  // near-coincident vertex, all effectively degenerate). This offsets
-  // the cut just enough to avoid that exact coincidence without
-  // meaningfully changing where the piece is divided.
   const cutEps = 0.0001743;
   const cutAngles = [minA, minA+span+cutEps, minA+2*span-cutEps, maxA];
-  // A small angular inset at the 2 INTERNAL cuts only (not the piece's own
-  // natural ends) creates a real ~0.4mm physical gap between adjacent
-  // segments, comfortably above Shapeways' stated 0.3mm minimum clearance
-  // between separate parts in one file, and removes any ambiguity about
-  // whether touching-but-not-overlapping solids might get treated as one
-  // connected component downstream.
   const approxRadius = Math.max(30, mesh.V.reduce((s,v)=>s+Math.hypot(v[0],v[1]),0)/mesh.V.length);
   const gapEps = 0.4/approxRadius;
   const R = 300, H = 300;
@@ -250,13 +188,7 @@ function splitIntoHookedSegments(wasm, manifold, wall){
   }
   return segments;
 }
-// Combines the 3 already-separate, already-validated segment manifolds
-// into one V/F pair for export, via direct mesh concatenation rather than
-// a further boolean union -- guarantees they remain 3 distinct
-// components in the output regardless of how closely their cut faces
-// sit next to one another (a CSG union of touching-but-non-overlapping
-// solids is not a risk worth taking here when a plain array concatenation
-// does the same job with zero ambiguity).
+
 function concatenateSegmentMeshes(segmentManifolds){
   let V = [], F = [], offset = 0;
   for(const seg of segmentManifolds){
@@ -268,13 +200,6 @@ function concatenateSegmentMeshes(segmentManifolds){
   return { V, F };
 }
 
-// Builds a customer-facing pair from one validated unit mesh. The two
-// earrings are arranged as a jewellery product composition rather than as
-// two rigidly duplicated orthographic copies: the right unit remains nearly
-// frontal, while the left unit turns into a controlled three-quarter view.
-// This lets the annular body dominate visually and places the French hook
-// behind it in perspective. The underlying printable geometry is unchanged;
-// only each copy's presentation transform and position are modified.
 function identicalFacingPairMesh(unitV, unitF, centerSpacing){
   const rad=d=>d*Math.PI/180;
   const rotateX=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0],v[1]*c-v[2]*sn,v[1]*sn+v[2]*c];};
@@ -296,6 +221,7 @@ function identicalFacingPairMesh(unitV, unitF, centerSpacing){
   const rightF=unitF.map(f=>[f[0]+offset,f[1]+offset,f[2]+offset]);
   return {V:leftV.concat(rightV),F:leftF.concat(rightF)};
 }
+
 function cylinderBetween(wasm, p0, p1, radius, segments) {
   const { Manifold } = wasm;
   const dx=p1[0]-p0[0], dy=p1[1]-p0[1], dz=p1[2]-p0[2];
@@ -308,10 +234,12 @@ function cylinderBetween(wasm, p0, p1, radius, segments) {
   const mid=[(p0[0]+p1[0])/2,(p0[1]+p1[1])/2,(p0[2]+p1[2])/2];
   return rotated.translate(mid);
 }
+
 function sphereAt(wasm, center, radius, segments) {
   const { Manifold } = wasm;
   return Manifold.sphere(radius, segments || 20).translate(center);
 }
+
 function radialBlock(wasm, t, r, z, radialDepth, tangentWidth, height) {
   const { Manifold } = wasm;
   const box = Manifold.cube([radialDepth, tangentWidth, height], true);
@@ -320,6 +248,7 @@ function radialBlock(wasm, t, r, z, radialDepth, tangentWidth, height) {
   const cx = r*Math.cos(t), cy = r*Math.sin(t);
   return rotated.translate([cx, cy, z]);
 }
+
 function taperedProngMesh(t, r, z, tangentWidth, axialHeight, protrusion) {
   const er=[Math.cos(t),Math.sin(t),0], et=[-Math.sin(t),Math.cos(t),0];
   const ht=tangentWidth/2, hz=axialHeight/2;
@@ -334,6 +263,7 @@ function taperedProngMesh(t, r, z, tangentWidth, axialHeight, protrusion) {
   const F=[[0,2,1],[0,3,2],[0,1,4],[1,2,4],[2,3,4],[3,0,4]];
   return {V,F};
 }
+
 function tubeAlongPathMesh(points, radius, ringSegN, closed) {
   ringSegN = Math.max(ringSegN||8,6);
   const n = points.length;
@@ -381,21 +311,7 @@ function tubeAlongPathMesh(points, radius, ringSegN, closed) {
   }
   return {V,F};
 }
-// Variable-elliptical-radius variant of tubeAlongPathMesh: each point along
-// the path carries its OWN (rx, ry) cross-section instead of one fixed
-// radius for the whole tube. This is what a genuinely continuous, tapering
-// ridge/crest needs -- unlike stitching together independent
-// ellipticalSegmentBetween capsules (each its own separate capped
-// cylinder with no shared cross-section with its neighbors), this shares
-// a single ring of vertices at every path point, so consecutive
-// cross-sections blend into one smooth tube instead of each one's own end
-// cap poking through the next segment's own volume. That poking-through is
-// exactly what produced the blocky, self-intersecting, faceted lumps in
-// the hair comb crown once cross-section radius (rx driven by
-// CROWN_HEIGHT_MM*crownBoost) grew larger than the spacing between
-// consecutive crownAnchors -- confirmed numerically (rx/spacing reached
-// ~1.37x at the crest's own peak), which independent capsules cannot
-// tolerate but a shared-ring tube handles by construction.
+
 function variableEllipticalTubeMesh(points, radii, ringSegN, closed){
   ringSegN=Math.max(Math.round(ringSegN||8),8);
   closed=!!closed;
@@ -403,9 +319,6 @@ function variableEllipticalTubeMesh(points, radii, ringSegN, closed){
     throw new Error('variableEllipticalTubeMesh: invalid path/radii input');
   }
 
-  // Remove consecutive coincident samples before frame construction. A zero-
-  // length segment makes the old projected-frame transport collapse to a
-  // zero vector, producing coincident ring vertices and degenerate triangles.
   const cleanPoints=[];
   const cleanRadii=[];
   const EPS2=1e-12;
@@ -445,8 +358,6 @@ function variableEllipticalTubeMesh(points, radii, ringSegN, closed){
     tangents.push(t);
   }
 
-  // Rotation-minimising frame transport. Unlike repeated projection, this
-  // remains stable through tight bends and near-orthogonal tangent changes.
   let ref=Math.abs(tangents[0][2])<0.85?[0,0,1]:[0,1,0];
   let e1=norm(cross(ref,tangents[0]))||[1,0,0];
   let e2=norm(cross(tangents[0],e1))||[0,1,0];
@@ -529,6 +440,7 @@ function simpleAnnularBandMesh(innerR, outerR, zCenter, width, seg, arcRad, clos
   }
   return {V,F};
 }
+
 function taperedBridgeMesh(y0, y1, z0, th, w0, w1, steps) {
   const V=[], F=[], rows=[];
   for (let s=0;s<=steps;s++) {
@@ -550,6 +462,7 @@ function taperedBridgeMesh(y0, y1, z0, th, w0, w1, steps) {
   F.push([b[0],b[2],b[1]]);F.push([b[0],b[3],b[2]]);
   return {V,F};
 }
+
 function spike3DMesh(base, dir, baseR, length, segN) {
   segN = Math.max(segN||10, 6);
   const l = Math.hypot(dir[0],dir[1],dir[2])||1;
@@ -573,6 +486,7 @@ function spike3DMesh(base, dir, baseR, length, segN) {
   }
   return {V,F};
 }
+
 function domeShellMesh(rimRFn, heightFn, seg, radSeg, indentFn) {
   const V=[], F=[];
   const top=[], bot=[];
@@ -611,6 +525,7 @@ function domeShellMesh(rimRFn, heightFn, seg, radSeg, indentFn) {
   for (let i=0;i<seg;i++) { topGrid[i]=[]; for (let j=0;j<=radSeg;j++) topGrid[i][j]=V[top[i][j]]; }
   return {V,F,topGrid};
 }
+
 function annularPrismMesh(origin, ex, ey, ez, innerU, innerV, outerU, outerV, thickness, segN) {
   const seg=Math.max(64,Math.round(segN||96));
   const half=thickness*.5;
@@ -678,10 +593,7 @@ function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cor
   return {V,F};
 }
 
-
 function rectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth) {
-  // Closed rectangular frame in the YZ plane. The chain passage runs along X,
-  // matching the lateral orientation of a conventional pendant bail.
   const hx=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
   const ow=Math.max(outerW*.5,AGDP_MIN_WALL_MM);
   const oh=Math.max(outerH*.5,AGDP_MIN_WALL_MM);
@@ -689,7 +601,7 @@ function rectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth) {
   const ih=Math.max(innerH*.5,AGDP_MIN_WALL_MM*.25);
   const V=[],F=[];
   const frontOuter=[],frontInner=[],backOuter=[],backInner=[];
-  const outer=[[-ow,-oh],[ow,-oh],[ow,oh],[-ow,oh]]; // [z,y]
+  const outer=[[-ow,-oh],[ow,-oh],[ow,oh],[-ow,oh]];
   const inner=[[-iw,-ih],[iw,-ih],[iw,ih],[-iw,ih]];
   const add=(x,zy)=>{V.push([origin[0]+x,origin[1]+zy[1],origin[2]+zy[0]]);return V.length-1;};
   for(let i=0;i<4;i++){
@@ -709,11 +621,7 @@ function rectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth) {
   return {V,F};
 }
 
-
 function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth, cornerSegments) {
-  // Lateral frame in the YZ plane with short-radius corners. The straight
-  // spans remain dominant, while the corners use enough facets to match the
-  // visual resolution of the surrounding annular body.
   const cs=Math.max(8,Math.round(cornerSegments||12));
   const hx=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
   const wallZ=Math.max((outerW-innerW)*.5,AGDP_MIN_WALL_MM);
@@ -723,7 +631,7 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
   function loop(w,h,r){
     const pts=[];
     const cz=w*.5-r, cy=h*.5-r;
-    const centers=[[cz,cy],[-cz,cy],[-cz,-cy],[cz,-cy]]; // [z,y]
+    const centers=[[cz,cy],[-cz,cy],[-cz,-cy],[cz,-cy]];
     const starts=[0,Math.PI*.5,Math.PI,Math.PI*1.5];
     for(let q=0;q<4;q++){
       for(let k=0;k<cs;k++){
@@ -769,43 +677,17 @@ function rectilinearFrameManifoldYZ(wasm, origin, outerW, outerH, innerW, innerH
 function organicNodeAt(wasm, center, radius, segments, seedPhase) {
   const {Manifold}=wasm;
   const phase=Number.isFinite(seedPhase)?seedPhase:(center[0]*.173+center[1]*.117+center[2]*.071);
-  // Keep deformation subtle. Strong anisotropic scaling exaggerates every
-  // latitude ring and produces visible facets in mirror-finish materials.
   const e=.026+.012*(.5+.5*Math.sin(phase));
   const sx=1+e, sy=1-e*.28, sz=1/(sx*sy);
-  // One stable local resolution avoids mixed tessellation at node/body unions.
-  // Cutters retain their original resolution and are not routed here.
   const localSegments=Math.max(48,Math.round(segments||0));
   return Manifold.sphere(radius,localSegments).scale([sx,sy,sz]).translate(center);
 }
+
 function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN) {
-  // The opening is part of the source topology. No subtraction is performed,
-  // so the inner rim cannot inherit triangulation from a transverse boolean.
   const mesh=annularPrismMesh(origin,ex,ey,ez,ri,ri,ro,ro,thickness,segN);
   return meshToManifold(wasm,mesh.V,mesh.F);
 }
-// General mesh cleanup: merges vertices within a tight tolerance (1
-// micron -- far below any real jewelry feature size, so this cannot
-// merge two legitimately distinct nearby details) and removes any
-// triangle that becomes degenerate (two or more shared vertices, or a
-// near-zero cross-product area) or is an exact duplicate of another
-// triangle. Confirmed via direct STL mesh analysis (edge-sharing count
-// audit) that CSG booleans in this pipeline occasionally produce exactly
-// this kind of artifact -- a cluster of near-zero-area triangles all
-// converging on one near-coincident point, or an outright duplicated
-// triangle -- which shows up as non-manifold edges and visible jagged
-// seams in a highly reflective material. Found in both ring and choker
-// output, i.e. in the shared construction pipeline, not one typology's
-// own code; this general pass catches the defect regardless of its
-// exact source rather than requiring every individual embed calculation
-// to be proven safe.
 
-// Canonicalizes a mesh before external topology validation. Manifold's CSG
-// output is geometrically closed, but separate boolean fragments can retain
-// numerically coincident vertices. Validators that build edge incidence from
-// vertex indices then report false open/non-manifold seams. This pass welds
-// only sub-micron coincidences, removes collapsed/duplicate triangles, and
-// compacts indices without changing any printable feature.
 function canonicalizeMeshForValidation(V,F,tolerance){
   const tol=Math.max(1e-7,Number.isFinite(tolerance)?tolerance:1e-5);
   const inv=1/tol;
@@ -844,11 +726,6 @@ function canonicalizeMeshForValidation(V,F,tolerance){
   return {V:CV,F:CF,weldedVertices:V.length-CV.length,removedDegenerate,removedDuplicate};
 }
 
-
-
-// Detailed topology audit used by the hair-comb diagnostic pipeline. This is
-// intentionally independent from window.validate so a failing intermediate
-// CSG stage can be identified before the final product audit is reached.
 function diagnoseClosedTriangleMesh(V,F,label){
   const report={
     label:String(label||'mesh'), vertices:Array.isArray(V)?V.length:0,
@@ -888,6 +765,7 @@ function diagnoseClosedTriangleMesh(V,F,label){
   report.ok=report.finite&&report.invalidIndices===0&&report.degenerateTriangles===0&&report.boundaryEdges===0&&report.nonManifoldEdges===0&&report.connectedComponents===1&&Math.abs(report.signedVolumeMm3)>1e-8;
   return report;
 }
+
 function diagnoseManifoldStage(manifold,label){
   try{
     const mesh=manifoldToMesh(manifold);
@@ -962,6 +840,7 @@ function cellularHoleField(p,seg,zSeg){
     return best<(1-wallFrac);
   };
 }
+
 function repairSolidConnectivity(hole,seg,zSeg,innerR,bandWidth){
   const compId=Array.from({length:seg},()=>Array(zSeg).fill(-1));
   const comps=[];
@@ -1041,6 +920,7 @@ function repairSolidConnectivity(hole,seg,zSeg,innerR,bandWidth){
     }
   }
 }
+
 function facetedRadius(t, rBase, facetCount, facetDepth) {
   if (facetCount <= 0 || facetDepth <= 0) return rBase;
   const period = 2 * Math.PI / facetCount;
@@ -1052,7 +932,6 @@ function facetedRadius(t, rBase, facetCount, facetDepth) {
   else depth = 1;
   return rBase - facetDepth * (1 - depth);
 }
-
 
 async function buildBandGeometryManifold(wasm, p, opts) {
   const closed = opts.closed, seg = p.segments, zSeg = Math.max(44, Math.min(96, Math.round(p.segments/3.5)));
@@ -1161,12 +1040,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     if (d>=coverageHalf) return 0;
     return 1-(d-coverageCore)/(coverageHalf-coverageCore);
   }
-  // Structural rail/post emphasis is now a continuous quantity, not a
-  // topology switch: every ring/bangle/cuff/choker/headpiece is built from
-  // the same single continuous surface, and higher lattice+cage intensity
-  // simply adds more and thicker structural posts on top of it — never a
-  // separate, unrelated rail-based construction. This is what actually
-  // removes the "two families" split: one topology, one spectrum.
+
   const lattice = featureIntensity(p,'lattice');
   const cage = featureIntensity(p,'cage');
   const postIntensity = p.holes>=2 ? clamp((lattice+cage)/1.6, 0, 1) : 0;
@@ -1240,28 +1114,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const topOuterR=Math.hypot(V[outer[i][zSeg]][0],V[outer[i][zSeg]][1]);
       const bottomInnerR=Math.hypot(V[inner[i][0]][0],V[inner[i][0]][1]);
       const bottomOuterR=Math.hypot(V[outer[i][0]][0],V[outer[i][0]][1]);
-      // BUG FIX (confusión de eje radial/axial): outerOperationField
-      // devuelve una cantidad RADIAL (cuánto se desvía el radio de la
-      // superficie exterior decorada respecto al nominal, en este ángulo
-      // t y altura z) -- puede ser fuertemente positiva por zoneMassDepth
-      // o negativa por grooveDepth. Antes se sumaba directamente como
-      // desplazamiento en el eje Z de la tapa lateral que cierra la banda
-      // abierta. Confirmado numéricamente: con valores realistas de
-      // organic/surfaceRelief, ese valor crudo alcanza varios mm y NO es
-      // monótono en k, así que lateralTop/lateralBottom se plegaban sobre
-      // sí mismos (Z subía y volvía a bajar dentro del mismo tramo) en vez
-      // de barrer suavemente de radio interior a exterior -- una tapa
-      // auto-intersectante, que es lo que producía triangulación
-      // degenerada en cada boolean posterior (código compartido por
-      // ring-abierto, bangle, cuffBracelet, earCuff, choker, headpiece y
-      // el núcleo anular del dije).
-      // Arreglo: se acota la magnitud del desplazamiento axial con un
-      // squash suave (tanh) a una fracción pequeña y fija del espesor
-      // radial de la tapa, en vez de sumar el valor crudo sin control.
-      // tanh satura suavemente y preserva la forma monótona de un solo
-      // lóbulo que ya tenía "envelope" (cero en ambos extremos), así que
-      // lateralField hereda esa monotonía por construcción, sin importar
-      // cuán extremos sean zoneMassDepth o grooveDepth.
       const capAxialSlack = Math.max(AGDP_MIN_WALL_MM*0.4, (topOuterR-topInnerR)*0.18);
       for(let k=1;k<lateralSeg;k++){
         const u=k/lateralSeg;
@@ -1336,14 +1188,11 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       function capOpenEnd(i, reverse){
         const loop=[];
         if(!reverse){
-          // Inicio del arco: recorrer el perímetro en sentido opuesto a las
-          // aristas de frontera de las superficies adyacentes.
           for(let j=0;j<=zSeg;j++) loop.push(outer[i][j]);
           for(let k=lateralSeg-1;k>=0;k--) loop.push(lateralTop[i][k]);
           for(let j=zSeg-1;j>=0;j--) loop.push(inner[i][j]);
           for(let k=1;k<lateralSeg;k++) loop.push(lateralBottom[i][k]);
         }else{
-          // Final del arco: la orientación exterior es la inversa.
           for(let j=zSeg;j>=0;j--) loop.push(outer[i][j]);
           for(let k=lateralSeg-1;k>=0;k--) loop.push(lateralBottom[i][k]);
           for(let j=1;j<=zSeg;j++) loop.push(inner[i][j]);
@@ -1395,11 +1244,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       decorations.push(radialBlock(wasm, t, localSurfaceRZ(t,0)+ribHeight*cov/2-embedAtZ(t,0), 0, ribHeight*cov, ribWidth, bandW*0.82));
     }
   }
-  // Posts scale continuously with postIntensity — zero at low intensity
-  // (a clean continuous surface, indistinguishable from the old
-  // non-lattice look), growing gradually to several thick struts at high
-  // intensity (the old lattice look), all as an addition to the same
-  // surface rather than a swapped-in separate topology.
+
   const postCount = Math.round(postIntensity*6.4);
   if (postCount>0) {
     const postDepth = Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.45+0.55*postIntensity));
@@ -1410,17 +1255,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     }
   }
 
-  // Disabled for choker/headpiece specifically: confirmed via ablation
-  // testing (forcing this off while varying every other decoration
-  // independently) that it was the largest single contributor to severe
-  // non-manifold defects at choker's much larger scale, though isolated
-  // testing of the pin decoration alone (even with multiple pins) on a
-  // simple band stayed clean -- meaning this is an interaction with the
-  // piece's full real complexity, not reproducible standalone. This is a
-  // mitigation matching the same "disable, don't keep chasing under
-  // time pressure" approach taken for the hallmark engraving; a smaller
-  // residual defect remains (worst case dropped from 6337 to 561 in
-  // testing) and still needs dedicated root-cause investigation.
   const pinCount = (cellularActive || opts.type==='choker' || opts.type==='headpiece') ? 0 : Math.round(p.screws||0);
   if (pinCount>0) {
     const pinR = Math.max(AGDP_MIN_WALL_MM*0.35, baseWall*0.16);
@@ -1428,16 +1262,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const u = pinCount===1?.5:k/(pinCount-1);
       const t = -arcRad/2+arcRad*(0.15+0.7*u);
       const ct=Math.cos(t), st=Math.sin(t);
-      // BUG FIX: this used to run the pin all the way from innerR (the
-      // bore surface, where skin touches) out to the decorated outer
-      // surface -- a full-thickness spike rather than a surface
-      // decoration, visible as a protruding block on the inside of the
-      // ring (confirmed via screenshot: pinCount pins showed as exactly
-      // that many tabs inside the bore). Every other decoration in this
-      // file embeds a modest, capped depth below the OUTER surface
-      // instead of reaching toward the inner one; this now does the
-      // same, capping the embed at a small multiple of the pin's own
-      // radius regardless of how deep embedAtZ would otherwise allow.
       const embed = Math.min(embedAtZ(t,0), pinR*2.2);
       const rInner=localSurfaceRZ(t,0)-embed, rOuter=localSurfaceRZ(t,0)+pinR*0.8;
       decorations.push(cylinderBetween(wasm, [rInner*ct,rInner*st,0], [rOuter*ct,rOuter*st,0], pinR, 24));
@@ -1480,37 +1304,16 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       const nodeZ = (k%2?1:-1)*bandW*0.18;
       const localEmbed = Math.min(embedAtZ(t,nodeZ), sr*0.95);
       const rr = localSurfaceRZ(t,nodeZ)+sr-localEmbed;
-      // Segment count reduced from 24 to 8: confirmed via direct,
-      // isolated testing that the number of non-manifold edges produced
-      // by this sphere's union with the band scales with the sphere's
-      // OWN facet count (4 segments -> 1 defect, 24 -> 176, 96 -> 3065),
-      // the opposite of what earlier "smoother reflections" tuning
-      // assumed. Every additional facet on the sphere adds another
-      // potential near-tangent crossing against the base mesh's own
-      // faceting -- fewer facets means fewer chances for that. This
-      // trades a slightly more faceted-looking bead for the piece
-      // actually being printable, which is the more urgent priority.
       decorations.push(organicNodeAt(wasm,[rr*Math.cos(t),rr*Math.sin(t),nodeZ],sr,12,t+k*.73));
     }
   }
-  // Hallmark engraving removed entirely per explicit request: the
-  // curved-surface text approach produced catastrophic geometry damage
-  // in production and there's no reason to keep dead code implementing
-  // an approach that's been abandoned. A future hallmark, if pursued,
-  // should be a completely different design (e.g. a small flat plate)
-  // rather than text curved into the band's own surface.
+
   if (!closed) {
     const tEnd0=-arcRad/2, tEnd1=arcRad/2;
     [tEnd0, tEnd1].forEach(te => {
       const ct=Math.cos(te), st=Math.sin(te);
       const wallHere = localSurfaceRZ(te,0)-innerR;
       const ballR = Math.max(AGDP_MIN_WALL_MM*1.1, wallHere*0.62);
-      // Shifted outward by an extra 0.15*ballR: the ball's innermost point
-      // used to sit at EXACTLY innerR (tangent to the bore surface, not
-      // overlapping past it) -- the same coincident-surface condition
-      // confirmed to cause degenerate CSG results in the hallmark bug.
-      // This guarantees genuine volumetric overlap with the solid band
-      // instead of an ambiguous tangent touch.
       const rCenter = innerR+ballR*1.15;
       decorations.push(organicNodeAt(wasm,[rCenter*ct,rCenter*st,0],ballR,12,te));
     });
@@ -1528,30 +1331,30 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   const cellularI=clamp(Math.max(floors.cellular,featureWeights.cellular||0),floors.cellular,1);
 
   if (applyTransversalCuts) {
-  {
-    const t=phase+1.18,ct=Math.cos(t),st=Math.sin(t);
-    const tangential=Math.max(AGDP_MIN_WALL_MM*1.25,baseWall*(.75+.42*latticeI));
-    const axial=Math.max(AGDP_MIN_WALL_MM*1.35,bandW*(.16+.14*latticeI));
-    const radial=Math.max(baseWall*4,AGDP_MIN_WALL_MM*5);
-    const centerR=innerR+baseWall*.72;
-    voidCutters.push(wasm.Manifold.cube([radial,tangential,axial],true)
-      .rotate([0,0,t*180/Math.PI]).translate([centerR*ct,centerR*st,0]));
-  }
+    {
+      const t=phase+1.18,ct=Math.cos(t),st=Math.sin(t);
+      const tangential=Math.max(AGDP_MIN_WALL_MM*1.25,baseWall*(.75+.42*latticeI));
+      const axial=Math.max(AGDP_MIN_WALL_MM*1.35,bandW*(.16+.14*latticeI));
+      const radial=Math.max(baseWall*4,AGDP_MIN_WALL_MM*5);
+      const centerR=innerR+baseWall*.72;
+      voidCutters.push(wasm.Manifold.cube([radial,tangential,axial],true)
+        .rotate([0,0,t*180/Math.PI]).translate([centerR*ct,centerR*st,0]));
+    }
 
-  {
-    const t=phase+2.42,ct=Math.cos(t),st=Math.sin(t);
-    const sr=Math.max(AGDP_MIN_WALL_MM*.95,baseWall*(.17+.12*vesselI));
-    const rr=localSurfaceRZ(t,0)-sr*.22;
-    voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,0],sr,24));
-  }
+    {
+      const t=phase+2.42,ct=Math.cos(t),st=Math.sin(t);
+      const sr=Math.max(AGDP_MIN_WALL_MM*.95,baseWall*(.17+.12*vesselI));
+      const rr=localSurfaceRZ(t,0)-sr*.22;
+      voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,0],sr,24));
+    }
 
-  {
-    const t=phase+5.72,ct=Math.cos(t),st=Math.sin(t);
-    const sr=Math.max(AGDP_MIN_WALL_MM*.82,baseWall*(.14+.10*cellularI));
-    const z=bandW*.08*(p.compositionSignature?.polarity||1);
-    const rr=localSurfaceRZ(t,z)-sr*.18;
-    voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,z],sr,24));
-  }
+    {
+      const t=phase+5.72,ct=Math.cos(t),st=Math.sin(t);
+      const sr=Math.max(AGDP_MIN_WALL_MM*.82,baseWall*(.14+.10*cellularI));
+      const z=bandW*.08*(p.compositionSignature?.polarity||1);
+      const rr=localSurfaceRZ(t,z)-sr*.18;
+      voidCutters.push(sphereAt(wasm,[rr*ct,rr*st,z],sr,24));
+    }
   }
 
   if(voidCutters.length){
@@ -1559,19 +1362,12 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     catch(err){ console.warn('AGDP: operación transversal omitida por seguridad topológica',err); }
   }
 
-  // Ruptura literal: el loop principal se interrumpe de verdad — una
-  // muesca real cortada en la superficie, nunca hasta atravesarla — y se
-  // recompone mediante un puente curvo explícito que salta por encima de
-  // la cicatriz. Esto es una consecuencia geométrica, no un parámetro más
-  // extremo: la pieza conserva la evidencia de la interrupción.
   if (p.mutation && p.mutation.active && p.mutation.mode==='rupture' && closed) {
     const sv=p.mutation.severity;
     const ruptureRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|rupture-scar');
     const rt=ruptureRng()*Math.PI*2;
     const ct=Math.cos(rt), st=Math.sin(rt);
     const surfaceHere=localSurfaceRZ(rt,0);
-    // La muesca nunca llega a innerR — se detiene mucho antes, dejando
-    // siempre material de sobra hacia la piel.
     const notchDepth=Math.min(baseWall*0.55*(0.4+0.6*sv), baseWall*0.62);
     const notchWidth=Math.max(AGDP_MIN_WALL_MM*1.6, baseWall*(0.85+0.55*sv));
     const notchAxial=Math.min(bandW*0.92, bandW-AGDP_MIN_WALL_MM*2);
@@ -1581,9 +1377,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
         .rotate([0,0,rt*180/Math.PI]).translate([notchCenterR*ct, notchCenterR*st, 0]);
       bodyManifold=safeDifference(wasm,bodyManifold, notchCutter);
     }catch(err){ console.warn('AGDP: ruptura omitida por seguridad topológica',err); }
-    // El puente: más ancho que la propia muesca, para garantizar solape
-    // real en ambos lados, y proud de la superficie para leerse como una
-    // reparación visible, no un remiendo oculto.
+
     const bridgeR=Math.max(AGDP_MIN_WALL_MM*1.35, baseWall*(0.42+0.30*sv));
     const bridgeOuterR=surfaceHere+bridgeR*0.55;
     const angularHalfSpan=(notchWidth*1.7)/(2*Math.max(surfaceHere,10));
@@ -1597,9 +1391,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     decorations.push(meshToManifold(wasm, bridgeMesh.V, bridgeMesh.F));
   }
 
-  // Hipertrofia literal: una masa adquiere escala anormal en un punto real
-  // de la superficie, y el lado opuesto se adelgaza para compensar — el
-  // resto de la pieza se ve obligado a ceder, no solo un número más alto.
   if (p.mutation && p.mutation.active && p.mutation.mode==='hypertrophy') {
     const sv=p.mutation.severity;
     const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|hypertrophy');
@@ -1613,8 +1404,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const oppositeT=ht+Math.PI;
     const oppCt=Math.cos(oppositeT), oppSt=Math.sin(oppositeT);
     const oppSurface=localSurfaceRZ(oppositeT,0);
-    // El adelgazamiento nunca compromete el mínimo estructural — la
-    // compensación es real pero sigue siendo fabricable.
     const thinDepth=Math.min(baseWall*0.30*sv, baseWall*0.35);
     const thinWidth=baseWall*2.4;
     try{
@@ -1624,9 +1413,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     }catch(err){ console.warn('AGDP: hipertrofia (adelgazamiento) omitida por seguridad topológica',err); }
   }
 
-  // Erosión literal: varios vacíos reales, mayores y más numerosos que el
-  // sistema de vacíos habitual, que consumen estructura en vez de
-  // decorarla.
   if (p.mutation && p.mutation.active && p.mutation.mode==='erosion') {
     const sv=p.mutation.severity;
     const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|erosion');
@@ -1645,8 +1431,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     catch(err){ console.warn('AGDP: erosión omitida por seguridad topológica',err); }
   }
 
-  // Desplazamiento literal: el centro semántico se fuerza al borde extremo
-  // real del arco, no a una zona moderadamente descentrada.
   if (p.mutation && p.mutation.active && p.mutation.mode==='displacement') {
     const sv=p.mutation.severity;
     const dRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|displacement');
@@ -1659,11 +1443,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     decorations.push(organicNodeAt(wasm,[centerR*ect,centerR*est,0],dMassR,12,edgeT));
   }
 
-  // Compresión literal: un lado real se aplasta hacia el eje mientras el
-  // opuesto se expande — una deformación de malla, no un cambio de
-  // relieve. El riesgo se encuentra con la resistencia aquí mismo: ningún
-  // vértice puede quedar más cerca del interior que el mínimo
-  // estructural, sin importar cuánto empuje la severidad.
   if (p.mutation && p.mutation.active && p.mutation.mode==='compression') {
     const sv=p.mutation.severity;
     try{
@@ -1684,22 +1463,12 @@ async function buildBandGeometryManifold(wasm, p, opts) {
           v[0]=newX; v[1]=newY;
         }
       }
-      // Same leak pattern found and fixed in applyChokerErgonomics/
-      // applyHeadErgonomics: the old bodyManifold is pure-JS-deformed
-      // above (no WASM calls), then rebuilt from scratch below -- the
-      // old one must be explicitly freed or it leaks every time this
-      // mutation mode is picked, for ANY typology (not just choker/
-      // headpiece). Only disposed after a successful rebuild, so the
-      // catch below still sees a valid bodyManifold if this throws.
       const oldBody = bodyManifold;
       bodyManifold=meshToManifold(wasm, mesh.V, mesh.F);
       try{ oldBody.delete(); }catch(e){}
     }catch(err){ console.warn('AGDP: compresión omitida por seguridad topológica',err); }
   }
 
-  // Proliferación literal: la regla local (un nodo pequeño) se repite
-  // hasta volverse colonia concentrada en una sola zona, no dispersa de
-  // manera pareja.
   if (p.mutation && p.mutation.active && p.mutation.mode==='proliferation') {
     const sv=p.mutation.severity;
     const pRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|proliferation');
@@ -1718,9 +1487,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     }
   }
 
-  // Inversión literal: donde habría vacío aparece masa sólida, y donde
-  // habría continuidad se abre un vacío real — un cambio de polaridad
-  // local concreto, no solo un intercambio de pesos.
   if (p.mutation && p.mutation.active && p.mutation.mode==='inversion') {
     const sv=p.mutation.severity;
     const iRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|inversion');
@@ -1744,32 +1510,13 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   const allParts = [bodyManifold, ...decorations];
   let result = unionAll(wasm, allParts);
   if (opts.type==='cuffBracelet'){
-    // Real wrists are wider (mediolateral) than deep (anteroposterior);
-    // a circular arc with a gap does not match that cross-section. The
-    // whole solid is scaled elliptically post-construction, which keeps
-    // every wall-thickness and connector guarantee already built into the
-    // circular geometry intact.
     result = result.scale([0.85, 1.20, 1]);
   }
   return { manifold: result, bandW };
 }
 
-
-
 function featureIntensity(p,key,fallback=.35){ return clamp((p.featureWeights&&Number.isFinite(p.featureWeights[key]))?p.featureWeights[key]:fallback,0,1); }
 
-/* =========================================================================
-   STRUCTURAL KIT
-   The one shared layer every typology's geometry consults for the
-   operations that kept being reinvented, slightly differently, in each
-   builder — which is exactly what let the same class of bug (piercing,
-   floating decorations, inconsistent "solid/volumetric/lattice" meaning)
-   surface repeatedly in different places. This does not merge the several
-   different mesh topologies into one impossible function — a comb, a
-   clip, and a ring are genuinely different shapes — but it does mean
-   every one of them computes clearance, embedding, connecting veins, the
-   mandatory event-mass, and treatment intensities the same way, once.
-   ========================================================================= */
 const StructuralKit = (()=>{
   function skinFloor(innerR, wall, ergonomicSlack){
     return innerR + wall*1.05 + (ergonomicSlack||0);
@@ -1792,7 +1539,7 @@ const StructuralKit = (()=>{
   function treatmentMultipliers(treatment){
     if (treatment==='solid') return { thicknessBoost:1.55, crossBracing:0, massCount:0 };
     if (treatment==='volumetric') return { thicknessBoost:1.15, crossBracing:0, massCount:2 };
-    return { thicknessBoost:1.0, crossBracing:1, massCount:1 }; // lattice
+    return { thicknessBoost:1.0, crossBracing:1, massCount:1 };
   }
   return Object.freeze({ skinFloor, embedInward, connectAnchorsWithVein, buildEventMass, treatmentMultipliers });
 })();
@@ -1805,6 +1552,7 @@ async function makeHoopFaceManifold(wasm, p, outerR, hoopWidth) {
   const { manifold } = await buildBandGeometryManifold(wasm, pForFace, { type:'hoopFace', innerD:innerRHoop*2, width:hoopWidth, closed:true, opening:0 });
   return { manifold, frameHalfW: outerR, frameHalfH: outerR, barR: hoopWidth*0.15 };
 }
+
 async function makeCageFaceManifold(wasm, p, outerR, hoopWidth) {
   const frameWidth = Math.max(hoopWidth*0.55, AGDP_STRUCTURAL_WALL_MM*1.3);
   const pFrame = Object.assign({}, p, {holes:0,railCount:Math.min(1,p.railCount||0)});
@@ -1822,6 +1570,7 @@ async function makeCageFaceManifold(wasm, p, outerR, hoopWidth) {
   const manifold = unionAll(wasm, parts);
   return { manifold, frameHalfW: outerR, frameHalfH: outerR, barR };
 }
+
 function makeVesselFaceManifold(wasm, p, outerR, height) {
   const seg = Math.max(80, Math.round(p.segments*0.6)), radSeg = Math.max(24, Math.min(48, Math.round(p.segments/6)));
   const asym = clamp(p.asymmetry||0, 0, .58);
@@ -1837,13 +1586,6 @@ function makeVesselFaceManifold(wasm, p, outerR, height) {
     const rOut = rimR(tiltAngle), hOut = heightAt(tiltAngle);
     const rho = rOut*Math.sin(phi), zBase = hOut*Math.cos(phi);
     const sphereR = Math.max(AGDP_MIN_WALL_MM*1.1, (k===0?1:0.22)*(outerR*0.36+p.nodeVolume*0.75));
-    // Embed deepened from 0.42 to 0.68 of the sphere's own radius: a
-    // shallow embed against a thin dome shell (not a solid block) can
-    // leave the sphere and shell surfaces nearly tangent at their
-    // boundary, which is a classic source of sliver triangles and
-    // jagged, unstable boolean seams -- independent of either surface's
-    // own segment count. A deeper embed guarantees solid volumetric
-    // overlap regardless of the shell's local thickness at that point.
     const embed = sphereR*0.68;
     const cx = rho*Math.cos(tiltAngle)*0.55, cy = rho*Math.sin(tiltAngle)*0.55;
     parts.push(sphereAt(wasm, [cx,cy,zBase+sphereR-embed], sphereR, 24));
@@ -1851,6 +1593,7 @@ function makeVesselFaceManifold(wasm, p, outerR, height) {
   const manifold = unionAll(wasm, parts);
   return { manifold, outerR, domeHeight: height };
 }
+
 function makeDomeFaceManifold(wasm, p, outerR, domeHeight) {
   const seg = Math.max(80, Math.round(p.segments*0.6)), radSeg = Math.max(24, Math.min(48, Math.round(p.segments/6)));
   const sunburstCount = Math.round(clamp(6+p.faceting*10,6,16));
@@ -1884,6 +1627,7 @@ function makeDomeFaceManifold(wasm, p, outerR, domeHeight) {
   const manifold = unionAll(wasm, parts);
   return { manifold, outerR, domeHeight };
 }
+
 function makeWrappedSphereFaceManifold(wasm, p, outerR) {
   const sphereR = outerR*0.72;
   const parts = [sphereAt(wasm, [0,0,0], sphereR, 24)];
@@ -1942,6 +1686,7 @@ function makeSpatialFramePendantFace(wasm,p,outerR,th){
   parts.push(sphereAt(wasm,node,barR*1.65,24));
   return {manifold:unionAll(wasm,parts),frameHalfW:w*.58,frameHalfH:h*.56,barR,kind:'spatialFrame',attachPoint:node,attachR:barR*1.65};
 }
+
 function makePiercedSlabPendantFace(wasm,p,outerR,th){
   const {Manifold}=wasm;
   const w=outerR*(1.22+0.28*(p.gestureIntensity||.7));
@@ -1962,6 +1707,7 @@ function makePiercedSlabPendantFace(wasm,p,outerR,th){
   parts.push(sphereAt(wasm,nodeCenter,r*1.55,24));
   return {manifold:unionAll(wasm,parts),frameHalfW:w*.56,frameHalfH:h*.56,barR:r,kind:'piercedSlab',attachPoint:nodeCenter,attachR:r*1.55};
 }
+
 function makeFoldedTotemPendantFace(wasm,p,outerR,th){
   const {Manifold}=wasm;
   const h=outerR*1.75,w=outerR*1.05,d=Math.max(3.4,th*.72);
@@ -1979,9 +1725,6 @@ function makeFoldedTotemPendantFace(wasm,p,outerR,th){
   return {manifold:unionAll(wasm,parts),frameHalfW:w*.58,frameHalfH:h*.54,barR:r,kind:'foldedTotem',attachPoint:nodeCenter,attachR:nodeR};
 }
 
-// Seed-informed weighted choice: never uniform, always biased by the
-// piece's own continuous field, so the base type is a consequence of the
-// seed's DNA rather than a coin flip layered on top of it.
 function weightedPick(rng, weights){
   const keys = Object.keys(weights);
   const total = keys.reduce((s,k)=>s+Math.max(0,weights[k]),0) || 1;
@@ -1993,13 +1736,6 @@ function weightedPick(rng, weights){
   return keys[keys.length-1];
 }
 
-// The one shared surface-treatment decision every typology consults with
-// the same criteria: how solid, how voluminous, or how lattice-like a
-// piece's secondary body reads. Ring, comb, money clip, cufflinks — any
-// builder that needs this question answered asks it the same way, from
-// the same underlying intensities, rather than inventing its own weights
-// per category. What differs between categories is only how each one's
-// geometry expresses the answer, never how the answer is decided.
 function pickStructuralTreatment(p, tag){
   const lattice=featureIntensity(p,'lattice'), dome=featureIntensity(p,'dome'), vessel=featureIntensity(p,'vessel');
   const rng = window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|'+tag+'|structural-treatment');
@@ -2010,10 +1746,6 @@ function pickStructuralTreatment(p, tag){
   });
 }
 
-// A flat/faceted plate base — the pendant is a slab, not a hoop. Thickness
-// and eccentricity come from the same continuous fields as everything
-// else (architectural, asymmetry), never a bare unmodified primitive
-// (Regla 8).
 function makePlateFaceManifold(wasm, p, outerR, th){
   const { Manifold } = wasm;
   const asym = clamp(p.asymmetry||0, 0, .46);
@@ -2048,8 +1780,7 @@ async function makeFaceManifold(wasm, p, outerR, th, domeHeight) {
   const cageI=featureIntensity(p,'cage'), wrappedI=featureIntensity(p,'wrapped');
   const interI=featureIntensity(p,'interweave');
   const frontZ=Math.max(th*.08,domeHeight*(.10+.38*domeI));
-  // Accents still apply on top of whichever base was chosen — the same
-  // continuous vocabulary, regardless of category or base type.
+
   if(domeI>.08 && baseType!=='dome'){
     const rr=effR*(.32+.28*domeI);
     parts.push(sphereAt(wasm,[0,0,frontZ],rr,24).scale([1,1,.42+.30*domeI]));
@@ -2143,11 +1874,8 @@ function addFullVocabularyAccentsGeneric(wasm,parts,p,scaleRef,seedTag,faceKind,
   }
   return voidCutters;
 }
+
 async function makePendantManifold(wasm, p) {
-  /* AGDP v0.180 — pendant derived from the proven annular topology.
-     The outer body uses the same continuous closed-band construction as a
-     ring. The central void is functional as a sculptural field rather than
-     a finger aperture, and every interior member is embedded into the band. */
   const {Manifold}=wasm;
   const targetEnvelope=clamp(p.mainSize||28,23.5,40);
   const targetDepth=clamp(p.bandWidth||4.8,3.6,7.2);
@@ -2177,9 +1905,6 @@ async function makePendantManifold(wasm, p) {
   });
   let core=built.manifold;
 
-  // Deformation removed per explicit request: the pendant core keeps its
-  // natural, undeformed proportions (sx=sy=1) rather than being stretched
-  // for silhouette variety.
   const sx=1, sy=1;
   core=core.scale([sx,sy,1]);
 
@@ -2192,38 +1917,24 @@ async function makePendantManifold(wasm, p) {
     return [Math.cos(angle)*(innerX+embed),Math.sin(angle)*(innerY+embed),z];
   }
   function addMember(a,b,r=memberR){
-    // Endpoints penetrate the annular body by `embed`, guaranteeing a true
-    // volumetric union rather than tangent contact.
     parts.push(cylinderBetween(wasm,a,b,r,32));
   }
 
-  // The main annulus carries the same generated radial field on its outer
-  // and inner surfaces. No independent members are added inside the void.
   const phase=(p.variation?.phaseA||0)+polarity*(.18+.22*rng());
   const mode=(p.compositionSignature?.cadence||0)%4;
 
-  // Suspension grows from the upper arc. Two shoulders and a crown overlap
-  // the annular core deeply; the chain tunnel is cut only after union.
   const passageR=Math.max(.85,p.chainFitRadiusMm!=null?p.chainFitRadiusMm:1.35);
   const topY=outerR*sy;
   const tunnelWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.45,annularWall*.30);
   const crownOuterR=Math.max(passageR+tunnelWall,annularWall*1.28);
 
-  // Rectilinear bail: the frame itself is the structural connection.
-  // Its lower rail overlaps the pendant body directly, so no posts,
-  // shoulders, saddle or auxiliary members are required.
-  // Keep the lateral frame inside the actual depth envelope of the pendant.
-  // This prevents the bail from becoming wider than the central body when
-  // crownOuterR grows on small or highly architectural pieces.
   const frameOuterW=Math.min(crownOuterR*1.72,bandWidth*.94);
   const frameOuterH=crownOuterR*2.48;
   const lateralWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.08);
   const frameInnerW=Math.max(AGDP_MIN_WALL_MM*.8,Math.min(passageR*1.84,frameOuterW-lateralWall*2));
   const frameInnerH=passageR*2.26;
   const frameOverlap=Math.max(annularWall*.42,(p.minFeature||.8)*.55);
-  // Lateral frame: its opening axis is X, so the chain passes from side to side.
-  // Only the lower rail overlaps the outer crown of the pendant; no vertical
-  // member enters the annular opening.
+
   const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
   const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
   const bailManifold=rectilinearFrameManifoldYZ(
@@ -2241,8 +1952,6 @@ async function makePendantManifold(wasm, p) {
   let mesh=manifoldToMesh(manifold);
   let preflight=validate(mesh.V,mesh.F,{type:'pendant-annular-preflight',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
   if(preflight.components!==1||!preflight.manifoldOK)throw new Error('AGDP annular pendant core failed continuity validation');
-
-  // No passage subtraction: the chain opening already exists in the bail mesh.
 
   const finalMesh=manifoldToMesh(manifold);
   const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
@@ -2264,10 +1973,6 @@ async function makePendantManifold(wasm, p) {
 }
 
 async function makeCufflinksManifold(wasm, p) {
-  /* AGDP v0.197 — closed cufflink unit with positive-determinant duplication.
-     Every primitive is a closed manifold and every junction has deliberate
-     volumetric overlap. No negative scaling is used, so triangle winding is
-     preserved for both members of the pair. */
   const {Manifold}=wasm;
   const targetEnvelope=clamp(p.mainSize||20,15,25);
   const targetDepth=clamp(p.bandWidth||4.8,3.2,7.0);
@@ -2284,32 +1989,15 @@ async function makeCufflinksManifold(wasm, p) {
   const th=Math.max(targetDepth,minFeature*3.2);
   const crownParams=Object.assign({},p,{
     type:'pendantAnnularCore',mainSize:innerR*2,bandWidth:th,
-    // Cufflinks must survive three sequential strict manifold checks
-    // (crown, unit, pair) at a small scale (15-25mm). Perforations and
-    // mutations are the primary source of topology failures at this
-    // scale, so they are disabled here entirely rather than gambled on
-    // per seed: a plain, reliable crown by construction, not by luck.
     holes:0,railCount:Math.min(1,p.railCount||0),
     crown:false,spikes:0,opening:0,
     mutation:{active:false,severity:0,mode:null},
-    // High asymmetry (>=0.25, combined with organic>=0.40) activates the
-    // band builder's "zone mass" feature -- an asymmetric volume bulge.
-    // Diagnosed empirically (Node.js harness, 24 seeds): every crown
-    // construction failure had asymmetry in [0.44, 0.50]. Zone-mass has
-    // a SECOND, independent trigger (featureWeights.vessel>0.18) that
-    // capping asymmetry alone does not block -- confirmed by testing:
-    // failures persisted with asymmetry capped until vessel was also
-    // capped. With both paths closed: 0 crown failures across 24 test
-    // seeds (previously a frequent failure mode), vs. 4 failures in the
-    // first 10-seed sample before this fix.
     asymmetry:Math.min(p.asymmetry||0,0.18),
     featureWeights:Object.freeze(Object.assign({},p.featureWeights||{},{vessel:Math.min((p.featureWeights&&p.featureWeights.vessel)||0,0.15)}))
   });
   const built=await buildBandGeometryManifold(wasm,crownParams,{
     type:'pendantAnnularCore',innerD:innerR*2,width:th,closed:true,opening:0
   });
-  // Deformation removed per explicit request: the crown keeps its
-  // natural, undeformed proportions (sx=sy=1).
   const sx=1, sy=1;
   const crown=built.manifold.scale([sx,sy,1]);
 
@@ -2321,11 +2009,6 @@ async function makeCufflinksManifold(wasm, p) {
     throw new Error('AGDP cufflink annular crown is not a closed manifold');
   }
 
-  /* Full-footprint posterior closure. The cap is dimensioned from the
-     already deformed crown bounds, not from the nominal pre-deformation
-     radii. It therefore covers the complete projected silhouette of every
-     seed, closes the annular opening, and buries all -Z lateral relief while
-     leaving the +Z crown surface available for the AGDP operations. */
   const capDepth=Math.max(2.2,th*.46,minFeature*2.4);
   const rearFaceZ=-th*.5;
   const posteriorFlattenZ=-Math.max(minFeature*.22,th*.08);
@@ -2350,8 +2033,6 @@ async function makeCufflinksManifold(wasm, p) {
     return cylinderBetween(wasm,[cx,cy,z0],[cx,cy,z1],rad,48);
   }
 
-  /* Closed posterior finding. All joints overlap by at least one structural
-     wall, preventing isolated components after boolean evaluation. */
   const postRadius=Math.max(2.60,minFeature*.9);
   const postLength=21.0;
   const postCurvatureRadius=34.0;
@@ -2369,22 +2050,7 @@ async function makeCufflinksManifold(wasm, p) {
     const root=cufflinkPostPoint(0);
     target.push(cylZ(0,0,rootRadius,rearFaceZ-rootDepth,rearFaceZ+minFeature*.55));
     target.push(sphereAt(wasm,[0,0,rearFaceZ-minFeature*.35],rootRadius,32));
-    // BUG FIX (preventive, confirmed live risk): this used to be a chain of
-    // independent cylinderBetween capsules (one per segment) with filler
-    // spheres (postRadius*1.04) stitched at each joint to visually hide the
-    // seam between them -- the same construction pattern diagnosed in the
-    // hair comb's crest, where a capsule's own radius exceeding the spacing
-    // between consecutive path points produces blocky, self-intersecting
-    // facets rather than a smooth continuous surface. Checked with this
-    // function's own real constants (postRadius=2.6mm, spacing=postLength/
-    // segments=1.5mm): ratio = 1.73x, ABOVE the 1.37x that already produced
-    // visible faceting in the comb crest before its fix -- so this was a
-    // live risk in the post, not a hypothetical one. Replaced with a single
-    // continuous tube (shared vertex rings between consecutive
-    // cross-sections, same mechanism as variableEllipticalTubeMesh already
-    // used for the comb's crown) which cannot develop this defect
-    // regardless of radius/spacing ratio, and no longer needs the filler
-    // spheres that were papering over the old seams.
+
     const segments=14;
     const postPathPts=[[root[0],root[1],rearFaceZ-rootDepth*.42]];
     for(let i=1;i<=segments;i++){
@@ -2409,15 +2075,10 @@ async function makeCufflinksManifold(wasm, p) {
 
   let unit=unionAll(wasm,structuralParts);
 
-  /* Optional mutations are embedded deeply into the front skin. If a boolean
-     does not remain closed, only that optional addition is discarded. */
   if(p.mutation&&p.mutation.active){
     const baseMesh=manifoldToMesh(unit);
     const frontVerts=baseMesh.V.filter(v=>v[2]>th*.05);
     const pool=frontVerts.length?frontVerts:baseMesh.V;
-    // A fresh copy (not the live `unit` object) seeds the mutation
-    // candidate, so `unit` itself is never consumed and remains a safe
-    // fallback below if the mutated variant fails validation.
     const mutationParts=[meshToManifold(wasm,baseMesh.V,baseMesh.F)];
     if(p.mutation.mode==='hypertrophy'&&pool.length){
       const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|cufflink-hypertrophy-v197');
@@ -2462,13 +2123,6 @@ async function makeCufflinksManifold(wasm, p) {
   const unitBounds=bounds(unitMesh.V);
   const minimumClearGapMm=12.0;
   const pairSpacing=Math.max(unitBounds.dim[0]+minimumClearGapMm,r*3.15,th*3.8);
-  /* Each half of the pair is built from its own freshly-reconstructed
-     manifold (via the mesh data already extracted above), rather than
-     calling .translate() twice on the same live `unit` object. Calling a
-     second transform on an object already consumed by an earlier one is
-     what produced the WASM binding crashes seen here — rebuilding from
-     V/F sidesteps the question entirely, since each half's manifold is
-     transformed exactly once. */
   const leftUnit=meshToManifold(wasm,unitMesh.V,unitMesh.F).translate([-pairSpacing/2,0,0]);
   const rightUnit=meshToManifold(wasm,unitMesh.V,unitMesh.F).translate([pairSpacing/2,0,0]);
   const manifold=Manifold.union(leftUnit,rightUnit);
@@ -2499,9 +2153,7 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
   const lattice=featureIntensity(p,'lattice'),wrapped=featureIntensity(p,'wrapped');
   const cage=featureIntensity(p,'cage'),inter=featureIntensity(p,'interweave');
   const continuity=featureIntensity(p,'continuity');
-  // The volumetric field is generated in the same undeformed coordinate
-  // system as the open band. The complete union is warped afterward, so
-  // anchors, roots, veins and wrapped paths remain embedded in one mesh.
+
   const innerR=Math.max(8,(p.mainSize||100)/2);
   const bandW=Math.max(8,p.bandWidth||40);
   const wall=kind==='headpiece'?Math.max(2.6,p.headWallMm||3.2):Math.max(3.8,p.chokerWallMm||4.8);
@@ -2511,10 +2163,7 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
   const count=3+Math.round((dome+vessel+cage)*2.2);
   const anchors=[];
   const anchorU=[];
-  // One shared formula for any point along the arc, sampled either at an
-  // anchor's own position or densely in between for the connecting vein —
-  // so the vein can actually follow the curvature instead of drawing a
-  // straight chord across it.
+
   function pointAtU(u){
     const t=(-frontSpan/2+frontSpan*u)*Math.PI;
     const front=(1+Math.cos(t))*.5;
@@ -2528,18 +2177,12 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
     const u=count===1?.5:i/(count-1);
     const {t, surfaceR, radial, zBase, lift} = pointAtU(u);
     const rr=bandW*(.058+.055*dome+.048*vessel)*(0.92+0.18*rng());
-    // Embedded enough to guarantee overlap, but not so deep that the node
-    // reads as flat — real outward presence, not a sunken disc.
     const embedded = Math.max(skinFloorR, StructuralKit.embedInward(radial, rr, 0.65));
     const p0=[embedded*Math.cos(t),embedded*Math.sin(t),zBase+lift];
     anchors.push(p0);
     anchorU.push(u);
     parts.push(flattenedNodeAt(wasm,p0,rr*(1.05+.45*vessel),rr*(.78+.22*wrapped),rr*(.92+.48*dome),8));
-    // Root connector: a short, thick bridge from a point directly on the
-    // band's own real surface (same angle, same z) to the anchor's
-    // center — this is what actually guarantees the anchor reads as
-    // rising out of the mesh's edge rather than floating near it,
-    // regardless of how the embed math alone works out.
+
     const rootSurfacePoint=[surfaceR*Math.cos(t),surfaceR*Math.sin(t),zBase];
     parts.push(cylinderBetween(wasm, rootSurfacePoint, p0, rr*0.62, 8));
   }
@@ -2553,9 +2196,6 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
       for(let s=1;s<samplesPerSpan;s++){
         const u=u0+(u1-u0)*(s/samplesPerSpan);
         const {t, radial, zBase, lift} = pointAtU(u);
-        // Same embed ratio as the anchors themselves, interpolated, so the
-        // vein rides along the surface the whole way instead of cutting
-        // a straight line between the two embedded centers.
         const localRR=bandW*(.058+.055*dome+.048*vessel);
         const embedded=Math.max(skinFloorR, StructuralKit.embedInward(radial, localRR, 0.65));
         pts.push([embedded*Math.cos(t),embedded*Math.sin(t),zBase+lift]);
@@ -2586,19 +2226,8 @@ function addOpenBandVolumetricField(wasm,manifold,p,kind){
 function applyChokerErgonomics(wasm, manifold, p){
   const mesh=manifoldToMesh(manifold);
   if(!mesh.V.length)return manifold;
-  // The rest of this function is pure JS vertex-array math -- no WASM
-  // calls until the final meshToManifold rebuild. The input `manifold`
-  // is never touched again after the read above, so it can be disposed
-  // here; leaving it undisposed leaked the full decorated choker/
-  // headpiece mesh on every single generation attempt (confirmed via
-  // Node.js harness as a major contributor to the memory pressure
-  // reported live).
   try{ manifold.delete(); }catch(e){}
 
-  // Shared cervical fit field for the whole neck family. The interior fit
-  // follows a low torque seat: broad, comparatively flat in front, rising
-  // through the sides and higher at the nape. Exterior volume is allowed to
-  // expand independently so formal variation never deforms the body surface.
   const ratio=clamp(p.chokerDepthRatio||0.82,0.78,0.86);
   const frontHeight=Math.max(1,p.bandWidth||34);
   const rearRatio=clamp(p.chokerRearHeightRatio||0.58,0.38,0.82);
@@ -2618,14 +2247,10 @@ function applyChokerErgonomics(wasm, manifold, p){
     const t=Math.atan2(v[1],v[0]);
     const absT=Math.abs(wrap(t));
 
-    // Regional weights: a stable frontal platform, progressive lateral
-    // transition and a distinct posterolateral/nape zone.
     const frontPlateau=1-smooth01((absT-48*deg)/(34*deg));
     const rear=smooth01((absT-104*deg)/(60*deg));
     const side=clamp(1-frontPlateau-rear,0,1);
 
-    // Modified cervical plan rather than a simple ellipse. The front is
-    // slightly broadened and flattened; posterior curvature tightens.
     const frontBroadening=1+0.030*frontPlateau;
     const rearTightening=1-0.018*rear;
     let x=v[0]*frontBroadening*rearTightening;
@@ -2635,16 +2260,9 @@ function applyChokerErgonomics(wasm, manifold, p){
     const ux=x/r, uy=y/r;
     let dr=originalR-centerR;
 
-    // Height distribution follows the common ergonomic surface. The front
-    // remains full-height; the rear progressively reduces according to the
-    // selected profile without changing the shared cervical seat.
     const heightScale=rearRatio+(1-rearRatio)*(frontPlateau+side*.58);
     let zLocal=v[2]*heightScale;
 
-    // Rotate the section in the radial/Z plane: outward at the throat,
-    // neutral at the sides, inward at the nape. This prevents the upper edge
-    // from pressing the throat and lets the lower edge settle at the base of
-    // the neck.
     const sectionTilt=(8*frontPlateau-10*rear)*deg;
     const cs=Math.cos(sectionTilt), sn=Math.sin(sectionTilt);
     const drRot=dr*cs-zLocal*sn;
@@ -2652,15 +2270,9 @@ function applyChokerErgonomics(wasm, manifold, p){
     dr=drRot;
     zLocal=zRot;
 
-    // LOVE-derived sagittal seat: low frontal platform, progressive lateral
-    // rise and a higher nape. Side rise makes the change visibly anatomical
-    // instead of a nearly planar cosine displacement.
     const sideRise=2.8*Math.pow(side,1.25);
     const centerShift=-frontDrop*frontPlateau+sideRise+rearLift*rear;
 
-    // Regional clearance is applied to the whole section, while sculptural
-    // projection affects only the exterior half. The inner surface therefore
-    // remains stable across seeds and across torque/cervical/sculptural modes.
     const clearance=1.8*frontPlateau+0.6*side+1.4*rear;
     const outerMask=smooth01((dr+halfHeight*.08)/(halfHeight*.58));
     const exteriorProjection=centerR*projection*frontPlateau*outerMask;
@@ -2672,7 +2284,6 @@ function applyChokerErgonomics(wasm, manifold, p){
   }
   return meshToManifold(wasm,mesh.V,mesh.F);
 }
-
 
 function applyHeadErgonomics(wasm, manifold, p){
   const mesh=manifoldToMesh(manifold);
@@ -2699,16 +2310,11 @@ function applyHeadErgonomics(wasm, manifold, p){
     const t=Math.atan2(v[1],v[0]);
     const absT=Math.abs(wrap(t));
 
-    // Four anatomical regions along the placement arc: frontal support,
-    // frontotemporal transition, parietal support and terminal release.
     const front=1-smooth01((absT-34*deg)/(34*deg));
     const terminal=smooth01((absT-116*deg)/(48*deg));
     const lateral=clamp(1-front-terminal,0,1);
     const temple=Math.sin(Math.PI*clamp((absT-38*deg)/(96*deg),0,1));
 
-    // Triaxial cranial plan. The frontal segment is slightly flatter and
-    // broader, while the posterolateral segment tightens instead of being a
-    // uniformly scaled ellipse.
     const frontalBroadening=1+0.022*front;
     const temporalRelease=1+0.012*temple;
     const posteriorTightening=1-0.018*terminal;
@@ -2719,16 +2325,12 @@ function applyHeadErgonomics(wasm, manifold, p){
     let ux=x/r, uy=y/r;
     let dr=originalR-centerR;
 
-    // Independent height distribution: full frontal height, gradual lateral
-    // reduction and a lighter terminal section.
     const heightScale=clamp(
       rearRatio+(1-rearRatio)*front+sideRatio*lateral*(1-terminal*.45),
       0.14,1
     );
     let zLocal=v[2]*heightScale;
 
-    // The section follows the local cranial normal. It leans slightly back at
-    // the front and progressively outward toward the temporal endpoints.
     const sectionTilt=(-6*front+8*lateral+12*terminal)*deg;
     const cs=Math.cos(sectionTilt), sn=Math.sin(sectionTilt);
     const drRot=dr*cs-zLocal*sn;
@@ -2736,8 +2338,6 @@ function applyHeadErgonomics(wasm, manifold, p){
     dr=drRot;
     zLocal=zRot;
 
-    // Inclined placement plane and regional seat: elevated frontal placement,
-    // continuous parietal rise, controlled temporal descent and lifted ends.
     const placementTilt=15*deg;
     const sagittalShift=Math.sin(placementTilt)*(x-centerR*.12)*.18;
     const parietalRise=crownRise*Math.pow(lateral,1.35)*(0.58+0.42*front);
@@ -2745,15 +2345,10 @@ function applyHeadErgonomics(wasm, manifold, p){
     const terminalLift=3.2*Math.pow(terminal,1.7);
     const centerShift=sagittalShift+parietalRise-temporalSink+terminalLift;
 
-    // Regional clearance protects the frontotemporal area. Formal projection
-    // is restricted to the exterior half, leaving the inner contact surface
-    // stable regardless of seed-driven morphology.
     const clearance=3.2*front+4.4*temple+2.8*lateral+5.2*terminal;
     const outerMask=smooth01((dr+halfHeight*.06)/(halfHeight*.56));
     const exteriorProjection=centerR*projection*Math.pow(front,1.55)*outerMask;
 
-    // The final segment flares laterally and turns outward, preventing the
-    // rigid ends from converging against the temples or the area above the ear.
     const flareAngle=9*deg*Math.pow(terminal,1.55);
     const sideSign=t>=0?1:-1;
     const ca=Math.cos(sideSign*flareAngle), sa=Math.sin(sideSign*flareAngle);
@@ -2768,7 +2363,6 @@ function applyHeadErgonomics(wasm, manifold, p){
   }
   return meshToManifold(wasm,mesh.V,mesh.F);
 }
-
 
 function ellipticalSegmentBetween(wasm,p0,p1,rx,ry,segments){
   const { Manifold }=wasm;
@@ -2786,693 +2380,10 @@ function flattenedNodeAt(wasm,center,rx,ry,rz,segments){
   return Manifold.sphere(1,segments||18).scale([rx,ry,rz]).translate(center);
 }
 
-function makeCombManifold(wasm,p){
-  const width=Math.max(80,p.mainSize||110);
-  const topH=Math.max(35,p.combTopHeightMm||50);
-  const toothL=Math.max(25,p.combToothLengthMm||35);
-  const toothCount=Math.max(5,Math.round(p.combToothCount||8));
-  const bodyR=Math.max(2.35,(p.combBodyWallMm||4)/2*1.35);
-  const toothT=Math.max(1.25,(p.combToothDiameterMm||2.8)/2);
-  const depth=Math.max(7,p.combDepthMm||10);
-  const arch=Math.max(3,p.combArchMm||7);
-  const cranialCurve=Math.max(4,p.combCranialCurveMm||8);
-  const insertionAngle=(p.combInsertionAngleDeg||16)*Math.PI/180;
-  const toothSweep=Math.max(4,p.combToothSweepMm||7);
-  const tipReturn=Math.max(1.5,p.combTipReturnMm||2.5);
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-continuous-field');
-  const fw=p.featureWeights||{};
-  const lattice=featureIntensity(p,'lattice'),cellular=featureIntensity(p,'cellular');
-  const vessel=featureIntensity(p,'vessel'),dome=featureIntensity(p,'dome');
-  const wrapped=featureIntensity(p,'wrapped'),cage=featureIntensity(p,'cage');
-  const inter=featureIntensity(p,'interweave'),continuity=featureIntensity(p,'continuity');
-  const parts=[];
-  const n=34;
-  const upper=[],lower=[],mid=[];
-  // The upper body's treatment is the same shared structural-treatment
-  // decision every typology consults — solid (thick, unbroken), volumetric
-  // (soft mass lobes), or lattice (crossed members) — the teeth stay the
-  // generative focus regardless of which one the seed picks.
-  const upperBodyMode=pickStructuralTreatment(p, 'comb-upper-body');
-  const combTreatmentMul = StructuralKit.treatmentMultipliers(upperBodyMode);
-  const solidBoost = combTreatmentMul.thicknessBoost;
-  // Where the crest's mass concentrates is itself seed-driven — not
-  // always a symmetric bulge centered on the comb, which is what made
-  // every generation read as the same silhouette.
-  const crestPeakU = 0.30+0.42*rng();
-  const crestWidth = 0.30+0.20*rng();
-  for(let i=0;i<n;i++){
-    const u=i/(n-1),x=-width/2+width*u,nx=x/(width/2);
-    const archWave=Math.sin(Math.PI*u);
-    const asym=(p.asymmetry||0)*3.2*Math.sin(2*Math.PI*u+(p.variation?.phaseA||0));
-    const skullY=cranialCurve*(1-nx*nx);
-    const zLower=toothL*.08+arch*archWave+asym*.18;
-    const volumeLift=topH*(.10*dome+.08*vessel)*Math.pow(archWave,1.35);
-    const localH=topH*(.34+.48*archWave+.12*continuity+.08*vessel*Math.sin(Math.PI*u+(p.variation?.phaseB||0)));
-    const y=depth*.16+skullY+depth*.16*vessel*archWave;
-    lower.push([x,y,zLower]);
-    upper.push([x,y+depth*(.08+.16*dome)*archWave,zLower+localH+volumeLift]);
-    mid.push([x,y+depth*.08*archWave,zLower+localH*(.42+.14*Math.sin(2*Math.PI*u+(p.variation?.phaseC||0)))]);
-  }
-  // Build the two principal rails as continuous shared-ring tubes. The
-  // previous implementation used one capped elliptical cylinder per span;
-  // once the crest radius exceeded the spacing between samples, neighboring
-  // caps penetrated one another and the subsequent boolean union could become
-  // non-manifold. A single tube has no internal caps and therefore removes the
-  // source of that topology failure.
-  {
-    const lowerRadii=lower.map(()=>[
-      bodyR*(1.00+.18*continuity),
-      bodyR*.72
-    ]);
-    const lowerMesh=variableEllipticalTubeMesh(lower,lowerRadii,18,false);
-    parts.push(meshToManifold(wasm,lowerMesh.V,lowerMesh.F));
-
-    const crestRadii=upper.map((_,i)=>{
-      const q=i/(n-1);
-      const distFromPeak=(q-crestPeakU)/crestWidth;
-      const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.3);
-      return [
-        topH*(0.20+0.05*dome+0.04*vessel)*solidBoost*(0.42+0.58*taperEdge),
-        topH*(0.15+0.04*dome)*solidBoost*(0.42+0.58*taperEdge)
-      ];
-    });
-    const crestMesh=variableEllipticalTubeMesh(upper,crestRadii,24,false);
-    parts.push(meshToManifold(wasm,crestMesh.V,crestMesh.F));
-  }
-
-  for(let i=0;i<n-1;i++){
-    if(upperBodyMode!=='lattice'){
-      // La zona media, entre el riel inferior y la cresta, se rellena con
-      // masa real en vez de quedar vacía salvo por cruces ocasionales —
-      // es justamente la franja que se veía como un tejido delgado sin
-      // sentido en vez de una pieza escultórica continua.
-      const midR=bodyR*(0.72+0.18*dome+0.14*vessel)*(upperBodyMode==='volumetric'?1.15:1.0);
-      parts.push(ellipticalSegmentBetween(wasm,lower[i],mid[i],midR,midR*.82,14));
-      parts.push(ellipticalSegmentBetween(wasm,mid[i],upper[i],midR*.92,midR*.76,14));
-    }
-    if(upperBodyMode==='lattice' && lattice>.16 && (i%Math.max(2,5-Math.round(lattice*3))===0||i===n-2)){
-      const j=Math.min(n-1,i+2);
-      parts.push(ellipticalSegmentBetween(wasm,lower[i],upper[j],bodyR*(.66+.22*lattice),bodyR*.52,14));
-      parts.push(ellipticalSegmentBetween(wasm,upper[i],lower[j],bodyR*(.62+.20*inter),bodyR*.48,14));
-    }
-    if(upperBodyMode==='lattice' && cage>.22 && i%4===1){
-      parts.push(ellipticalSegmentBetween(wasm,mid[i],mid[Math.min(n-1,i+2)],bodyR*(.48+.24*cage),bodyR*.42,12));
-    }
-  }
-  if(upperBodyMode==='lattice' && wrapped>.18){
-    const strands=1+Math.round(wrapped*2);
-    for(let sIdx=0;sIdx<strands;sIdx++){
-      const pts=[];
-      for(let i=0;i<n;i++){
-        const q=i/(n-1),mix=.30+.28*sIdx/Math.max(1,strands-1)+.12*Math.sin(q*Math.PI*2+(p.variation?.phaseB||0)+sIdx);
-        pts.push([
-          lower[i][0],
-          lower[i][1]+depth*(.04+.08*wrapped)*Math.sin(Math.PI*q+sIdx),
-          lower[i][2]+(upper[i][2]-lower[i][2])*clamp(mix,.18,.78)
-        ]);
-      }
-      const mesh=tubeAlongPathMesh(pts,Math.max(AGDP_MIN_WALL_MM*.72,bodyR*(.38+.20*wrapped)),10,false);
-      parts.push(meshToManifold(wasm,mesh.V,mesh.F));
-    }
-  }
-  parts.push(flattenedNodeAt(wasm,lower[0],bodyR*1.35,bodyR*.88,bodyR*1.05,16));
-  parts.push(flattenedNodeAt(wasm,lower[n-1],bodyR*1.35,bodyR*.88,bodyR*1.05,16));
-  const nodeCount=upperBodyMode==='solid' ? 0 : Math.max(2,Math.round(2+cellular*4+inter*2));
-  for(let k=0;k<nodeCount;k++){
-    const u=(k+1)/(nodeCount+1),idx=Math.round(u*(n-1));
-    const z=lower[idx][2]+(upper[idx][2]-lower[idx][2])*(.28+.48*rng());
-    const rr=bodyR*(.82+.52*cellular+.22*rng());
-    parts.push(flattenedNodeAt(wasm,[lower[idx][0],lower[idx][1]+rr*.12,z],rr*(1.0+.18*vessel),rr*(.62+.18*dome),rr*(.82+.20*continuity),16));
-  }
-  // El evento de masa obligatorio (Regla 7), construido por la misma
-  // función compartida que cualquier otra tipología usaría para su propio
-  // centro semántico.
-  {
-    const idx=Math.round(clamp(crestPeakU,0,1)*(n-1));
-    const center=[upper[idx][0],upper[idx][1]+depth*.08,upper[idx][2]-topH*.04];
-    parts.push(StructuralKit.buildEventMass(wasm, center, topH, dome, vessel));
-  }
-
-  // Mutación de la peineta: siempre sobre la cresta/cuerpo superior — los
-  // dientes son funcionales y nunca se tocan.
-  if (p.mutation && p.mutation.active){
-    const sv=p.mutation.severity;
-    if(p.mutation.mode==='hypertrophy'){
-      const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-hypertrophy');
-      const idx=Math.floor(hRng()*n);
-      const massR=topH*(0.16+0.18*sv);
-      parts.push(flattenedNodeAt(wasm,upper[idx],massR*(1.2+.2*vessel),massR*(0.85+.2*dome),massR*(0.95+.2*dome),22));
-    }else if(p.mutation.mode==='erosion'){
-      const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-erosion');
-      const cutters=[];
-      const count=2+Math.round(sv*4);
-      for(let k=0;k<count;k++){
-        const idx=Math.floor(eRng()*n);
-        const vr=Math.max(1.0, topH*(0.09+0.09*sv));
-        cutters.push(sphereAt(wasm,mid[idx],vr,24));
-      }
-      if(cutters.length){
-        try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(safeDifference(wasm,merged,unionAll(wasm,cutters))); }
-        catch(err){ console.warn('AGDP: erosión de peineta omitida por seguridad topológica',err); }
-      }
-    }else if(p.mutation.mode==='proliferation'){
-      const pRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-proliferation');
-      const anchorIdx=Math.floor(pRng()*n);
-      const anchor=upper[anchorIdx];
-      const colonyCount=6+Math.round(sv*8);
-      for(let k=0;k<colonyCount;k++){
-        const jitter=topH*0.22;
-        const pt=[anchor[0]+(pRng()*2-1)*jitter, anchor[1]+(pRng()*2-1)*jitter*0.5, anchor[2]+(pRng()*2-1)*jitter*0.6];
-        const r=Math.max(0.5, topH*(0.03+0.025*pRng()));
-        parts.push(flattenedNodeAt(wasm,pt,r,r*0.85,r*0.9,10));
-      }
-    }
-  }
-  if(upperBodyMode==='volumetric' || (upperBodyMode==='lattice' && (dome>.20||vessel>.20))){
-    const lobes=(upperBodyMode==='volumetric'?2:1)+Math.round(Math.max(dome,vessel)*2);
-    for(let k=0;k<lobes;k++){
-      const u=.24+.52*(lobes===1?.5:k/(lobes-1)),idx=Math.round(u*(n-1));
-      const rr=topH*(upperBodyMode==='volumetric'?0.085:0.055)*(1+dome+vessel*0.8);
-      parts.push(flattenedNodeAt(wasm,[upper[idx][0],upper[idx][1]+depth*.05,upper[idx][2]-rr*.45],rr*(1.1+.25*vessel),rr*(.72+.22*dome),rr*(.80+.30*dome),20));
-    }
-  }
-
-  const usable=width-18;
-  for(let k=0;k<toothCount;k++){
-    const x0=-usable/2+usable*(toothCount===1?.5:k/(toothCount-1));
-    const u=(x0+width/2)/width,idx=Math.max(0,Math.min(n-1,Math.round(u*(n-1))));
-    const lateral=x0/(usable/2||1),root=[x0,lower[idx][1],lower[idx][2]+bodyR*.18];
-    const rootWidth=Math.max(2.25,bodyR*(1.05+.18*cage));
-    const shaftWidth=Math.max(1.35,toothT*(.88+.16*continuity));
-    const flat=Math.max(.72,toothT*(.50+.10*dome));
-    const lean=Math.tan(insertionAngle)*toothL,sideConverge=-lateral*(1.4+1.0*wrapped),sway=(rng()-.5)*(0.4+0.5*inter);
-    const pts=[root],steps=6;
-    for(let j=1;j<=steps;j++){
-      const q=j/steps,ease=q*q*(3-2*q);
-      pts.push([x0+sideConverge*ease+sway*q,root[1]-lean*q+toothSweep*Math.sin(Math.PI*q)*(.72+.28*Math.abs(lateral)),root[2]-toothL*q-1.2*Math.sin(Math.PI*q)*Math.abs(lateral)]);
-    }
-    pts[steps][1]+=tipReturn;
-    // Each tooth is likewise one continuous tapered tube. This avoids six
-    // mutually intersecting capped capsules per tooth and keeps the root-to-tip
-    // transition watertight before it is joined to the lower rail.
-    const toothRadii=pts.map((_,j)=>{
-      const q=j/steps;
-      return [
-        rootWidth*(1-q)+shaftWidth*q,
-        (bodyR*.72)*(1-q)+flat*q
-      ];
-    });
-    const toothMesh=variableEllipticalTubeMesh(pts,toothRadii,18,false);
-    parts.push(meshToManifold(wasm,toothMesh.V,toothMesh.F));
-    parts.push(flattenedNodeAt(wasm,root,rootWidth*1.08,bodyR*.82,rootWidth*.92,16));
-    parts.push(flattenedNodeAt(wasm,pts[steps],shaftWidth*1.05,flat*1.05,shaftWidth*.92,16));
-  }
-  return {manifold:unionAll(wasm,parts),bandW:topH};
-}
-
-// Shared by every clip-like typology (universal clip, money clip, any
-// future one): the seed picks among three genuinely different visible
-// masses — continuous (via the same makeFaceManifold pendants and
-// cufflinks use), amorphous, or a rotated slab with lobes — built once
-// here instead of being reinvented, slightly differently, per typology.
-async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
-  const { Manifold } = wasm;
-  const faceChoice=Math.floor(rng()*3);
-  let face;
-  if(faceChoice===0){
-    const faceR=Math.min(faceW,faceH)/2;
-    const faceParams=Object.assign({},p,{
-      type:'threeModeFace',mainSize:faceR*2,bandWidth:faceTh,
-      pendantArchitecture:'radial',crown:false,
-      holes:Math.max(0,p.holes||0)
-    });
-    face=(await makeFaceManifold(wasm,faceParams,faceR,faceTh,Math.max(faceTh*.85,faceR*.55))).manifold;
-    face=face.scale([faceW/(faceR*2),faceH/(faceR*2),1]);
-  }else if(faceChoice===1){
-    const sx=faceW/16, sy=faceH/16;
-    const polarity=(p.compositionSignature?.polarity||1);
-    const a=sphereAt(wasm,[-3.8*sx,1.0*sy,0],7.4*Math.min(sx,sy),28).scale([1.20,.90,.50]);
-    const b=sphereAt(wasm,[3.6*sx,-1.6*sy,0],6.6*Math.min(sx,sy),26).scale([1.16,.96,.54]);
-    const c=sphereAt(wasm,[.6*sx,2.4*sy,faceTh*.07],5.2*Math.min(sx,sy),24).scale([1.02,1.00,.46]);
-    const notch=sphereAt(wasm,[polarity*6.2*sx,-2.6*sy,0],3.2*Math.min(sx,sy),24).scale([1.08,.9,.75]);
-    face=safeDifference(wasm,unionAll(wasm,[a,b,c]),notch);
-  }else{
-    const rot=(p.compositionSignature?.polarity||1)*(5+9*rng());
-    let slab=Manifold.cube([faceW*.86,faceH*.79,faceTh],true).rotate([0,0,rot]);
-    const lobe1=sphereAt(wasm,[faceW*.26,faceH*.14,0],faceH*.31,24).scale([1.20,.85,.55]);
-    const lobe2=sphereAt(wasm,[-faceW*.28,-faceH*.16,0],faceH*.27,24).scale([.98,1.00,.52]);
-    const voidCut=Manifold.cube([faceW*.18,faceH*.35,faceTh*1.8],true).rotate([0,0,-17]).translate([-faceW*.07,faceH*.045,0]);
-    face=safeDifference(wasm,unionAll(wasm,[slab,lobe1,lobe2]),voidCut);
-  }
-  return face.translate([0,0,faceTh*.45]);
-}
-
-async function makeUniversalClipManifold(wasm,p){
-  const { Manifold }=wasm;
-  const mechL=Math.max(34,p.clipLengthMm||36);
-  const mechW=Math.max(6.4,p.clipWidthMm||7.2);
-  const T=Math.max(1.8,p.clipThicknessMm||2.0);
-  const gap=Math.max(2.4,p.clipGapMm||2.8);
-  const springL=Math.min(mechL-4,Math.max(30,p.clipSpringLengthMm||32));
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|universal-clip-face');
-  const parts=[];
-  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
-
-  const faceW=clamp((p.clipFaceWidthMm||32)*(0.90+rng()*.22),27,38);
-  const faceH=clamp((p.clipFaceHeightMm||30)*(0.88+rng()*.26),25,37);
-  const faceTh=Math.max(3.6,T*1.9);
-  const face=await buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng);
-
-  // La distancia del mecanismo se calcula desde la superficie posterior real
-  // de la cara generada. Así, una cara abombada o amorfa nunca invade la garganta.
-  const faceMesh=manifoldToMesh(face);
-  const faceBounds=bounds(faceMesh.V);
-  const faceBackZ=faceBounds.min[2];
-  const plateT=Math.max(1.6,T);
-  const zBack=faceBackZ-plateT*.50+0.08;
-  const zRear=faceBackZ-gap-T*.50;
-  parts.push(face);
-
-  // Mutación de clip: hipertrofia sobre la cara frontal — el mecanismo ya
-  // calculó su holgura desde la cara original, así que un bulto frontal
-  // nunca invade la garganta trasera.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='hypertrophy'){
-    const sv=p.mutation.severity;
-    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|clip-hypertrophy');
-    const fx=(hRng()*2-1)*faceW*0.28, fy=(hRng()*2-1)*faceH*0.28;
-    const massR=Math.max(faceTh*0.9, faceTh*(1.0+0.9*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.35+massR*0.3],massR,24));
-  }
-
-  // Placa posterior de unión, completamente oculta por la cara visible.
-  const backW=Math.min(faceW*.58,mechL+4);
-  const backH=Math.min(faceH*.34,mechW+3.0);
-  const backPlate=Manifold.cube([backW,backH,plateT],true).translate([0,0,zBack]);
-  parts.push(backPlate);
-
-  // El mecanismo se contiene dentro de la propia huella de la cara —
-  // antes su brazo se extendía casi tanto como el ancho completo de la
-  // cara, proyectándose visiblemente más allá de su silueta y leyendo
-  // como una pieza separada en vez de un mecanismo integrado detrás de
-  // la masa.
-  const mechSpan=Math.min(mechL, faceW*0.74);
-  const rearX0=-mechSpan/2+2.0, rearX1=rearX0+Math.min(springL, mechSpan-4);
-  parts.push(Manifold.cube([rearX1-rearX0,mechW*.38,T*.80],true).translate([(rearX0+rearX1)/2,0,zRear]));
-  parts.push(capsule([rearX0,0,zRear],[rearX0+2.0,0,zRear],mechW*.20));
-  parts.push(capsule([rearX1-2.0,0,zRear],[rearX1,0,zRear],mechW*.20));
-
-  const bendPts=[];
-  const bendR=(gap+T)*.48;
-  const cx=rearX0, cz=(zBack+zRear)/2;
-  for(let i=0;i<=12;i++){
-    const a=Math.PI/2+Math.PI*i/12;
-    bendPts.push([cx+bendR*Math.cos(a),0,cz+bendR*Math.sin(a)]);
-  }
-  const bendMesh=tubeAlongPathMesh(bendPts,Math.max(.70,T*.36),12,false);
-  parts.push(meshToManifold(wasm,bendMesh.V,bendMesh.F));
-  // Punta simple: una sola curva continua con extremo redondeado — el
-  // mismo catálogo de herrajes reales usa un cierre deliberadamente
-  // simple, no una cadena de tres segmentos que aquí se leía como ruido
-  // visual.
-  const tipR=Math.max(0.85,mechW*.19);
-  const tipPts=[];
-  const tipBendR=2.4;
-  const tipCx=rearX1-tipBendR, tipCz=zRear;
-  for(let i=0;i<=10;i++){
-    const a=Math.PI*i/10;
-    tipPts.push([tipCx+tipBendR*Math.cos(a),0,tipCz+tipBendR*Math.sin(a)*0.85]);
-  }
-  const tipMesh=tubeAlongPathMesh(tipPts,tipR,14,false);
-  parts.push(meshToManifold(wasm,tipMesh.V,tipMesh.F));
-  parts.push(sphereAt(wasm,tipPts[tipPts.length-1],tipR*1.05,24));
-
-  // Dos apoyos cortos vinculan el mecanismo con la placa posterior, sin atravesar la cara.
-  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,zRear],Math.max(1.0,T*.52),24));
-  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,zRear],Math.max(1.0,T*.52),24));
-
-  p.clipFaceWidthMm=faceW;
-  p.clipFaceHeightMm=faceH;
-  p.clipEffectiveClearanceMm=gap;
-  p.clipFaceBackZMm=faceBackZ;
-  return {manifold:unionAll(wasm,parts),bandW:Math.max(faceW,faceH)};
-}
-
-
-async function makeMoneyClipManifold(wasm,p){
-  const { Manifold }=wasm;
-  const L=clamp(p.moneyClipLengthMm||55,48,64);
-  const W=clamp(p.moneyClipWidthMm||23,18,28);
-  const T=clamp(p.moneyClipThicknessMm||2.0,1.8,2.4);
-  const gap=clamp(p.moneyClipGapMm||3.8,2.6,5.2);
-  // El radio funcional deriva de la separación real entre las dos láminas.
-  // Esto mantiene el retorno cerrado y continuo en todas las tallas.
-  const returnR=Math.max(T*.72,(gap+T)/2);
-  const requestedRearL=Math.max(L*.72,p.moneyClipRearLengthMm||L-8);
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|money-clip-face');
-  const parts=[];
-  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
-
-  // El frente usa la misma función compartida que el clip universal —
-  // no una copia propia con constantes ligeramente distintas — adaptada
-  // a las proporciones alargadas del money clip vía faceL/faceW.
-  const faceL=clamp(L*(0.90+rng()*.10),40,60);
-  const faceW=clamp(W*(0.86+rng()*.16),16,26);
-  const faceTh=Math.max(3.4,T*1.9);
-  const face=await buildThreeModeFace(wasm, p, faceL, faceW, faceTh, rng);
-
-  // La distancia del mecanismo se calcula desde la superficie posterior
-  // real de la cara generada, igual que en el clip universal — así una
-  // cara abombada o amorfa nunca invade la garganta ni queda descentrada.
-  const faceMesh=manifoldToMesh(face);
-  const faceBounds=bounds(faceMesh.V);
-  const faceBackZ=faceBounds.min[2];
-  parts.push(face);
-
-  // Mutación de money clip: hipertrofia sobre la cara frontal — el brazo
-  // trasero ya midió su holgura desde la cara original, la masa nunca
-  // invade la capacidad útil para el billete.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='hypertrophy'){
-    const sv=p.mutation.severity;
-    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|moneyclip-hypertrophy');
-    const fx=(hRng()*2-1)*faceL*0.30, fy=(hRng()*2-1)*faceW*0.28;
-    const massR=Math.max(faceTh*0.85, faceTh*(0.95+0.85*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.4+massR*0.3],massR,24));
-  }
-
-  // Punteras redondeadas discretas en los extremos, ancladas a la cara real.
-  const tipR=Math.max(1.7,W*.095);
-  [[-faceL*.47,0],[faceL*.47,0]].forEach(([x,y])=>{
-    parts.push(flattenedNodeAt(wasm,[x,y,faceBackZ+tipR*.6],tipR,tipR*.82,tipR*.7,20));
-  });
-
-  // Brazo posterior elástico, paralelo al frente y con garganta útil
-  // constante, medida desde la superficie posterior real de la cara —
-  // nunca desde un z=0 asumido.
-  const rearZ=faceBackZ-gap-T*.5;
-  const x0=-L/2+returnR+1.0;
-  const maxRearEnd=L/2-2.2;
-  const rearL=Math.min(requestedRearL,maxRearEnd-x0);
-  const x1=x0+rearL;
-  const rear=Manifold.cube([rearL,W*.54,T],true).translate([(x0+x1)/2,0,rearZ]);
-  parts.push(rear);
-
-  // Placa posterior de unión, oculta detrás de la cara.
-  const backW=Math.min(faceL*.62,rearL+6);
-  const backH=Math.min(faceW*.58,W*.7);
-  const plateT=Math.max(1.6,T);
-  const zBack=faceBackZ-plateT*.5+0.08;
-  const backPlate=Manifold.cube([backW,backH,plateT],true).translate([0,0,zBack]);
-  parts.push(backPlate);
-  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,rearZ],Math.max(0.85,T*.44),24));
-  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,rearZ],Math.max(0.85,T*.44),24));
-
-  // Retorno en U construido desde la separación efectiva entre frente y brazo.
-  // Sus extremos coinciden exactamente con zBack y rearZ, por lo que no quedan
-  // segmentos truncados ni uniones parciales al aumentar la talla.
-  const bend=[];
-  const centerZ=(zBack+rearZ)/2;
-  const bendR=Math.abs(zBack-rearZ)*.5;
-  for(let i=0;i<=24;i++){
-    const a=Math.PI/2+Math.PI*i/24;
-    bend.push([x0+bendR*Math.cos(a),0,centerZ+bendR*Math.sin(a)]);
-  }
-  const bendMesh=tubeAlongPathMesh(bend,Math.max(0.92,T*.50),18,false);
-  parts.push(meshToManifold(wasm,bendMesh.V,bendMesh.F));
-
-  // Punta de presión completa, redondeada y contenida dentro de la longitud nominal.
-  const p0=[x1-5.2,0,rearZ];
-  const p1=[x1-2.2,0,rearZ+.62];
-  const p2=[Math.min(L/2-0.8,x1+1.4),0,rearZ+1.35];
-  const pr=Math.max(1.35,T*.72);
-  parts.push(capsule(p0,p1,pr));
-  parts.push(capsule(p1,p2,pr*.94));
-  parts.push(sphereAt(wasm,p2,pr,28));
-
-  p.moneyClipLengthMm=L;
-  p.moneyClipWidthMm=W;
-  p.moneyClipThicknessMm=T;
-  p.moneyClipGapMm=gap;
-  p.moneyClipReturnRadiusMm=returnR;
-  p.moneyClipRearLengthMm=rearL;
-  return {manifold:unionAll(wasm,parts),bandW:Math.max(faceL,faceW)};
-}
-
-const AGDP_SILVER_HOLLOWING=Object.freeze({
-  source:'Shapeways Silver design guidelines · consulted 2026-07-19',
-  polishedMinimumWallMm:0.8,
-  conservativeShellWallMm:Object.freeze({
-    // Reduced from 1.6/1.5 to 0.95/0.80 -- verified via Node.js harness
-    // this is what's needed to actually reach target weight for these
-    // large-format types; 0.80 sits exactly at Shapeways' polished-silver
-    // minimum wall (no further reduction possible without violating the
-    // manufacturing floor).
-    choker:0.95,
-    headpiece:0.80,
-    bangle:1.7,
-    cuffBracelet:1.8,
-    // ADDED: earCuff had no entry here, so applyConservativeSilverHollowing
-    // exited immediately without hollowing (wall=undefined -> !wall is
-    // true). Combined with a hard weight ceiling of 28g and zero
-    // hollowing path, earCuff was structurally guaranteed to fail the
-    // weight audit on almost any non-trivial decoration.
-    earCuff:0.85,
-    // ADDED: haircomb had no entry here either -- same bug pattern as
-    // earCuff. Confirmed via direct volume estimate: the FIXED teeth+spine
-    // alone (before any crown mass) already weigh ~46-54g across the
-    // 95-120mm width range, so the previous 58g hard ceiling with NO
-    // hollowing path meant almost every generation was rejected on
-    // weight, regardless of seed -- this is what looked like the piece
-    // "never generating" (16 retries exhausted every time), not a memory
-    // leak in makeHairCombManifold itself (verified separately: 0 leaked
-    // objects across 20 sequential full-pipeline generations with a
-    // leak-instrumented stub). 1.0mm sits at the Shapeways polished-silver
-    // floor, same reasoning as choker/headpiece previously.
-    haircomb:1.0
-  }),
-  escapeHoleDiameterMm:2.4,
-  escapeHoleCount:2,
-  thresholdsGrams:Object.freeze({
-    ring:Object.freeze({hollowAt:Infinity,rejectAbove:38}),
-    pendant:Object.freeze({hollowAt:Infinity,rejectAbove:110}),
-    bangle:Object.freeze({hollowAt:125,rejectAbove:190}),
-    cuffBracelet:Object.freeze({hollowAt:115,rejectAbove:180}),
-    // Raised per explicit direction: 1kg+ solid pieces were absurd, but
-    // the original 90-220g range was too tight for pieces this physically
-    // large even when properly hollowed. 150-220g is now the accepted
-    // range, proportional to each profile's relative scale/style.
-    chokerTorque:Object.freeze({hollowAt:110,rejectAbove:180}),
-    chokerSculptural:Object.freeze({hollowAt:90,rejectAbove:150}),
-    chokerCervical:Object.freeze({hollowAt:145,rejectAbove:220}),
-    headpiece:Object.freeze({hollowAt:90,rejectAbove:150}),
-    cufflinks:Object.freeze({hollowAt:Infinity,rejectAbove:80}),
-    // FIXED: 28g was unreachable for an earCuff with normal structural
-    // baseWall (AGDP_STRUCTURAL_WALL_MM=1.3mm) plus any decoration (ribs,
-    // posts, rivets, nodes, transversal cuts). With earCuff now enabled
-    // for hollowing (see conservativeShellWallMm above), hollowAt kicks
-    // in before the hard limit, giving the piece the same weight escape
-    // valve as bangle/cuffBracelet. Values are a starting point calibrated
-    // to the same relative scale as bangle/cuffBracelet; recalibrate with
-    // the Node.js harness across a few real seeds if needed.
-    earCuff:Object.freeze({hollowAt:22,rejectAbove:42}),
-    // ADDED: two new typologies replacing tiara/choker per design pivot
-    // (Shapeways' "2 identical parts" rule cannot support a rigid full
-    // choker/headpiece at wearable scale -- see chat history). Both are
-    // modest, mostly-solid pieces; haircomb's teeth/spine are fixed and
-    // fairly light, so its ceiling reflects the crown's own decoration
-    // budget rather than a large structural mass. hoopEarring is small
-    // by construction (20-40mm) and light.
-    // Hair-comb dimensions are governed by the dedicated ergonomic
-    // constructor. The global scaled-copy hollowing operation is deliberately
-    // disabled for this thin open typology because it cuts through teeth and
-    // crown. Consequently, finished mass is informational rather than a hard
-    // validity condition until a dedicated crown-only lightening operation is
-    // introduced and validated.
-    haircomb:Object.freeze({
-      // The supplied AGDP comb specification defines dimensions, wall
-      // thicknesses and structural transitions, but no maximum finished
-      // silver mass. Rejecting every comb above 95 g made the entire valid
-      // 95–120 mm range unreachable. Hair-comb mass remains reported in the
-      // audit/UI, but is no longer used as a geometry-validity gate.
-      hollowAt:Infinity,
-      rejectAbove:Infinity
-    }),
-    hoopEarring:Object.freeze({hollowAt:Infinity,rejectAbove:26})
-  })
-});
-window.AGDP_SILVER_HOLLOWING=AGDP_SILVER_HOLLOWING;
-
-function silverWeightProfileKey(p){
-  if(p.type!=='choker')return p.type;
-  if(p.chokerProfile==='torque')return 'chokerTorque';
-  if(p.chokerProfile==='cervical')return 'chokerCervical';
-  return 'chokerSculptural';
-}
-function manifoldBounds(manifold){
-  const mesh=manifoldToMeshHelper(manifold);
-  return {mesh,b:bounds(mesh.V)};
-}
-function applyConservativeSilverHollowing(wasm,manifold,p){
-  if(p.type==='haircomb'){
-    p.silverHollowingApplied=false;
-    p.silverWeightProfile=silverWeightProfileKey(p);
-    return manifold;
-  }
-  const profileKey=silverWeightProfileKey(p);
-  const limits=AGDP_SILVER_HOLLOWING.thresholdsGrams[profileKey]||{hollowAt:Infinity,rejectAbove:Infinity};
-  const before=manifoldBounds(manifold);
-  const initialWeight=silverWeightGrams(meshVolumeMm3(before.mesh.V,before.mesh.F));
-  p.silverWeightBeforeHollowingG=initialWeight;
-  p.silverWeightProfile=profileKey;
-  p.silverWeightLimitG=limits.rejectAbove;
-  p.silverHollowingApplied=false;
-
-  const wall=AGDP_SILVER_HOLLOWING.conservativeShellWallMm[p.type];
-  if(!wall || initialWeight<limits.hollowAt)return manifold;
-
-  const b=before.b,dim=b.dim;
-  // A scaled internal duplicate is only allowed when every axis contains a
-  // generous cavity: at least two walls plus a further 2.4 mm working core.
-  if(dim.some(d=>d<wall*2+2.4))return manifold;
-  const center=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2,(b.min[2]+b.max[2])/2];
-  // The upper clamp caps how close the inner cavity's scale can get to 1
-  // (a safety margin against near-total hollowing). At .94 this works
-  // as a margin for compact pieces (bangle/cuffBracelet), but for large
-  // pieces (choker/headpiece, 100+mm across) the wall-based formula
-  // (d-2*wall)/d is ITSELF already above .94 for any reasonable wall,
-  // so .94 silently became the active constraint rather than a safety
-  // margin -- capping achievable reduction to ~20% regardless of wall,
-  // which is why chokers could never reach their target weight even
-  // with correct dimensions (diagnosed via Node.js harness). Raising
-  // the ceiling for these two types lets the real wall-based formula
-  // govern instead of the safety cap.
-  const scaleCeiling=p.type==='choker'?.985:p.type==='headpiece'?.994:.94;
-  const scale=dim.map(d=>clamp((d-2*wall)/d,.15,scaleCeiling));
-  let inner=manifold.translate(center.map(v=>-v)).scale(scale).translate(center);
-  let hollowed;
-  try{ hollowed=wasm.Manifold.difference(manifold,inner); }
-  catch(e){ return manifold; }
-
-  // Two opposing 2.4 mm escape holes exceed Shapeways' 2.0 mm multiple-hole
-  // minimum. REDESIGNED placement: every rail, node, and relief feature in
-  // this codebase is added to the OUTER radius of the band (never the
-  // inner, skin-facing surface -- confirmed by reading buildBandGeometry-
-  // Manifold's decoration code). The original heuristic picked "low"
-  // vertices by Z-coordinate, which had no way to know whether that point
-  // sat on a rail or node, producing perforations that read as visual
-  // defects. Selecting by SMALLEST radial distance from the central axis
-  // (hypot(x,y)) instead guarantees the candidates are inner-wall points,
-  // which are always plain by construction -- verified in a Node.js
-  // harness across choker/headpiece test batches (0% -> 87.5% pass rate
-  // for choker after this fix combined with the scale ceiling above).
-  const candidates=before.mesh.V.slice().sort((a,bv)=>Math.hypot(a[0],a[1])-Math.hypot(bv[0],bv[1]));
-  const innerMost=candidates.slice(0,Math.max(24,Math.floor(candidates.length*.12)));
-  function pick(side){
-    const set=innerMost.filter(v=>side<0?v[0]<center[0]:v[0]>=center[0]);
-    const pool=set.length?set:innerMost;
-    // Among inner-wall candidates on this side, prefer one nearer the
-    // vertical/Z center of the piece -- keeps the hole away from the
-    // terminal ends of an open band.
-    return pool.reduce((best,v)=>Math.abs(v[2]-center[2])<Math.abs(best[2]-center[2])?v:best,pool[0]);
-  }
-  const holeR=AGDP_SILVER_HOLLOWING.escapeHoleDiameterMm/2;
-  const cutters=[];
-  [-1,1].forEach(side=>{
-    const v=pick(side); if(!v)return;
-    const rr=Math.hypot(v[0],v[1])||1;
-    const ux=v[0]/rr,uy=v[1]/rr;
-    const p0=[v[0]+ux*(wall*1.8),v[1]+uy*(wall*1.8),v[2]];
-    const p1=[v[0]-ux*(wall*3.2),v[1]-uy*(wall*3.2),v[2]];
-    cutters.push(cylinderBetween(wasm,p0,p1,holeR,24));
-  });
-  if(cutters.length===2){
-    try{ hollowed=wasm.Manifold.difference(hollowed,unionAll(wasm,cutters)); }
-    catch(e){ return manifold; }
-  }else return manifold;
-
-  const after=manifoldBounds(hollowed);
-  const finalWeight=silverWeightGrams(meshVolumeMm3(after.mesh.V,after.mesh.F));
-  // Do not accept a boolean operation that saves too little material or
-  // produces an implausibly aggressive reduction. Both indicate that the
-  // internal copy did not behave as a reliable shell for this morphology.
-  // Ceiling raised slightly for headpiece (.93 vs .90): its weight target
-  // is tight relative to its physical size even at the manufacturing
-  // wall-thickness floor (0.8mm) -- see note in AGDP_SILVER_HOLLOWING
-  // below about this being a product/threshold question, not purely an
-  // engineering one.
-  const reduction=1-finalWeight/Math.max(initialWeight,1e-6);
-  const reductionCeiling=p.type==='headpiece'?.93:.90;
-  if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling)return manifold;
-  const topo=topologyAudit(after.mesh.V,after.mesh.F);
-  if(!topo.manifoldOK)return manifold;
-
-  p.silverHollowingApplied=true;
-  p.silverShellWallMm=wall;
-  p.silverEscapeHoleDiameterMm=AGDP_SILVER_HOLLOWING.escapeHoleDiameterMm;
-  p.silverEscapeHoleCount=2;
-  p.silverWeightAfterHollowingG=finalWeight;
-  p.silverWeightReductionRatio=reduction;
-  return hollowed;
-}
-
-// KNOWN REMAINING ISSUE (found via Node.js harness testing, not yet
-// fixed): at the aggressive reduction levels now needed to hit choker/
-// headpiece weight targets, a small number of decorative elements (nodes/
-// veins from addOpenBandVolumetricField) occasionally end up disconnected
-// from the main shell where the internal cavity's boundary passes close
-// to their attachment point, and get silently dropped by
-// removeFloatingComponents downstream. Individually these fragments are
-// small (~0.1-0.4% of total triangles each), and typically only a few
-// occur per piece, but it means a small amount of intended surface detail
-// can be missing from a hollowed piece without any error being raised.
-// This trades one known issue (weight) for a smaller one (occasional
-// minor detail loss) rather than fixing both -- worth a dedicated look
-// if it turns out to be visually noticeable in practice.
-
 // =============================================================================
-// HAIR COMB (peineta) — v1
-// Three elements, exactly as specified: teeth (agujas), spine (riel), and
-// crown (cabezal). Teeth and spine are FIXED, safety-driven geometry — no
-// seed, mutation, or featureWeights ever reach them. Only the crown is a
-// decorated, seed-varied surface, reusing the SAME structural-treatment
-// vocabulary (solid/volumetric/lattice via pickStructuralTreatment +
-// StructuralKit) already shared by ring/comb/clip/cufflinks, so the crown's
-// decoration language is consistent with the rest of the product line even
-// though the teeth/spine are locked.
-//
-// Safety/manufacturing basis (see chat history for sources):
-//   - Tooth spacing: 6-8mm center-to-center (wide-tooth range; narrower
-//     spacing risks pulling/snagging hair, per comb-industry guidance).
-//   - Tooth root diameter: 2.6-3.0mm, tapering to a ROUNDED tip (never a
-//     point) of ~1.6mm -- both comfortably above Shapeways' silver
-//     unsupported-wire floor of 1.0mm (a tooth is connected on ONE side
-//     only, at the spine, so it must clear the unsupported minimum, not
-//     the lower supported one).
-//   - Tooth insertion angle: 14-18deg convergence toward the tip, matching
-//     commercial decorative hair combs (this is a fabrication/shape angle,
-//     distinct from the ~45deg USE angle at which a comb is inserted into
-//     hair -- the two are not the same thing and should not be confused).
-//   - Spine: at least 2x the tooth's own root diameter, so it reads and
-//     behaves as a structural anchor rather than "one more tooth."
+// HAIR COMB (peineta) — CORREGIDO
 // =============================================================================
 function makeHairCombManifold(wasm,p){
-  /*
-   * HAIR COMB v9
-   *
-   * Structural division:
-   *   crown exterior = complete AGDP operation vocabulary;
-   *   crown interior = smooth cranial contact surface;
-   *   teeth           = fixed ergonomic geometry, never decorated.
-   *
-   * The crown uses the same parameter families as the external circumference
-   * of rings and bracelets: faceting, grooves/rails, zoned mass, cellular
-   * recesses, frames, nodes, spikes, lattice, cage, wrapped, interweave,
-   * continuity, vessel and dome. Operations are integrated into one closed
-   * surface instead of intersecting decorative solids, preventing serrated
-   * boolean seams and microscopic corrupt geometry. In v7 the complete
-   * vocabulary reaches every exposed crown surface: front/exterior, top,
-   * left side and right side. The cranial interior and the lower tooth-bond
-   * surface remain geometrically smooth and operation-free.
-   */
   const WIDTH_MM=clamp(Number.isFinite(p.mainSize)?p.mainSize:110,95,120);
 
   function piecewiseByWidth(v95,v110,v120){
@@ -3490,10 +2401,6 @@ function makeHairCombManifold(wasm,p){
   );
   const CROWN_DEPTH_MM=piecewiseByWidth(3.5,4.0,4.5);
 
-  // Decorative/side comb references commonly place metal teeth around
-  // 31.75 mm at the compact end; larger French side combs reach total lengths
-  // above 80–100 mm. These longer values preserve useful insertion depth once
-  // the 45–60 mm AGDP crown is deducted.
   const TOOTH_LENGTH_MM=piecewiseByWidth(38,44,50);
   const TOOTH_COUNT=Math.round(piecewiseByWidth(7,8,9));
   const TOOTH_DIAMETER_MM=piecewiseByWidth(2.5,2.8,3.0);
@@ -3544,14 +2451,12 @@ function makeHairCombManifold(wasm,p){
   const secondarySpread=WIDTH_MM*(.08+.13*rng());
   const tertiaryX=(-.40+.80*rng())*WIDTH_MM;
   const tertiarySpread=WIDTH_MM*(.07+.10*rng());
-  const structuralPolarity=rng()>.5?1:-1;
 
   function smooth01(x){
     x=clamp(x,0,1);
     return x*x*(3-2*x);
   }
 
-  // Crown centre projects outward in +Y: convex exterior.
   function contactY(x){
     const n=clamp(x/(WIDTH_MM*.5),-1,1);
     return SKULL_SAG_MM*(1-n*n);
@@ -3584,7 +2489,6 @@ function makeHairCombManifold(wasm,p){
 
   function crownOperationField(x,t){
     const u=clamp((x/WIDTH_MM)+.5,0,1);
-
     const nx=(x-peakX)/(peakSpread||1);
     const sx=(x-secondaryX)/(secondarySpread||1);
     const tx=(x-tertiaryX)/(tertiarySpread||1);
@@ -3592,12 +2496,10 @@ function makeHairCombManifold(wasm,p){
     const massB=Math.exp(-sx*sx*1.45);
     const massC=Math.exp(-tx*tx*1.75);
 
-    // Ring-family faceting translated to the crown's horizontal axis.
     const facetSides=Math.max(4,Math.round(5+faceting*15));
     const facetWave=Math.pow(Math.abs(Math.cos(Math.PI*facetSides*u+phaseA)),6);
     const facetField=(facetWave-.34)*(0.25+1.15*faceting);
 
-    // Ring-family longitudinal grooves / rails.
     let grooveField=0;
     for(let k=0;k<railCount;k++){
       const ct=railCount===1?.5:(k+1)/(railCount+1);
@@ -3605,7 +2507,6 @@ function makeHairCombManifold(wasm,p){
       grooveField-=Math.exp(-d*d*1.7)*(0.30+1.25*sideRelief);
     }
 
-    // Zoned mass, directly analogous to ring outer-circumference mass lobes.
     const zonedMass=
       massA*(.55+2.2*vessel+1.4*dome)+
       massB*(.25+1.4*organic)+
@@ -3621,7 +2522,6 @@ function makeHairCombManifold(wasm,p){
     const wrappedField=Math.pow(.5+.5*Math.sin(2*Math.PI*(3.5*t+.72*u)+phaseB),4.2);
     const continuityField=.5+.5*Math.sin(2*Math.PI*(1.0*u+.70*t)+phaseC);
 
-    // Cellular operations: broad domes and controlled recesses.
     let cellField=0;
     const cells=Math.max(3,4+holeCount+Math.round(cellular*3));
     for(let i=0;i<cells;i++){
@@ -3631,13 +2531,10 @@ function makeHairCombManifold(wasm,p){
     }
     cellField=clamp(cellField,0,1.8);
 
-    // Frames create raised architectural perimeters safely inside the edge.
     const frameU=Math.exp(-Math.pow((Math.abs(u-.5)-.34)/(.025+.025*frameIntensity),2));
     const frameT=Math.exp(-Math.pow((Math.abs(t-.5)-.31)/(.026+.024*frameIntensity),2));
     const frameField=Math.max(frameU,frameT);
 
-    // Nodes, rivets and spikes become integrated bosses rather than floating
-    // solids. Their amplitudes are much stronger than v5 but remain smooth.
     let nodeField=0;
     const nodes=Math.max(nodeCount,rivetCount>0?Math.min(6,rivetCount):0);
     for(let i=0;i<nodes;i++){
@@ -3686,8 +2583,6 @@ function makeHairCombManifold(wasm,p){
       (0.32+1.20*clamp(p.nodeVolume||0,0,2)/2)*nodeField+
       (0.24+1.05*clamp(p.spikeHeight||0,0,3)/3)*spikeField;
 
-    // True recess component for cellular/groove vocabulary, limited so the
-    // crown retains a safe continuous wall.
     const recess=
       .60*cellular*Math.max(0,cellField-.62)+
       .55*Math.max(0,-grooveField);
@@ -3697,10 +2592,6 @@ function makeHairCombManifold(wasm,p){
     return clamp(vocabulary*maxRaise*.33-recess*maxRecess,-maxRecess,maxRaise);
   }
 
-  // Surface-specific masks. Only the two forbidden zones are forced to zero:
-  // the cranial interior (never displaced anywhere) and the lower bond face
-  // that receives the teeth. Exposed top and lateral surfaces inherit the
-  // same operation field instead of being flattened at the old boundary mask.
   const TOP_SURFACE_SEG=12;
   const SIDE_SURFACE_SEG=TOP_SURFACE_SEG;
   function toothBondFade(t){ return smooth01(clamp(t/.14,0,1)); }
@@ -3732,9 +2623,7 @@ function makeHairCombManifold(wasm,p){
     return {V,F};
   }
 
-  // One closed crown. No decorative boolean unions. The four exposed
-  // surfaces share vertices at every seam, so multisurface decoration remains
-  // one watertight shell rather than four intersecting decorative layers.
+  // CONSTRUCCIÓN DE LA CORONA CON ORIENTACIÓN CORREGIDA
   {
     const V=[],F=[];
     const inner=Array.from({length:X_SEG+1},()=>Array(Z_SEG+1));
@@ -3752,9 +2641,6 @@ function makeHairCombManifold(wasm,p){
         inner[i][j]=V.length;
         V.push([x,cy-CROWN_DEPTH_MM*.5,z]);
 
-        // Exterior face: full vocabulary. Side and top offsets are blended
-        // into the last rows/columns so the visible corners turn continuously
-        // into the decorated lateral and upper surfaces.
         const sideBand=.10;
         const leftBlend=1-smooth01(clamp(u/sideBand,0,1));
         const rightBlend=1-smooth01(clamp((1-u)/sideBand,0,1));
@@ -3773,16 +2659,12 @@ function makeHairCombManifold(wasm,p){
     const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
     for(let i=0;i<X_SEG;i++){
       for(let j=0;j<Z_SEG;j++){
-        q(inner[i][j],inner[i][j+1],inner[i+1][j+1],inner[i+1][j]);
-        q(outer[i][j],outer[i+1][j],outer[i+1][j+1],outer[i][j+1]);
+        // CORRECCIÓN 1: Sentido de rotación invertido en inner para apuntar hacia afuera (-Y)
+        q(inner[i][j], inner[i+1][j], inner[i+1][j+1], inner[i][j+1]);
+        q(outer[i][j], outer[i][j+1], outer[i+1][j+1], outer[i+1][j]);
       }
     }
 
-    // Lower tooth-bond face: deliberately smooth and undecorated. It is
-    // subdivided across depth using the SAME seam resolution as the lateral
-    // surfaces. This is topologically necessary: a coarse four-corner face
-    // meeting a subdivided side creates T-junctions and an open/non-manifold
-    // edge even when every point is geometrically coplanar.
     const lowerGrid=Array.from({length:X_SEG+1},()=>Array(SIDE_SURFACE_SEG+1));
     for(let i=0;i<=X_SEG;i++){
       const x=-WIDTH_MM*.5+WIDTH_MM*(i/X_SEG);
@@ -3802,9 +2684,6 @@ function makeHairCombManifold(wasm,p){
       }
     }
 
-    // Decorated top surface. d=0 is the untouched cranial edge; d=1 reuses
-    // the already-decorated exterior edge. Intermediate rows receive the same
-    // operation vocabulary as a continuous relief across the upper plane.
     const topGrid=Array.from({length:X_SEG+1},()=>Array(TOP_SURFACE_SEG+1));
     for(let i=0;i<=X_SEG;i++){
       const u=i/X_SEG;
@@ -3834,8 +2713,7 @@ function makeHairCombManifold(wasm,p){
       }
     }
 
-    // Decorated left and right surfaces. Their inner columns reuse the smooth
-    // cranial seam; their outer columns reuse the decorated exterior seam.
+    // CORRECCIÓN 3: Sincronización estricta de parches laterales
     for(const side of [-1,1]){
       const i=side<0?0:X_SEG;
       const x=side<0?-WIDTH_MM*.5:WIDTH_MM*.5;
@@ -3847,10 +2725,6 @@ function makeHairCombManifold(wasm,p){
         const t=j/Z_SEG;
         const z=zb+(zt-zb)*t;
         for(let k=0;k<=SIDE_SURFACE_SEG;k++){
-          // Reuse the complete lower and upper seam rows, not merely their
-          // endpoints. The previous implementation generated coincident but
-          // independently indexed vertices here, producing T-junctions at the
-          // tooth-bond edge and duplicate open seams at both top corners.
           if(j===0){ sideGrid[j][k]=lowerGrid[i][k]; continue; }
           if(j===Z_SEG){ sideGrid[j][k]=topGrid[i][k]; continue; }
           if(k===0){ sideGrid[j][k]=inner[i][j]; continue; }
@@ -3879,8 +2753,7 @@ function makeHairCombManifold(wasm,p){
     parts.push(crownManifold);
   }
 
-  // Teeth curve toward the head/contact side (-Y), opposite the crown's
-  // outward convex projection. This corrects the v5 inverted tooth sweep.
+  // CONSTRUCCIÓN DE DIENTES CON NORMALES EN TAPAS CORREGIDAS
   function makeToothMesh(xRoot,lateral){
     const rings=21,seg=32;
     const V=[],F=[],R=[];
@@ -3915,13 +2788,15 @@ function makeHairCombManifold(wasm,p){
       }
     }
 
+    // CORRECCIÓN 2A: Tapa superior (raíz) orientada hacia el exterior (+Z)
     const root=V.length;
     V.push([xRoot,yRoot,zRoot]);
     for(let k=0;k<seg;k++){
       const j=(k+1)%seg;
-      F.push([root,R[0][j],R[0][k]]);
+      F.push([root,R[0][k],R[0][j]]);
     }
 
+    // CORRECCIÓN 2B: Tapa inferior (punta) orientada hacia el exterior (-Z)
     const tip=V.length;
     V.push([
       xRoot+fan,
@@ -3963,9 +2838,6 @@ function makeHairCombManifold(wasm,p){
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
   p.hairCombGeneratorVersion='haircomb-v10-diagnostic';
 
-  // Progressive CSG exposes the first crown/tooth union that ceases to be a
-  // single closed solid. It replaces the opaque balanced unionAll() only for
-  // this typology. Geometry is otherwise unchanged.
   let assembled=parts.shift();
   recordStage(assembled,'haircomb/assembly-crown');
   for(let i=0;i<parts.length;i++){
@@ -3996,50 +2868,11 @@ function makeHairCombManifold(wasm,p){
   return {manifold:assembled,bandW:CROWN_HEIGHT_MM};
 }
 
-// =============================================================================
-// HOOP EARRING — v1
-// Two elements: hook (fixed, safety-driven) + body/crown (decorated,
-// reusing makeFaceManifold -- the same shared face builder pendant and
-// cufflinks already use, so this typology's decoration vocabulary is
-// consistent with the rest of the line rather than a one-off).
-//
-// Safety/manufacturing basis (see chat history for sources):
-//   - Hook free-tip diameter: 1.3mm. Commercial jewelry commonly uses
-//     18-20 gauge (1.0-0.8mm) DRAWN wire for earring posts, but this
-//     piece is CAST silver, not drawn wire -- cast silver is structurally
-//     weaker per unit thickness than drawn wire at the same gauge, and
-//     Shapeways' own unsupported-wire floor for cast silver is 1.0mm
-//     (the free tip qualifies as unsupported: connected on one side only).
-//     1.3mm sits meaningfully above that floor rather than exactly at it,
-//     specifically because the insertion tip takes repeated mechanical
-//     stress (insertion/removal) that a decorative surface does not.
-//   - Closure: "click-top" / endless-hoop mechanism -- the hook's own free
-//     end press-fits into a small hollow socket on the body, rather than
-//     a separate hinge or clasp. This avoids Shapeways' "Interlocking:
-//     Not Supported" and "Sprues: Not Supported" restrictions, since the
-//     socket and hook are cast as ONE continuous solid (the hoop is a
-//     single closed ring shape, not two parts that interlock after the
-//     fact) -- the "click" happens at the wearer's own assembly when they
-//     flex the hoop open slightly to put it on, exactly like a real
-//     endless hoop.
-//   - Hoop outer diameter: 20-40mm, matching the commercial standard
-//     range for everyday hoop earrings.
-// =============================================================================
-// =============================================================================
-// HOOP EARRING — integrated French-hook pair
-// The decorated annular body and the hook are generated as one printable
-// solid per earring. The hook uses a conventional insertion diameter and a
-// buried, enlarged root transition so its union with the body has measurable
-// volume rather than a merely tangential contact. The exported pair contains
-// two identical front-facing copies for the customer preview.
-// =============================================================================
 function makeHoopEarringManifold(wasm, p){
-  // Commercial configurator policy, expressed in millimetres. This is a
-  // product range rather than a claim of one universal international size.
   const HOOP_BODY_MIN_OD_MM = 14;
   const HOOP_BODY_MAX_OD_MM = 35;
   const HOOP_BODY_DEFAULT_OD_MM = 24;
-  const HOOK_TIP_R_MM = 0.45;        // 0.90 mm insertion diameter
+  const HOOK_TIP_R_MM = 0.45;
   const HOOK_SHAFT_R_MM = 0.58;
   const HOOK_ROOT_R_MM = 1.00;
   const HOOK_ROOT_OVERLAP_MM = 1.50;
@@ -4060,7 +2893,7 @@ function makeHoopEarringManifold(wasm, p){
     const bandWidth=Math.max(BODY_DEPTH_MM,(p.minFeature||.8)*3.2);
     const ringParams=Object.assign({},p,{
       type:'pendantAnnularCore', mainSize:innerR*2, bandWidth,
-      holes:Math.min(2,p.holes||0), railCount:Math.min(2,p.railCount||0),
+      holes:Math.min(2,p.holes||0), railCount:Math.min(1,p.railCount||0),
       nodes:0, rivets:0, screws:0, crown:false, spikes:0, opening:0
     });
     const built=await buildBandGeometryManifold(wasm,ringParams,{
@@ -4068,8 +2901,6 @@ function makeHoopEarringManifold(wasm, p){
     });
     let bodyManifold=built.manifold.rotate([0,90,0]);
 
-    // Nodules are fused as overlapping rounded volumes only. No capped
-    // cylinders, tangent contacts or local cutters are used in this typology.
     const earringNodeCount=Math.max(0,Math.round(p.nodes||0));
     if(earringNodeCount>0){
       const cov=clamp((p.articulationCoverage||120)*Math.PI/180,0.35,Math.PI*1.65);
@@ -4098,10 +2929,6 @@ function makeHoopEarringManifold(wasm, p){
       bodyManifold=mergedBody;
     }
 
-    // Build one uninterrupted hook sweep with a buried root. The first
-    // section travels through real annular material before emerging from the
-    // body, creating a measurable overlap volume and a gradual neck instead
-    // of a tangential point contact.
     const rootInnerY=innerR+Math.max(annularWall*.24,HOOK_ROOT_OVERLAP_MM*.55);
     const rootExitY=innerR+annularWall*.72;
     const hookPts=[];
@@ -4149,9 +2976,6 @@ function makeHoopEarringManifold(wasm, p){
     const hookMesh=variableEllipticalTubeMesh(hookPts,hookRadii,64,false);
     const hookManifold=meshToManifold(wasm,hookMesh.V,hookMesh.F);
 
-    // Audit the actual shared volume before union. Connectivity alone cannot
-    // distinguish a robust root from a hairline neck, so reject any seed whose
-    // body/hook intersection falls below the structural threshold.
     const overlapManifold=wasm.Manifold.intersection(bodyManifold,hookManifold);
     const overlapMesh=manifoldToMesh(overlapManifold);
     const hookOverlapVolumeMm3=Math.abs(meshVolumeMm3(overlapMesh.V,overlapMesh.F));
@@ -4212,19 +3036,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
 
-  // Choker and headpiece are split into 3 hook-and-eye-jointed segments
-  // (see splitIntoHookedSegments above) because at any wearable scale a
-  // single continuous piece exceeds Shapeways' 89x89x100mm silver-casting
-  // bounding box in every orientation. BUT that split is expensive (3
-  // wedge intersections + hook/eye CSG per attempt, confirmed via Node.js
-  // harness at ~300-360MB peak per generation) -- and the retry loop in
-  // ui.js can attempt up to 16 seeds per click. Running the full split on
-  // every attempt, including ones that will be rejected moments later for
-  // weight, is what produced the severe memory pressure reported live
-  // (site forced into refresh, chokers/headpieces effectively impossible
-  // to generate). The fix: check weight on the cheap UNSEGMENTED mesh
-  // first, and only pay the segmentation cost once a candidate has
-  // already cleared the one check most likely to reject it.
   const isSegmentedType = (p.type==='choker' || p.type==='headpiece');
   let V, F;
   if(isSegmentedType){
@@ -4249,9 +3060,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.segmentConnectorType = 'slidingDovetailRail';
     p.segmentConnectorRailMm = 'full-height';
   } else if(p.type==='hoopEarring') {
-    // Validate the generated unit before duplication. A hoop earring must be
-    // one closed connected solid; exporting a disconnected unit twice merely
-    // turns one construction defect into several STL components.
     const unitMesh=manifoldToMeshHelper(manifold);
     try{ manifold.delete(); }catch(e){}
     manifold=null;
@@ -4268,11 +3076,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hoopPairComponents=2;
     p.hoopPairPresentation='asymmetricJewelleryProductComposition';
   } else if(p.type==='haircomb') {
-    // Haircomb v9: canonicalize the final CSG result before the external
-    // validator sees it. The engine manifold is already a closed solid, but
-    // boolean unions between the crown and multiple tooth roots can preserve
-    // sub-micron coincident vertex copies. Welding these copies prevents false
-    // open-edge / non-manifold reports without altering visible geometry.
     const rawHairCombMesh=manifoldToMeshHelper(manifold);
     const rawReport=diagnoseClosedTriangleMesh(rawHairCombMesh.V,rawHairCombMesh.F,'haircomb/final-raw');
     console[rawReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rawReport.ok?'✓':'✗'),'haircomb/final-raw',rawReport);
@@ -4285,8 +3088,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
       p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport};
       throw new Error('AGDP haircomb canonical topology is invalid; inspect p.hairCombFinalDiagnostics');
     }
-    // Round-trip through manifold-3d so triangle winding and edge incidence
-    // are regenerated from the canonical welded topology.
     const rebuiltHairComb=meshToManifold(wasm,canonicalHairComb.V,canonicalHairComb.F);
     ({V,F}=manifoldToMeshHelper(rebuiltHairComb));
     const rebuiltReport=diagnoseClosedTriangleMesh(V,F,'haircomb/final-rebuilt');
@@ -4331,19 +3132,9 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     audit.warning='FALLA: masa de plata superior al límite ergonómico y económico';
   }
   audit.discardedComponents = connected.discarded||[];
-  // Exposes the fully-compiled internal params object (p), not just the
-  // caller's pre-compile() input -- type-specific builders (clip, money
-  // clip, haircomb, hoopEarring) write derived dimensions directly onto
-  // this object (p.clipFaceWidthMm, p.hairCombToothCount,
-  // p.hoopHookTipDiameterMm, etc.) for exactly this purpose: so the UI
-  // layer can display them without recomputing anything. Previously only
-  // {V,F,audit,bandW,innerR} were returned, so none of those fields were
-  // ever actually reachable by ui.js (which only ever had its OWN
-  // pre-compile params object) -- silently broken for clip/moneyClip
-  // (never wired to a UI button, so never noticed) and would have been
-  // silently broken for haircomb/hoopEarring too without this fix.
   return { V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p };
 }
+
 function manifoldToMeshHelper(manifoldObj){
   const out = manifoldObj.getMesh();
   try {
@@ -4363,17 +3154,7 @@ function ensureWasm(){
   }
   return _wasmReady;
 }
-// Dropping this reference is what actually reclaims the accumulated WASM
-// linear memory: every leaked (or simply not-yet-disposed) Manifold
-// object lives inside the WASM module instance's own heap, not in normal
-// JS-tracked memory. Once nothing references the old module (this is the
-// only place that held it), the browser's own garbage collector frees
-// the entire heap in one shot -- far more effective than continuing to
-// track down individual .delete() calls. The next ensureWasm() call
-// after this creates a genuinely fresh module with a clean heap. Used by
-// ui.js's soft-reset instead of a full window.location.reload(), so the
-// safety net resets the engine without leaving the page (nav, hero, the
-// visitor's place on the site) at all.
+
 window.AGDP_resetWasmModule = function(){
   _wasmReady = null;
 };
