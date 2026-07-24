@@ -3332,7 +3332,7 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // =============================================================================
 function makeHairCombManifold(wasm,p){
   /*
-   * HAIR COMB v6
+   * HAIR COMB v7
    *
    * Structural division:
    *   crown exterior = complete AGDP operation vocabulary;
@@ -3344,7 +3344,10 @@ function makeHairCombManifold(wasm,p){
    * recesses, frames, nodes, spikes, lattice, cage, wrapped, interweave,
    * continuity, vessel and dome. Operations are integrated into one closed
    * surface instead of intersecting decorative solids, preventing serrated
-   * boolean seams and microscopic corrupt geometry.
+   * boolean seams and microscopic corrupt geometry. In v7 the complete
+   * vocabulary reaches every exposed crown surface: front/exterior, top,
+   * left side and right side. The cranial interior and the lower tooth-bond
+   * surface remain geometrically smooth and operation-free.
    */
   const WIDTH_MM=clamp(Number.isFinite(p.mainSize)?p.mainSize:110,95,120);
 
@@ -3381,7 +3384,7 @@ function makeHairCombManifold(wasm,p){
   const Z_SEG=28;
   const parts=[];
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v6');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v7');
 
   const cellular=featureIntensity(p,'cellular');
   const lattice=featureIntensity(p,'lattice');
@@ -3391,7 +3394,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v6');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v7');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3455,11 +3458,6 @@ function makeHairCombManifold(wasm,p){
 
   function crownOperationField(x,t){
     const u=clamp((x/WIDTH_MM)+.5,0,1);
-
-    // Zero displacement on all four crown boundaries. This guarantees smooth,
-    // non-serrated silhouette edges independent of operation intensity.
-    const boundaryMask=Math.pow(Math.sin(Math.PI*u)*Math.sin(Math.PI*t),1.28);
-    if(boundaryMask<=1e-8) return 0;
 
     const nx=(x-peakX)/(peakSpread||1);
     const sx=(x-secondaryX)/(secondarySpread||1);
@@ -3570,8 +3568,27 @@ function makeHairCombManifold(wasm,p){
 
     const maxRaise=CROWN_DEPTH_MM*(1.05+1.20*surfaceRelief+0.42*architectural);
     const maxRecess=CROWN_DEPTH_MM*.38;
-    const signed=clamp(vocabulary*maxRaise*.33-recess*maxRecess,-maxRecess,maxRaise);
-    return boundaryMask*signed;
+    return clamp(vocabulary*maxRaise*.33-recess*maxRecess,-maxRecess,maxRaise);
+  }
+
+  // Surface-specific masks. Only the two forbidden zones are forced to zero:
+  // the cranial interior (never displaced anywhere) and the lower bond face
+  // that receives the teeth. Exposed top and lateral surfaces inherit the
+  // same operation field instead of being flattened at the old boundary mask.
+  const TOP_SURFACE_SEG=12;
+  const SIDE_SURFACE_SEG=10;
+  function toothBondFade(t){ return smooth01(clamp(t/.14,0,1)); }
+  function exteriorYField(x,t){ return toothBondFade(t)*crownOperationField(x,t); }
+  function topZField(x,d){
+    const depthMask=smooth01(clamp(d,0,1));
+    const field=crownOperationField(x,.82+.18*depthMask);
+    return field*.52*depthMask;
+  }
+  function sideXField(side,t,d){
+    const depthMask=smooth01(clamp(d,0,1));
+    const x=side<0?-WIDTH_MM*.5:WIDTH_MM*.5;
+    const field=crownOperationField(x,clamp(t,0,1));
+    return side*field*.46*depthMask*toothBondFade(t);
   }
 
   function orientClosedMesh(V,F){
@@ -3589,7 +3606,9 @@ function makeHairCombManifold(wasm,p){
     return {V,F};
   }
 
-  // One closed crown. No decorative boolean unions.
+  // One closed crown. No decorative boolean unions. The four exposed
+  // surfaces share vertices at every seam, so multisurface decoration remains
+  // one watertight shell rather than four intersecting decorative layers.
   {
     const V=[],F=[];
     const inner=Array.from({length:X_SEG+1},()=>Array(Z_SEG+1));
@@ -3606,8 +3625,22 @@ function makeHairCombManifold(wasm,p){
         const z=zb+(zt-zb)*t;
         inner[i][j]=V.length;
         V.push([x,cy-CROWN_DEPTH_MM*.5,z]);
+
+        // Exterior face: full vocabulary. Side and top offsets are blended
+        // into the last rows/columns so the visible corners turn continuously
+        // into the decorated lateral and upper surfaces.
+        const sideBand=.10;
+        const leftBlend=1-smooth01(clamp(u/sideBand,0,1));
+        const rightBlend=1-smooth01(clamp((1-u)/sideBand,0,1));
+        const topBlend=smooth01(clamp((t-.82)/.18,0,1));
+        const sideOffset=sideXField(-1,t,1)*leftBlend+sideXField(1,t,1)*rightBlend;
+        const topOffset=topZField(x,1)*topBlend;
         outer[i][j]=V.length;
-        V.push([x,cy+CROWN_DEPTH_MM*.5+crownOperationField(x,t),z]);
+        V.push([
+          x+sideOffset,
+          cy+CROWN_DEPTH_MM*.5+exteriorYField(x,t),
+          z+topOffset
+        ]);
       }
     }
 
@@ -3618,13 +3651,75 @@ function makeHairCombManifold(wasm,p){
         q(outer[i][j],outer[i+1][j],outer[i+1][j+1],outer[i][j+1]);
       }
     }
+
+    // Lower tooth-bond face: deliberately smooth and undecorated.
     for(let i=0;i<X_SEG;i++){
       q(inner[i][0],inner[i+1][0],outer[i+1][0],outer[i][0]);
-      q(inner[i][Z_SEG],outer[i][Z_SEG],outer[i+1][Z_SEG],inner[i+1][Z_SEG]);
     }
-    for(let j=0;j<Z_SEG;j++){
-      q(inner[0][j],outer[0][j],outer[0][j+1],inner[0][j+1]);
-      q(inner[X_SEG][j],inner[X_SEG][j+1],outer[X_SEG][j+1],outer[X_SEG][j]);
+
+    // Decorated top surface. d=0 is the untouched cranial edge; d=1 reuses
+    // the already-decorated exterior edge. Intermediate rows receive the same
+    // operation vocabulary as a continuous relief across the upper plane.
+    const topGrid=Array.from({length:X_SEG+1},()=>Array(TOP_SURFACE_SEG+1));
+    for(let i=0;i<=X_SEG;i++){
+      const u=i/X_SEG;
+      const x=-WIDTH_MM*.5+WIDTH_MM*u;
+      const zb=lowerZ(x);
+      const zt=Math.max(zb+ROOT_TRANSITION_MM,topZ(x));
+      const cy=contactY(x);
+      for(let k=0;k<=TOP_SURFACE_SEG;k++){
+        if(k===0){ topGrid[i][k]=inner[i][Z_SEG]; continue; }
+        if(k===TOP_SURFACE_SEG){ topGrid[i][k]=outer[i][Z_SEG]; continue; }
+        const d=k/TOP_SURFACE_SEG;
+        const sideBand=.10;
+        const leftBlend=1-smooth01(clamp(u/sideBand,0,1));
+        const rightBlend=1-smooth01(clamp((1-u)/sideBand,0,1));
+        const sideOffset=(sideXField(-1,1,d)*leftBlend+sideXField(1,1,d)*rightBlend);
+        topGrid[i][k]=V.length;
+        V.push([
+          x+sideOffset,
+          cy-CROWN_DEPTH_MM*.5+CROWN_DEPTH_MM*d+exteriorYField(x,1)*d,
+          zt+topZField(x,d)
+        ]);
+      }
+    }
+    for(let i=0;i<X_SEG;i++){
+      for(let k=0;k<TOP_SURFACE_SEG;k++){
+        q(topGrid[i][k],topGrid[i+1][k],topGrid[i+1][k+1],topGrid[i][k+1]);
+      }
+    }
+
+    // Decorated left and right surfaces. Their inner columns reuse the smooth
+    // cranial seam; their outer columns reuse the decorated exterior seam.
+    for(const side of [-1,1]){
+      const i=side<0?0:X_SEG;
+      const x=side<0?-WIDTH_MM*.5:WIDTH_MM*.5;
+      const zb=lowerZ(x);
+      const zt=Math.max(zb+ROOT_TRANSITION_MM,topZ(x));
+      const cy=contactY(x);
+      const sideGrid=Array.from({length:Z_SEG+1},()=>Array(SIDE_SURFACE_SEG+1));
+      for(let j=0;j<=Z_SEG;j++){
+        const t=j/Z_SEG;
+        const z=zb+(zt-zb)*t;
+        for(let k=0;k<=SIDE_SURFACE_SEG;k++){
+          if(k===0){ sideGrid[j][k]=inner[i][j]; continue; }
+          if(k===SIDE_SURFACE_SEG){ sideGrid[j][k]=outer[i][j]; continue; }
+          const d=k/SIDE_SURFACE_SEG;
+          const topBlend=smooth01(clamp((t-.82)/.18,0,1));
+          sideGrid[j][k]=V.length;
+          V.push([
+            x+sideXField(side,t,d),
+            cy-CROWN_DEPTH_MM*.5+CROWN_DEPTH_MM*d+exteriorYField(x,t)*d,
+            z+topZField(x,d)*topBlend
+          ]);
+        }
+      }
+      for(let j=0;j<Z_SEG;j++){
+        for(let k=0;k<SIDE_SURFACE_SEG;k++){
+          if(side<0) q(sideGrid[j][k],sideGrid[j][k+1],sideGrid[j+1][k+1],sideGrid[j+1][k]);
+          else q(sideGrid[j][k],sideGrid[j+1][k],sideGrid[j+1][k+1],sideGrid[j][k+1]);
+        }
+      }
     }
 
     const mesh=orientClosedMesh(V,F);
@@ -3705,13 +3800,13 @@ function makeHairCombManifold(wasm,p){
   p.hairCombRootTransitionMm=ROOT_TRANSITION_MM;
   p.hairCombCranialSagMm=SKULL_SAG_MM;
   p.hairCombToothSweepMm=TOOTH_SWEEP_MM;
-  p.hairCombDecorationZone='crownExteriorOnly';
+  p.hairCombDecorationZone='crownExteriorTopAndSides';
   p.hairCombStructuralTreatment=treatment;
   p.hairCombOperationVocabulary='fullRingCircumferenceVocabulary';
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v6';
+  p.hairCombGeneratorVersion='haircomb-v7';
 
   return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
