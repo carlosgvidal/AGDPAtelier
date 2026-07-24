@@ -3332,7 +3332,7 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // =============================================================================
 function makeHairCombManifold(wasm,p){
   /*
-   * HAIR COMB v7
+   * HAIR COMB v8
    *
    * Structural division:
    *   crown exterior = complete AGDP operation vocabulary;
@@ -3384,7 +3384,7 @@ function makeHairCombManifold(wasm,p){
   const Z_SEG=28;
   const parts=[];
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v7');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v8');
 
   const cellular=featureIntensity(p,'cellular');
   const lattice=featureIntensity(p,'lattice');
@@ -3394,7 +3394,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v7');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v8');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3576,7 +3576,7 @@ function makeHairCombManifold(wasm,p){
   // that receives the teeth. Exposed top and lateral surfaces inherit the
   // same operation field instead of being flattened at the old boundary mask.
   const TOP_SURFACE_SEG=12;
-  const SIDE_SURFACE_SEG=10;
+  const SIDE_SURFACE_SEG=TOP_SURFACE_SEG;
   function toothBondFade(t){ return smooth01(clamp(t/.14,0,1)); }
   function exteriorYField(x,t){ return toothBondFade(t)*crownOperationField(x,t); }
   function topZField(x,d){
@@ -3652,9 +3652,28 @@ function makeHairCombManifold(wasm,p){
       }
     }
 
-    // Lower tooth-bond face: deliberately smooth and undecorated.
+    // Lower tooth-bond face: deliberately smooth and undecorated. It is
+    // subdivided across depth using the SAME seam resolution as the lateral
+    // surfaces. This is topologically necessary: a coarse four-corner face
+    // meeting a subdivided side creates T-junctions and an open/non-manifold
+    // edge even when every point is geometrically coplanar.
+    const lowerGrid=Array.from({length:X_SEG+1},()=>Array(SIDE_SURFACE_SEG+1));
+    for(let i=0;i<=X_SEG;i++){
+      const x=-WIDTH_MM*.5+WIDTH_MM*(i/X_SEG);
+      const cy=contactY(x);
+      const zb=lowerZ(x);
+      for(let k=0;k<=SIDE_SURFACE_SEG;k++){
+        if(k===0){ lowerGrid[i][k]=inner[i][0]; continue; }
+        if(k===SIDE_SURFACE_SEG){ lowerGrid[i][k]=outer[i][0]; continue; }
+        const d=k/SIDE_SURFACE_SEG;
+        lowerGrid[i][k]=V.length;
+        V.push([x,cy-CROWN_DEPTH_MM*.5+CROWN_DEPTH_MM*d,zb]);
+      }
+    }
     for(let i=0;i<X_SEG;i++){
-      q(inner[i][0],inner[i+1][0],outer[i+1][0],outer[i][0]);
+      for(let k=0;k<SIDE_SURFACE_SEG;k++){
+        q(lowerGrid[i][k],lowerGrid[i+1][k],lowerGrid[i+1][k+1],lowerGrid[i][k+1]);
+      }
     }
 
     // Decorated top surface. d=0 is the untouched cranial edge; d=1 reuses
@@ -3702,6 +3721,12 @@ function makeHairCombManifold(wasm,p){
         const t=j/Z_SEG;
         const z=zb+(zt-zb)*t;
         for(let k=0;k<=SIDE_SURFACE_SEG;k++){
+          // Reuse the complete lower and upper seam rows, not merely their
+          // endpoints. The previous implementation generated coincident but
+          // independently indexed vertices here, producing T-junctions at the
+          // tooth-bond edge and duplicate open seams at both top corners.
+          if(j===0){ sideGrid[j][k]=lowerGrid[i][k]; continue; }
+          if(j===Z_SEG){ sideGrid[j][k]=topGrid[i][k]; continue; }
           if(k===0){ sideGrid[j][k]=inner[i][j]; continue; }
           if(k===SIDE_SURFACE_SEG){ sideGrid[j][k]=outer[i][j]; continue; }
           const d=k/SIDE_SURFACE_SEG;
@@ -3806,7 +3831,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v7';
+  p.hairCombGeneratorVersion='haircomb-v8';
 
   return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
