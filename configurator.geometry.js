@@ -799,6 +799,51 @@ function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN)
 // own code; this general pass catches the defect regardless of its
 // exact source rather than requiring every individual embed calculation
 // to be proven safe.
+
+// Canonicalizes a mesh before external topology validation. Manifold's CSG
+// output is geometrically closed, but separate boolean fragments can retain
+// numerically coincident vertices. Validators that build edge incidence from
+// vertex indices then report false open/non-manifold seams. This pass welds
+// only sub-micron coincidences, removes collapsed/duplicate triangles, and
+// compacts indices without changing any printable feature.
+function canonicalizeMeshForValidation(V,F,tolerance){
+  const tol=Math.max(1e-7,Number.isFinite(tolerance)?tolerance:1e-5);
+  const inv=1/tol;
+  const buckets=new Map();
+  const remap=new Int32Array(V.length);
+  const NV=[];
+  function key(v){return Math.round(v[0]*inv)+','+Math.round(v[1]*inv)+','+Math.round(v[2]*inv);}
+  for(let i=0;i<V.length;i++){
+    const v=V[i];
+    const k=key(v);
+    let idx=buckets.get(k);
+    if(idx===undefined){idx=NV.length;buckets.set(k,idx);NV.push([v[0],v[1],v[2]]);}
+    remap[i]=idx;
+  }
+  const NF=[];
+  const seen=new Set();
+  let removedDegenerate=0,removedDuplicate=0;
+  for(const f of F){
+    const a=remap[f[0]],b=remap[f[1]],c=remap[f[2]];
+    if(a===b||b===c||c===a){removedDegenerate++;continue;}
+    const va=NV[a],vb=NV[b],vc=NV[c];
+    const abx=vb[0]-va[0],aby=vb[1]-va[1],abz=vb[2]-va[2];
+    const acx=vc[0]-va[0],acy=vc[1]-va[1],acz=vc[2]-va[2];
+    const cx=aby*acz-abz*acy,cy=abz*acx-abx*acz,cz=abx*acy-aby*acx;
+    if(cx*cx+cy*cy+cz*cz<1e-20){removedDegenerate++;continue;}
+    const sorted=[a,b,c].sort((x,y)=>x-y);
+    const fk=sorted[0]+','+sorted[1]+','+sorted[2];
+    if(seen.has(fk)){removedDuplicate++;continue;}
+    seen.add(fk);NF.push([a,b,c]);
+  }
+  const used=new Uint8Array(NV.length);
+  for(const f of NF){used[f[0]]=used[f[1]]=used[f[2]]=1;}
+  const compact=new Int32Array(NV.length).fill(-1),CV=[];
+  for(let i=0;i<NV.length;i++)if(used[i]){compact[i]=CV.length;CV.push(NV[i]);}
+  const CF=NF.map(f=>[compact[f[0]],compact[f[1]],compact[f[2]]]);
+  return {V:CV,F:CF,weldedVertices:V.length-CV.length,removedDegenerate,removedDuplicate};
+}
+
 function removeFloatingComponents(V,F,keepCount){
   keepCount=Math.max(1,keepCount||1);
   const vertFaces=new Map();
@@ -3332,7 +3377,7 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // =============================================================================
 function makeHairCombManifold(wasm,p){
   /*
-   * HAIR COMB v8
+   * HAIR COMB v9
    *
    * Structural division:
    *   crown exterior = complete AGDP operation vocabulary;
@@ -3831,7 +3876,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v8';
+  p.hairCombGeneratorVersion='haircomb-v9';
 
   return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
@@ -4107,6 +4152,26 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hoopPairCenterSpacingMm=pairSpacing;
     p.hoopPairComponents=2;
     p.hoopPairPresentation='asymmetricJewelleryProductComposition';
+  } else if(p.type==='haircomb') {
+    // Haircomb v9: canonicalize the final CSG result before the external
+    // validator sees it. The engine manifold is already a closed solid, but
+    // boolean unions between the crown and multiple tooth roots can preserve
+    // sub-micron coincident vertex copies. Welding these copies prevents false
+    // open-edge / non-manifold reports without altering visible geometry.
+    const rawHairCombMesh=manifoldToMeshHelper(manifold);
+    try{ manifold.delete(); }catch(e){}
+    manifold=null;
+    const canonicalHairComb=canonicalizeMeshForValidation(rawHairCombMesh.V,rawHairCombMesh.F,1e-5);
+    // Round-trip through manifold-3d so triangle winding and edge incidence
+    // are regenerated from the canonical welded topology.
+    const rebuiltHairComb=meshToManifold(wasm,canonicalHairComb.V,canonicalHairComb.F);
+    ({V,F}=manifoldToMeshHelper(rebuiltHairComb));
+    try{ rebuiltHairComb.delete(); }catch(e){}
+    p.hairCombTopologyRepair='subMicronWeldAndManifoldRoundTrip';
+    p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
+    p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
+    p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
+    p.hairCombGeneratorVersion='haircomb-v9';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
