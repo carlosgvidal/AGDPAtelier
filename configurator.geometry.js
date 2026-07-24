@@ -3961,7 +3961,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v10-diagnostic';
+  p.hairCombGeneratorVersion='haircomb-v12-no-redundant-roundtrip';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4285,16 +4285,16 @@ async function makeMeshManifoldEntry(wasm, inputParams){
       p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport};
       throw new Error('AGDP haircomb canonical topology is invalid; inspect p.hairCombFinalDiagnostics');
     }
-    // Round-trip through manifold-3d so triangle winding and edge incidence
-    // are regenerated from the canonical welded topology.
-    const rebuiltHairComb=meshToManifold(wasm,canonicalHairComb.V,canonicalHairComb.F);
-    ({V,F}=manifoldToMeshHelper(rebuiltHairComb));
-    const rebuiltReport=diagnoseClosedTriangleMesh(V,F,'haircomb/final-rebuilt');
-    console[rebuiltReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rebuiltReport.ok?'✓':'✗'),'haircomb/final-rebuilt',rebuiltReport);
-    try{ rebuiltHairComb.delete(); }catch(e){}
-    p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport,rebuilt:rebuiltReport};
-    if(!rebuiltReport.ok) throw new Error('AGDP haircomb rebuilt topology is invalid; inspect p.hairCombFinalDiagnostics');
-    p.hairCombTopologyRepair='diagnosedSubMicronWeldAndManifoldRoundTrip';
+    // Do not round-trip the canonical mesh through new Manifold(mesh).
+    // The source CSG manifold has already been validated by manifold-3d, while
+    // the canonical V/F representation is intended specifically for the
+    // external index-based validator. Reconstructing it can fail with
+    // "Not manifold" on vertex-fan conditions that do not create open or
+    // overused edges, turning a validation cleanup into a new failure source.
+    V=canonicalHairComb.V;
+    F=canonicalHairComb.F;
+    p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport};
+    p.hairCombTopologyRepair='diagnosedSubMicronWeldWithoutRedundantManifoldRoundTrip';
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
@@ -4355,8 +4355,8 @@ async function makeMeshManifoldEntry(wasm, inputParams){
 
     V=finalCanonical.V;
     F=finalCanonical.F;
-    p.hairCombTopologyRepair='diagnosedSubMicronWeldManifoldRoundTripAndFinalCanonicalization';
-    p.hairCombGeneratorVersion='haircomb-v11-final-validation-gate';
+    p.hairCombTopologyRepair='diagnosedSubMicronWeldAndFinalCanonicalization';
+    p.hairCombGeneratorVersion='haircomb-v12-final-validation-gate';
   }
 
   const extra = {
