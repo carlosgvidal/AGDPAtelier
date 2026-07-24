@@ -267,6 +267,21 @@ function concatenateSegmentMeshes(segmentManifolds){
   }
   return { V, F };
 }
+
+// Builds an exported left/right pair directly from one validated unit mesh.
+// Mirroring is performed at mesh level and triangle winding is reversed on
+// the mirrored copy, avoiding the orientation ambiguity of a negative-scale
+// manifold transform. The two copies are concatenated, never boolean-unioned,
+// so the exported result is exactly two closed components.
+function mirroredPairMesh(unitV, unitF, centerSpacing){
+  const half=centerSpacing/2;
+  const leftV=unitV.map(v=>[v[0]-half,v[1],v[2]]);
+  const rightV=unitV.map(v=>[-v[0]+half,v[1],v[2]]);
+  const offset=leftV.length;
+  const leftF=unitF.map(f=>[f[0],f[1],f[2]]);
+  const rightF=unitF.map(f=>[f[0]+offset,f[2]+offset,f[1]+offset]);
+  return {V:leftV.concat(rightV),F:leftF.concat(rightF)};
+}
 function cylinderBetween(wasm, p0, p1, radius, segments) {
   const { Manifold } = wasm;
   const dx=p1[0]-p0[0], dy=p1[1]-p0[1], dz=p1[2]-p0[2];
@@ -3661,12 +3676,14 @@ function makeHoopEarringManifold(wasm, p){
     // embedded directly into the annular body. This removes the previous
     // sphere-chain/root-bulb boolean stack, the principal source of dense
     // local retriangulation and mirror-finish triangular reflections.
-    const rootEmbed=Math.max(annularWall*1.05,(p.minFeature||.8)*2.2);
-    const rootY=outerR-rootEmbed;
-    const shoulderY=outerR+HOOK_ROOT_R_MM*.52;
+    // Root the hook in the middle of the annular wall, not near or inside
+    // the aperture. The previous outerR-rootEmbed formula could place the
+    // first sweep rings at or below innerR on thick-wall seeds, leaving the
+    // hook as a separate solid after the boolean union.
+    const rootY=innerR+annularWall*.58;
     const hookPts=[];
     const hookRadii=[];
-    const hookStartY=rootY-annularWall*.16;
+    const hookStartY=rootY;
     const riseY=outerR+HOOK_RISE_MM;
     const riseSteps=18;
     for(let i=0;i<=riseSteps;i++){
@@ -3779,17 +3796,23 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.segmentConnectorType = 'slidingDovetailRail';
     p.segmentConnectorRailMm = 'full-height';
   } else if(p.type==='hoopEarring') {
-    const pairGap=Math.max(8,(p.hoopBodySpanMm||p.mainSize||26)+6);
-    const left=manifold.translate([-pairGap/2,0,0]);
-    const right=manifold.scale([-1,1,1]).translate([pairGap/2,0,0]);
-    const ml=manifoldToMeshHelper(left);
-    const mr=manifoldToMeshHelper(right);
-    V=ml.V.concat(mr.V);
-    F=ml.F.concat(mr.F.map(f=>[f[0]+ml.V.length,f[1]+ml.V.length,f[2]+ml.V.length]));
-    try{ left.delete(); }catch(e){}
-    try{ right.delete(); }catch(e){}
+    // Validate the generated unit before duplication. A hoop earring must be
+    // one closed connected solid; exporting a disconnected unit twice merely
+    // turns one construction defect into several STL components.
+    const unitMesh=manifoldToMeshHelper(manifold);
     try{ manifold.delete(); }catch(e){}
     manifold=null;
+    const unitConnectivity=removeFloatingComponents(unitMesh.V,unitMesh.F,1);
+    if(unitConnectivity.totalComponents!==1||unitConnectivity.discarded.length!==0){
+      throw new Error('AGDP hoop earring unit is disconnected; generation rejected before pair export');
+    }
+    const xs=unitConnectivity.V.map(v=>v[0]);
+    const unitDepth=xs.length?Math.max(...xs)-Math.min(...xs):0;
+    const minimumClearGapMm=6;
+    const pairSpacing=Math.max((p.hoopBodySpanMm||p.mainSize||26)+minimumClearGapMm,unitDepth+minimumClearGapMm);
+    ({V,F}=mirroredPairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
+    p.hoopPairCenterSpacingMm=pairSpacing;
+    p.hoopPairComponents=2;
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
