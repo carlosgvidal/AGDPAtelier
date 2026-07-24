@@ -3332,28 +3332,153 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // =============================================================================
 function makeHairCombManifold(wasm,p){
   /*
-   * HAIR COMB v4
-   * Structural envelope follows the dimensional ranges in the supplied
-   * AGDP infographic. The crown is the only generative/decorated zone.
-   * Teeth, roots and rear contact surface remain fixed and undecorated.
+   * HAIR COMB v5
+   * - Convex ergonomic curvature in +Y.
+   * - Tooth length/count/diameter scale deterministically with width.
+   * - Teeth and root transition remain fixed and undecorated.
+   * - All seed-driven operations are integrated directly into the crown's
+   *   exterior surface, avoiding intersecting decorative solids and the
+   *   resulting crown corruption / serrated boolean seams.
    */
-  const WIDTH_MM=clamp(Number.isFinite(p.mainSize)?p.mainSize:100,95,120);
-  const CROWN_HEIGHT_MM=clamp(Number.isFinite(p.combTopHeightMm)?p.combTopHeightMm:48,45,60);
-  const CROWN_DEPTH_MM=clamp(Number.isFinite(p.combBodyWallMm)?p.combBodyWallMm:4.0,3.5,4.5);
-  const TOOTH_LENGTH_MM=clamp(Number.isFinite(p.combToothLengthMm)?p.combToothLengthMm:35,30,40);
-  const TOOTH_COUNT=Math.round(clamp(Number.isFinite(p.combToothCount)?p.combToothCount:8,7,9));
-  const TOOTH_DIAMETER_MM=clamp(Number.isFinite(p.combToothDiameterMm)?p.combToothDiameterMm:2.8,2.5,3.0);
-  const ROOT_TRANSITION_MM=clamp(Number.isFinite(p.combRootTransitionMm)?p.combRootTransitionMm:5.2,4.5,6.0);
-  const INNER_RADIUS_MM=Math.max(1.5,Number.isFinite(p.combInnerRadiusMm)?p.combInnerRadiusMm:1.8);
-  const SIDE_MARGIN_MM=clamp(WIDTH_MM*.075,6.5,9.0);
+  const WIDTH_MM=clamp(Number.isFinite(p.mainSize)?p.mainSize:110,95,120);
+
+  // Geometry follows the three UI size families even when upstream parameter
+  // compilation drops individual comb fields.
+  function piecewiseByWidth(v95,v110,v120){
+    if(WIDTH_MM<=110){
+      const q=clamp((WIDTH_MM-95)/15,0,1);
+      return v95+(v110-v95)*q;
+    }
+    const q=clamp((WIDTH_MM-110)/10,0,1);
+    return v110+(v120-v110)*q;
+  }
+
+  const CROWN_HEIGHT_MM=clamp(
+    Number.isFinite(p.combTopHeightMm)?p.combTopHeightMm:piecewiseByWidth(45,52,60),
+    45,60
+  );
+  const CROWN_DEPTH_MM=piecewiseByWidth(3.5,4.0,4.5);
+  const TOOTH_LENGTH_MM=piecewiseByWidth(30,35,40);
+  const TOOTH_COUNT=Math.round(piecewiseByWidth(7,8,9));
+  const TOOTH_DIAMETER_MM=piecewiseByWidth(2.5,2.8,3.0);
+  const ROOT_TRANSITION_MM=piecewiseByWidth(4.5,5.2,6.0);
+  const SKULL_SAG_MM=piecewiseByWidth(6.0,8.0,11.0);
+  const TOOTH_SWEEP_MM=piecewiseByWidth(4.0,5.5,8.0);
+  const SIDE_MARGIN_MM=piecewiseByWidth(6.5,8.0,9.0);
   const TOOTH_SPAN_MM=WIDTH_MM-2*SIDE_MARGIN_MM;
   const TOOTH_SPACING_MM=TOOTH_COUNT>1?TOOTH_SPAN_MM/(TOOTH_COUNT-1):0;
-  const SKULL_SAG_MM=clamp(Number.isFinite(p.combCranialCurveMm)?p.combCranialCurveMm:8.0,6.0,11.0);
-  const TOOTH_SWEEP_MM=clamp(Number.isFinite(p.combToothSweepMm)?p.combToothSweepMm:5.5,4.0,8.0);
-  const CROWN_SAMPLES=96;
-  const parts=[];
 
-  // Outward orientation check for every custom closed mesh before Manifold.
+  const X_SEG=88;
+  const Z_SEG=20;
+  const parts=[];
+  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-crown-v5');
+
+  const cellular=featureIntensity(p,'cellular');
+  const lattice=featureIntensity(p,'lattice');
+  const cage=featureIntensity(p,'cage');
+  const wrapped=featureIntensity(p,'wrapped');
+  const inter=featureIntensity(p,'interweave');
+  const continuity=featureIntensity(p,'continuity');
+  const vessel=featureIntensity(p,'vessel');
+  const dome=featureIntensity(p,'dome');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v5');
+
+  // Stable seed-derived crown identity. These values affect only the crown.
+  const phaseA=rng()*Math.PI*2;
+  const phaseB=rng()*Math.PI*2;
+  const peakX=(-.26+.52*rng())*WIDTH_MM;
+  const peakSpread=WIDTH_MM*(.16+.13*rng());
+  const secondaryX=(-.32+.64*rng())*WIDTH_MM;
+  const secondarySpread=WIDTH_MM*(.10+.10*rng());
+  const asymmetry=clamp(p.asymmetry||0,0,1);
+
+  function smooth01(x){
+    x=clamp(x,0,1);
+    return x*x*(3-2*x);
+  }
+
+  // Convex when viewed from the exterior: the center projects in +Y and the
+  // ends recede toward Y=0. This is the opposite sign of the rejected output.
+  function contactY(x){
+    const n=clamp(x/(WIDTH_MM*.5),-1,1);
+    return SKULL_SAG_MM*(1-n*n);
+  }
+
+  function lowerZ(x){
+    const n=clamp(x/(WIDTH_MM*.5),-1,1);
+    return 2.0+2.0*(1-n*n);
+  }
+
+  function topZ(x){
+    const n=clamp(x/(WIDTH_MM*.5),-1,1);
+    const center=Math.pow(Math.max(0,1-n*n),.67);
+    const shoulders=
+      1.8*Math.exp(-Math.pow((n-.57)/.19,2))+
+      1.8*Math.exp(-Math.pow((n+.57)/.19,2));
+    // Smooth low-frequency crown silhouette variation; no tooth changes.
+    const shiftedPeak=3.4*Math.exp(-Math.pow((x-peakX)/peakSpread,2));
+    const secondPeak=1.8*Math.exp(-Math.pow((x-secondaryX)/secondarySpread,2));
+    const asym=asymmetry*1.6*Math.sin(Math.PI*(n+1)*.5+phaseA)*(1-n*n);
+    return lowerZ(x)+ROOT_TRANSITION_MM+
+      CROWN_HEIGHT_MM*(.30+.70*center)+shoulders+shiftedPeak+secondPeak+asym;
+  }
+
+  // Integrated crown operation field. It is zero at every crown boundary,
+  // so the outer contour, side caps and lower edge remain clean and smooth.
+  function crownRelief(x,t){
+    const u=clamp((x/WIDTH_MM)+.5,0,1);
+    const edgeMask=Math.pow(Math.sin(Math.PI*u)*Math.sin(Math.PI*t),1.65);
+    if(edgeMask<=0) return 0;
+
+    const nx=(x-peakX)/(peakSpread||1);
+    const volumetric=Math.exp(-nx*nx*1.45);
+    const secondary=Math.exp(-Math.pow((x-secondaryX)/(secondarySpread||1),2)*1.6);
+
+    const diagA=.5+.5*Math.sin(2*Math.PI*(2.0*u+1.35*t)+phaseA);
+    const diagB=.5+.5*Math.sin(2*Math.PI*(2.0*u-1.25*t)+phaseB);
+    const latticeField=Math.pow(Math.max(diagA,diagB),5.2);
+    const interweaveField=Math.pow(diagA*diagB,2.0);
+    const wrappedField=Math.pow(.5+.5*Math.sin(2*Math.PI*(3.2*t+.55*u)+phaseB),4.5);
+
+    // Cellular vocabulary as smooth domes/dimples rather than boolean holes.
+    let cellField=0;
+    const cellCount=3+Math.round(cellular*3);
+    for(let i=0;i<cellCount;i++){
+      const cx=(i+.5)/cellCount;
+      const cz=.25+.50*(.5+.5*Math.sin(i*2.13+phaseA));
+      const dx=(u-cx)/(0.10+0.025*cellular);
+      const dz=(t-cz)/(0.15+0.035*cellular);
+      cellField+=Math.exp(-(dx*dx+dz*dz)*1.9);
+    }
+    cellField=clamp(cellField,0,1.35);
+
+    let field=0;
+    if(treatment==='solid'){
+      field=
+        (1.10+.80*dome+.55*vessel)*volumetric+
+        .42*continuity*secondary+
+        .18*wrapped*wrappedField;
+    }else if(treatment==='volumetric'){
+      field=
+        (1.35+.85*dome+.65*vessel)*volumetric+
+        (.70+.45*vessel)*secondary+
+        .35*cellular*cellField+
+        .20*continuity*wrappedField;
+    }else{
+      field=
+        (.65+.85*lattice+.45*cage)*latticeField+
+        .55*inter*interweaveField+
+        .38*wrapped*wrappedField+
+        .30*cellular*cellField+
+        .30*volumetric;
+    }
+
+    // Negative cellular recesses are shallow and remain above minimum wall.
+    const recess=.34*cellular*Math.max(0,cellField-.72);
+    const maxRaise=CROWN_DEPTH_MM*(treatment==='volumetric'?.58:.46);
+    return edgeMask*(clamp(field*maxRaise*.55,0,maxRaise)-recess);
+  }
+
   function orientClosedMesh(V,F){
     let signed6=0;
     for(const f of F){
@@ -3365,153 +3490,74 @@ function makeHairCombManifold(wasm,p){
     }
     if(signed6<0){
       for(let i=0;i<F.length;i++) F[i]=[F[i][0],F[i][2],F[i][1]];
-      signed6=-signed6;
     }
-    return {V,F,signedVolumeMm3:signed6/6};
+    return {V,F};
   }
 
-  // Ergonomic curvature is intentionally opposite to the previous output:
-  // the crown center and tooth tips recede in -Y relative to the side ends.
-  function contactY(x){
-    const n=clamp(x/(WIDTH_MM*.5),-1,1);
-    return -SKULL_SAG_MM*(1-n*n);
-  }
-  function lowerZ(x){
-    const n=clamp(x/(WIDTH_MM*.5),-1,1);
-    return 2.0+2.2*(1-n*n);
-  }
-  function topZ(x){
-    const n=clamp(x/(WIDTH_MM*.5),-1,1);
-    const central=Math.pow(Math.max(0,1-n*n),.66);
-    const shoulder=
-      2.1*Math.exp(-Math.pow((n-.56)/.19,2))+
-      2.1*Math.exp(-Math.pow((n+.56)/.19,2));
-    return lowerZ(x)+ROOT_TRANSITION_MM+CROWN_HEIGHT_MM*(.31+.69*central)+shoulder;
-  }
-
-  // Crown base: one closed curved plate with explicit front/back winding.
-  // Decorations and operations are added only to this manifold afterward.
-  let crown;
+  // Crown: one watertight structured grid. The inner contact surface is
+  // smooth. All formal operations are encoded only on the exterior surface.
   {
     const V=[],F=[];
-    const innerBottom=[],innerTop=[],outerBottom=[],outerTop=[];
-    const halfD=CROWN_DEPTH_MM*.5;
-    for(let i=0;i<=CROWN_SAMPLES;i++){
-      const x=-WIDTH_MM*.5+WIDTH_MM*(i/CROWN_SAMPLES);
-      const y=contactY(x);
+    const inner=Array.from({length:X_SEG+1},()=>Array(Z_SEG+1));
+    const outer=Array.from({length:X_SEG+1},()=>Array(Z_SEG+1));
+
+    for(let i=0;i<=X_SEG;i++){
+      const u=i/X_SEG;
+      const x=-WIDTH_MM*.5+WIDTH_MM*u;
       const zb=lowerZ(x);
       const zt=Math.max(zb+ROOT_TRANSITION_MM,topZ(x));
-      innerBottom.push(V.length);V.push([x,y-halfD,zb]);
-      innerTop.push(V.length);V.push([x,y-halfD,zt]);
-      outerBottom.push(V.length);V.push([x,y+halfD,zb]);
-      outerTop.push(V.length);V.push([x,y+halfD,zt]);
+      const cy=contactY(x);
+      for(let j=0;j<=Z_SEG;j++){
+        const t=j/Z_SEG;
+        const z=zb+(zt-zb)*t;
+        inner[i][j]=V.length;
+        V.push([x,cy-CROWN_DEPTH_MM*.5,z]);
+        outer[i][j]=V.length;
+        V.push([x,cy+CROWN_DEPTH_MM*.5+crownRelief(x,t),z]);
+      }
     }
+
     const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
-    for(let i=0;i<CROWN_SAMPLES;i++){
-      q(innerBottom[i],innerTop[i],innerTop[i+1],innerBottom[i+1]);
-      q(outerBottom[i],outerBottom[i+1],outerTop[i+1],outerTop[i]);
-      q(innerTop[i],outerTop[i],outerTop[i+1],innerTop[i+1]);
-      q(innerBottom[i],innerBottom[i+1],outerBottom[i+1],outerBottom[i]);
+    for(let i=0;i<X_SEG;i++){
+      for(let j=0;j<Z_SEG;j++){
+        q(inner[i][j],inner[i][j+1],inner[i+1][j+1],inner[i+1][j]);
+        q(outer[i][j],outer[i+1][j],outer[i+1][j+1],outer[i][j+1]);
+      }
     }
-    q(innerBottom[0],outerBottom[0],outerTop[0],innerTop[0]);
-    q(innerBottom[CROWN_SAMPLES],innerTop[CROWN_SAMPLES],outerTop[CROWN_SAMPLES],outerBottom[CROWN_SAMPLES]);
-    const mesh=orientClosedMesh(V,F);
-    crown=meshToManifold(wasm,mesh.V,mesh.F);
-  }
-
-  // Crown-only decorative operations. They remain shallow, outside the rear
-  // contact surface and above the protected root-transition zone.
-  {
-    const fw=p.featureWeights||{};
-    const cellular=featureIntensity(p,'cellular');
-    const lattice=featureIntensity(p,'lattice');
-    const inter=featureIntensity(p,'interweave');
-    const vessel=featureIntensity(p,'vessel');
-    const dome=featureIntensity(p,'dome');
-    const continuity=featureIntensity(p,'continuity');
-    const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|haircomb-crown-v4');
-    const accentCount=Math.round(clamp(4+(cellular+lattice+inter+continuity)*1.4,4,8));
-    const accents=[];
-
-    for(let i=0;i<accentCount;i++){
-      const u=(i+1)/(accentCount+1);
-      const x=-WIDTH_MM*.38+WIDTH_MM*.76*u;
-      const z0=lowerZ(x)+ROOT_TRANSITION_MM+5.0;
-      const z1=Math.min(topZ(x)-4.0,z0+7.0+6.0*rng());
-      if(z1<=z0+1.5) continue;
-      const y=contactY(x)+CROWN_DEPTH_MM*.5;
-      const lean=(i%2?1:-1)*(1.4+1.2*rng());
-      const pts=[[x,y+.15,z0],[x+lean,y+.45,z1]];
-      const r=.72+.20*Math.max(cellular,lattice,inter);
-      const mesh=variableEllipticalTubeMesh(pts,[[r,r*.62],[r*.82,r*.54]],16,false);
-      accents.push(meshToManifold(wasm,mesh.V,mesh.F));
+    for(let i=0;i<X_SEG;i++){
+      q(inner[i][0],inner[i+1][0],outer[i+1][0],outer[i][0]);
+      q(inner[i][Z_SEG],outer[i][Z_SEG],outer[i+1][Z_SEG],inner[i+1][Z_SEG]);
+    }
+    for(let j=0;j<Z_SEG;j++){
+      q(inner[0][j],outer[0][j],outer[0][j+1],inner[0][j+1]);
+      q(inner[X_SEG][j],inner[X_SEG][j+1],outer[X_SEG][j+1],outer[X_SEG][j]);
     }
 
-    const centralR=clamp(CROWN_HEIGHT_MM*.105,4.8,6.2);
-    accents.push(flattenedNodeAt(
-      wasm,
-      [0,contactY(0)+CROWN_DEPTH_MM*.5+.35,lowerZ(0)+ROOT_TRANSITION_MM+CROWN_HEIGHT_MM*.39],
-      centralR,
-      .72+.28*Math.max(vessel,dome),
-      centralR*.92,
-      32
-    ));
-
-    if(accents.length){
-      const decorated=unionAll(wasm,[crown,...accents]);
-      crown=decorated;
-    }
-  }
-  parts.push(crown);
-
-  // Fixed root rail. It is structural and receives no operations.
-  {
-    const V=[],F=[];
-    const iB=[],iT=[],oB=[],oT=[];
-    const railDepth=CROWN_DEPTH_MM;
-    const halfD=railDepth*.5;
-    for(let i=0;i<=CROWN_SAMPLES;i++){
-      const x=-WIDTH_MM*.5+WIDTH_MM*(i/CROWN_SAMPLES);
-      const y=contactY(x);
-      const z0=lowerZ(x)-.15;
-      const z1=z0+ROOT_TRANSITION_MM;
-      iB.push(V.length);V.push([x,y-halfD,z0]);
-      iT.push(V.length);V.push([x,y-halfD,z1]);
-      oB.push(V.length);V.push([x,y+halfD,z0]);
-      oT.push(V.length);V.push([x,y+halfD,z1]);
-    }
-    const q=(a,b,c,d)=>{F.push([a,b,c],[a,c,d]);};
-    for(let i=0;i<CROWN_SAMPLES;i++){
-      q(iB[i],iT[i],iT[i+1],iB[i+1]);
-      q(oB[i],oB[i+1],oT[i+1],oT[i]);
-      q(iT[i],oT[i],oT[i+1],iT[i+1]);
-      q(iB[i],iB[i+1],oB[i+1],oB[i]);
-    }
-    q(iB[0],oB[0],oT[0],iT[0]);
-    q(iB[CROWN_SAMPLES],iT[CROWN_SAMPLES],oT[CROWN_SAMPLES],oB[CROWN_SAMPLES]);
     const mesh=orientClosedMesh(V,F);
     parts.push(meshToManifold(wasm,mesh.V,mesh.F));
   }
 
-  // Fixed ergonomic teeth: smooth taper, rounded tips, slight fan and the
-  // same -Y insertion direction as the crown. No decoration is permitted.
+  // Smooth fixed teeth. Their dimensions scale with the selected width but
+  // never receive seed-driven operations or decoration.
   function makeToothMesh(xRoot,lateral){
-    const rings=15,seg=24;
+    const rings=17,seg=28;
     const V=[],F=[],R=[];
-    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.52;
+    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.55;
     const yRoot=contactY(xRoot);
-    const fan=lateral*2.4;
+    const fan=lateral*piecewiseByWidth(1.8,2.4,3.0);
+
     for(let i=0;i<rings;i++){
       const u=i/(rings-1);
-      const ease=u*u*(3-2*u);
+      const ease=smooth01(u);
       const x=xRoot+fan*ease;
-      const y=yRoot-TOOTH_SWEEP_MM*(.22*u+.78*u*u);
+      // Teeth follow the same convex +Y direction and continue gently outward.
+      const y=yRoot+TOOTH_SWEEP_MM*(.18*u+.82*u*u);
       const z=zRoot-TOOTH_LENGTH_MM*u;
       const r0=TOOTH_DIAMETER_MM*.5;
-      const r1=Math.max(.72,r0*.53);
-      const taper=Math.pow(u,.90);
+      const r1=Math.max(.72,r0*.52);
+      const taper=Math.pow(u,.88);
       const rx=r0*(1-taper)+r1*taper;
-      const ry=rx*.86;
+      const ry=rx*.84;
       R[i]=[];
       for(let k=0;k<seg;k++){
         const a=2*Math.PI*k/seg;
@@ -3519,6 +3565,7 @@ function makeHairCombManifold(wasm,p){
         V.push([x+rx*Math.cos(a),y+ry*Math.sin(a),z]);
       }
     }
+
     for(let i=0;i<rings-1;i++){
       for(let k=0;k<seg;k++){
         const j=(k+1)%seg;
@@ -3526,20 +3573,19 @@ function makeHairCombManifold(wasm,p){
         F.push([R[i][k],R[i+1][j],R[i+1][k]]);
       }
     }
+
     const root=V.length;
     V.push([xRoot,yRoot,zRoot]);
     for(let k=0;k<seg;k++){
       const j=(k+1)%seg;
-      // Root cap must oppose the first side ring. The previous order
-      // produced a locally inconsistent winding even though the total
-      // signed volume could still be made positive by flipping all faces.
       F.push([root,R[0][j],R[0][k]]);
     }
+
     const tip=V.length;
     V.push([
       xRoot+fan,
-      yRoot-TOOTH_SWEEP_MM,
-      zRoot-TOOTH_LENGTH_MM-.75
+      yRoot+TOOTH_SWEEP_MM,
+      zRoot-TOOTH_LENGTH_MM-.72
     ]);
     for(let k=0;k<seg;k++){
       const j=(k+1)%seg;
@@ -3562,15 +3608,15 @@ function makeHairCombManifold(wasm,p){
   p.hairCombToothSpacingMm=TOOTH_SPACING_MM;
   p.hairCombToothLengthMm=TOOTH_LENGTH_MM;
   p.hairCombToothRootDiameterMm=TOOTH_DIAMETER_MM;
-  p.hairCombToothTipDiameterMm=Math.max(1.44,TOOTH_DIAMETER_MM*.53);
+  p.hairCombToothTipDiameterMm=Math.max(1.44,TOOTH_DIAMETER_MM*.52);
   p.hairCombRootTransitionMm=ROOT_TRANSITION_MM;
-  p.hairCombInnerRadiusMm=INNER_RADIUS_MM;
   p.hairCombCranialSagMm=SKULL_SAG_MM;
   p.hairCombToothSweepMm=TOOTH_SWEEP_MM;
   p.hairCombDecorationZone='crownOnly';
+  p.hairCombStructuralTreatment=treatment;
   p.hairCombCurvatureAxis='Y';
-  p.hairCombCurvatureDirection='negativeY';
-  p.hairCombGeneratorVersion='haircomb-v4.2';
+  p.hairCombCurvatureDirection='positiveYConvex';
+  p.hairCombGeneratorVersion='haircomb-v5';
 
   return {manifold:unionAll(wasm,parts),bandW:CROWN_HEIGHT_MM};
 }
