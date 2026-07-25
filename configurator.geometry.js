@@ -3579,7 +3579,7 @@ function makeHairCombManifold(wasm,p){
   const hairCombDiagnostics=[];
   const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v23.1');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v24');
   const motif=p.motifSignature||(window.SeededVariation&&window.SeededVariation.buildMorphologicalSignature?window.SeededVariation.buildMorphologicalSignature(seed):{dominantSide:1,focusU:.68,clusterCount:3,clusterSpan:.24,nodeProfile:'lobed',railProfile:'short-perimeter',voidProfile:'puncture',rhythm:[.34,.33,.33],asymmetry:.62,silenceRatio:.44,reliefBias:.72,perimeterBias:.84,toothRhythm:.24});
 
   const cellular=featureIntensity(p,'cellular');
@@ -3590,7 +3590,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v23.1');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v24');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3929,13 +3929,84 @@ function makeHairCombManifold(wasm,p){
     const supportRadii=spineRadii.concat(arcRadii.slice(1,-1).reverse());
     let crownManifold=null;
     try{
-      const supportMesh=variableEllipticalTubeMesh(supportPoints,supportRadii,24,true);
+      const SUPPORT_RING_SEG=32;
+      const supportMesh=variableEllipticalTubeMesh(supportPoints,supportRadii,SUPPORT_RING_SEG,true);
+
+      // HAIRCOMB v24 — continuous combined morphology on the complete arc
+      // surface. Every operation family is embedded directly into the swept
+      // support before any boolean detail is attempted. The field varies both
+      // longitudinally and around the full 360-degree section, so front, rear,
+      // upper, lower and oblique faces all participate in the same morphology.
+      const spineRingCount=spinePoints.length;
+      const arcRingCount=arcPoints.length-2;
+      const angularPhase=rng()*Math.PI*2;
+      const familyPhase=[rng(),rng(),rng(),rng(),rng()].map(v=>v*Math.PI*2);
+      const familyCenters=[];
+      const continuousEventCount=Math.max(6,Math.min(10,5+motifClusterCount+Math.round((nodeCount+holeCount)*.18)));
+      for(let i=0;i<continuousEventCount;i++){
+        familyCenters.push({
+          u:clamp(.08+.84*(i+.35+.30*rng())/continuousEventCount,.07,.93),
+          theta:(i*Math.PI*.73+angularPhase+(rng()-.5)*.52)%(Math.PI*2),
+          spanU:.030+.045*rng(),
+          spanA:.28+.34*rng(),
+          amp:.08+.16*rng(),
+          sign:(i%4===2)?-1:1
+        });
+      }
+      const angularDistance=(a,b)=>{
+        let d=Math.abs(a-b)%(Math.PI*2);
+        return Math.min(d,Math.PI*2-d);
+      };
+      for(let ringIndex=spineRingCount;ringIndex<spineRingCount+arcRingCount;ringIndex++){
+        const local=ringIndex-spineRingCount;
+        const sourceArcIndex=ARC_SEG-1-local;
+        const u=clamp(sourceArcIndex/ARC_SEG,0,1);
+        const endpointFade=smooth01(clamp(Math.min(u,1-u)/.085,0,1));
+        const center=supportPoints[ringIndex];
+        for(let k=0;k<SUPPORT_RING_SEG;k++){
+          const vi=ringIndex*SUPPORT_RING_SEG+k;
+          const v=supportMesh.V[vi];
+          const theta=2*Math.PI*k/SUPPORT_RING_SEG;
+
+          // Mandatory combined families: longitudinal rails, wrapped bands,
+          // interweave, localized nodes and cellular recesses. None is optional;
+          // feature weights change intensity only.
+          const railFamily=(.045+.075*sideRelief)*Math.cos(2*Math.PI*(2+railCount*.35)*u+familyPhase[0])
+            *(.55+.45*Math.cos(theta*2+familyPhase[1]));
+          const wrappedFamily=(.035+.075*(.35+wrapped))*Math.sin(2*Math.PI*(3.1*u)+theta*1.45+familyPhase[2]);
+          const interFamily=(.030+.070*(.30+inter+lattice*.4))*Math.sin(2*Math.PI*(2.2*u)-theta*2.1+familyPhase[3]);
+          const frameFamily=(.025+.055*(.35+frameIntensity))*Math.pow(Math.abs(Math.cos(theta*2+familyPhase[4])),5)
+            *Math.pow(Math.abs(Math.sin(Math.PI*u)),1.2);
+
+          let eventField=0;
+          for(const e of familyCenters){
+            const du=(u-e.u)/e.spanU;
+            const da=angularDistance(theta,e.theta)/e.spanA;
+            const g=Math.exp(-(du*du+da*da)*1.45);
+            eventField+=e.sign*e.amp*g;
+          }
+
+          const cellularFamily=-(.030+.060*(.30+cellular))*
+            Math.pow(.5+.5*Math.sin(2*Math.PI*(4.0*u)+theta*2.7+phaseC),7);
+          const spikeFamily=(.020+.050*(.25+architectural))*
+            Math.pow(Math.max(0,Math.cos(2*Math.PI*(5.0*u)-theta+phaseA)),10);
+
+          const combined=endpointFade*clamp(
+            railFamily+wrappedFamily+interFamily+frameFamily+eventField+cellularFamily+spikeFamily,
+            -.24,.46
+          );
+          const dx=v[0]-center[0],dy=v[1]-center[1],dz=v[2]-center[2];
+          const scale=1+combined;
+          supportMesh.V[vi]=[center[0]+dx*scale,center[1]+dy*scale,center[2]+dz*scale];
+        }
+      }
+
       crownManifold=meshToManifold(wasm,supportMesh.V,supportMesh.F);
       recordStage(crownManifold,'haircomb/continuous-support-source');
     }catch(error){
       try{if(crownManifold)crownManifold.delete();}catch(e){}
       throwHairCombFailure(p,'haircomb/continuous-support/construction',error,{
-        crownConstruction:'single-closed-seeded-support-v23.2',
+        crownConstruction:'single-closed-continuous-morphology-v24',
         arcHalfSpanMm:ARC_HALF_SPAN_MM,
         arcRiseMm:ARC_RISE_MM,
         arcTubeRadiusMm:ARC_TUBE_R_MM,
@@ -3949,7 +4020,7 @@ function makeHairCombManifold(wasm,p){
         p,
         'haircomb/arc-crown/topology',
         new Error('Arc crown topology invalid: '+topologyFailureReasons(sourceReport).join(', ')),
-        {report:sourceReport,crownConstruction:'single-closed-seeded-support-v23.2'}
+        {report:sourceReport,crownConstruction:'single-closed-continuous-morphology-v24'}
       );
     }
 
@@ -4166,7 +4237,7 @@ function makeHairCombManifold(wasm,p){
     }
     p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
 
-    p.hairCombOperationVersion='haircomb-v23.2-upright-crown-diverse-morphology';
+    p.hairCombOperationVersion='haircomb-v24-continuous-combined-full-surface-morphology';
     parts.push(crownManifold);
   }
 
@@ -4253,12 +4324,12 @@ function makeHairCombManifold(wasm,p){
   p.hairCombToothSweepMm=TOOTH_SWEEP_MM;
   p.hairCombDecorationZone='openArcExteriorAndSpine';
   p.hairCombStructuralTreatment=treatment;
-  p.hairCombOperationVocabulary='sharedOpenArcVocabulary';
+  p.hairCombOperationVocabulary='continuousCombinedFullSurfaceVocabulary';
   p.hairCombCurvatureAxis='Y';
   p.hairCombCranialRadiusMm=CRANIAL_RADIUS_MM;
   p.hairCombCrownCurvatureDirection='negativeYConcaveTowardHead';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v23-reversed-arc-diverse-morphology';
+  p.hairCombGeneratorVersion='haircomb-v24-continuous-combined-full-surface-morphology';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4603,7 +4674,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v23-reversed-arc-diverse-morphology';
+    p.hairCombGeneratorVersion='haircomb-v24-continuous-combined-full-surface-morphology';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
