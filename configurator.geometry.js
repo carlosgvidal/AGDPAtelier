@@ -3065,99 +3065,80 @@ async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
 
 async function makeBroochClipManifold(wasm,p){
   const { Manifold }=wasm;
-  const mechL=Math.max(34,p.clipLengthMm||36);
-  const mechW=Math.max(6.4,p.clipWidthMm||7.2);
-  const T=Math.max(1.8,p.clipThicknessMm||2.0);
-  const gap=Math.max(2.4,p.clipGapMm||2.8);
-  const springL=Math.min(mechL-4,Math.max(30,p.clipSpringLengthMm||32));
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-face');
-  const parts=[];
-  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
+  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-flap-face');
 
   const faceW=clamp((p.clipFaceWidthMm||32)*(0.90+rng()*.22),27,38);
   const faceH=clamp((p.clipFaceHeightMm||30)*(0.88+rng()*.26),25,37);
-  const faceTh=Math.max(3.6,T*1.9);
-  const face=await buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng);
+  const flapT=clamp(p.clipThicknessMm||2.0,1.8,2.3);
+  const faceTh=Math.max(3.6,flapT*1.9);
+  const face=await buildThreeModeFace(wasm,p,faceW,faceH,faceTh,rng);
 
-  // La distancia del mecanismo se calcula desde la superficie posterior real
-  // de la cara generada. Así, una cara abombada o amorfa nunca invade la garganta.
   const faceMesh=manifoldToMesh(face);
   const faceBounds=bounds(faceMesh.V);
   const faceBackZ=faceBounds.min[2];
-  const plateT=Math.max(1.6,T);
-  const zBack=faceBackZ-plateT*.50+0.08;
-  const zRear=faceBackZ-gap-T*.50;
-  parts.push(face);
+  const parts=[face];
 
-  // Mutación de clip: hipertrofia sobre la cara frontal — el mecanismo ya
-  // calculó su holgura desde la cara original, así que un bulto frontal
-  // nunca invade la garganta trasera.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='hypertrophy'){
+  // La mutación permanece confinada a la cara visible. El mecanismo
+  // funcional no cambia con la semilla ni recibe protuberancias.
+  if(p.mutation&&p.mutation.active&&p.mutation.mode==='hypertrophy'){
     const sv=p.mutation.severity;
-    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-hypertrophy');
-    const fx=(hRng()*2-1)*faceW*0.28, fy=(hRng()*2-1)*faceH*0.28;
-    const massR=Math.max(faceTh*0.9, faceTh*(1.0+0.9*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.35+massR*0.3],massR,24));
+    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-flap-hypertrophy');
+    const fx=(hRng()*2-1)*faceW*.28;
+    const fy=(hRng()*2-1)*faceH*.28;
+    const massR=Math.max(faceTh*.9,faceTh*(1+.9*sv));
+    parts.push(sphereAt(wasm,[fx,fy,faceTh*.35+massR*.3],massR,24));
   }
 
-  // Placa posterior de unión, completamente oculta por la cara visible.
-  const backW=Math.min(faceW*.58,mechL+4);
-  const backH=Math.min(faceH*.34,mechW+3.0);
-  const backPlate=Manifold.cube([backW,backH,plateT],true).translate([0,0,zBack]);
-  parts.push(backPlate);
+  // SOLAPA MONOBLOQUE
+  // Una sola lengüeta rectangular, abierta por tres lados y unida a la
+  // cara únicamente por su raíz. No hay bisagra, eje, seguro, apoyos
+  // dobles, retorno tubular ni geometría que simule articulación.
+  const gap=clamp(p.clipGapMm||2.4,2.0,3.2);
+  const flapL=clamp(p.clipSpringLengthMm||faceW*.62,faceW*.50,faceW*.70);
+  const flapW=clamp(p.clipWidthMm||faceH*.19,5.8,7.8);
+  const rootL=clamp(flapT*1.8,3.2,4.4);
+  const edgeMargin=Math.max(2.6,(faceW-flapL)/2);
+  const rootX=-faceW/2+edgeMargin+rootL/2;
+  const freeX=rootX+flapL-rootL;
+  const flapCenterX=(rootX+freeX)/2;
+  const flapSpan=freeX-rootX;
+  const flapZ=faceBackZ-gap-flapT/2;
 
-  // El mecanismo se contiene dentro de la propia huella de la cara —
-  // antes su brazo se extendía casi tanto como el ancho completo de la
-  // cara, proyectándose visiblemente más allá de su silueta y leyendo
-  // como una pieza separada en vez de un mecanismo integrado detrás de
-  // la masa.
-  const mechSpan=Math.min(mechL, faceW*0.74);
-  const rearX0=-mechSpan/2+2.0, rearX1=rearX0+Math.min(springL, mechSpan-4);
-  parts.push(Manifold.cube([rearX1-rearX0,mechW*.38,T*.80],true).translate([(rearX0+rearX1)/2,0,zRear]));
-  parts.push(capsule([rearX0,0,zRear],[rearX0+2.0,0,zRear],mechW*.20));
-  parts.push(capsule([rearX1-2.0,0,zRear],[rearX1,0,zRear],mechW*.20));
+  // Raíz maciza: única unión entre la cara y la solapa.
+  const rootDepth=gap+flapT;
+  const rootZ=faceBackZ-rootDepth/2+.04;
+  const root=Manifold.cube([rootL,flapW,rootDepth],true)
+    .translate([rootX,0,rootZ]);
 
-  const bendPts=[];
-  const bendR=(gap+T)*.48;
-  const cx=rearX0, cz=(zBack+zRear)/2;
-  for(let i=0;i<=12;i++){
-    const a=Math.PI/2+Math.PI*i/12;
-    bendPts.push([cx+bendR*Math.cos(a),0,cz+bendR*Math.sin(a)]);
-  }
-  const bendMesh=tubeAlongPathMesh(bendPts,Math.max(.70,T*.36),12,false);
-  parts.push(meshToManifold(wasm,bendMesh.V,bendMesh.F));
-  // Punta simple: una sola curva continua con extremo redondeado — el
-  // mismo catálogo de herrajes reales usa un cierre deliberadamente
-  // simple, no una cadena de tres segmentos que aquí se leía como ruido
-  // visual.
-  const tipR=Math.max(0.85,mechW*.19);
-  const tipPts=[];
-  const tipBendR=2.4;
-  const tipCx=rearX1-tipBendR, tipCz=zRear;
-  for(let i=0;i<=10;i++){
-    const a=Math.PI*i/10;
-    tipPts.push([tipCx+tipBendR*Math.cos(a),0,tipCz+tipBendR*Math.sin(a)*0.85]);
-  }
-  const tipMesh=tubeAlongPathMesh(tipPts,tipR,14,false);
-  parts.push(meshToManifold(wasm,tipMesh.V,tipMesh.F));
-  parts.push(sphereAt(wasm,tipPts[tipPts.length-1],tipR*1.05,24));
+  // Lengüeta plana. Una inclinación mínima acerca el extremo libre a la
+  // tela sin cerrar la garganta ni crear una segunda unión con la cara.
+  const rise=Math.min(.55,gap*.22);
+  const angleDeg=Math.atan2(rise,Math.max(1,flapSpan))*180/Math.PI;
+  const tongue=Manifold.cube([flapSpan,flapW,flapT],true)
+    .rotate([0,-angleDeg,0])
+    .translate([flapCenterX,0,flapZ+rise/2]);
 
-  // Dos apoyos cortos vinculan el mecanismo con la placa posterior, sin atravesar la cara.
-  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,zRear],Math.max(1.0,T*.52),24));
-  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,zRear],Math.max(1.0,T*.52),24));
+  // Extremo libre ligeramente ensanchado dentro del mismo plano. Sirve
+  // como zona de presión y conserva un borde legible, sin fingir un cierre.
+  const padL=Math.max(2.6,flapT*1.6);
+  const padW=Math.min(flapW+1.0,8.4);
+  const pad=Manifold.cube([padL,padW,flapT],true)
+    .rotate([0,-angleDeg,0])
+    .translate([freeX-padL/2,0,flapZ+rise]);
+
+  parts.push(root,tongue,pad);
 
   p.clipFaceWidthMm=faceW;
   p.clipFaceHeightMm=faceH;
-  p.clipEffectiveClearanceMm=gap;
+  p.clipEffectiveClearanceMm=gap-rise;
   p.clipFaceBackZMm=faceBackZ;
-  p.broochClosureType='integratedSolidSpringClip';
+  p.broochClosureType='integratedCantileverFlap';
   p.broochConstruction='singlePrintedSolid';
   p.broochArticulatedParts=0;
   p.broochAssemblyRequired=false;
-  p.broochGeneratorVersion='brooch-v1-shared-agdp-face-solid-clip';
+  p.broochGeneratorVersion='brooch-v2-simple-cantilever-flap';
   return {manifold:unionAll(wasm,parts),bandW:Math.max(faceW,faceH)};
 }
-
 
 async function makeMoneyClipManifold(wasm,p){
   const { Manifold }=wasm;
@@ -3444,10 +3425,10 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // if it turns out to be visually noticeable in practice.
 
 // =============================================================================
-// BROOCH — one-piece solid spring clip
+// BROOCH — one-piece solid cantilever flap
 // The visible face comes from the same shared AGDP face vocabulary used by
-// pendants and cufflinks. The rear clip is a continuous, non-articulated
-// silver body: no hinge, pin, separate catch, trapped part or assembly.
+// pendants and cufflinks. The rear mechanism is a single cantilever flap joined at one end only:
+// no hinge, pin, simulated catch, trapped part or assembly.
 // =============================================================================
 
 // =============================================================================

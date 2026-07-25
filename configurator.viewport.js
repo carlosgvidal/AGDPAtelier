@@ -291,7 +291,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
   }),
   brooch:Object.freeze({
     // Near-frontal presentation preserves the AGDP face while a restrained
-    // yaw reveals that the rear fastening is an integrated solid clip.
+    // yaw reveals that the rear fastening is an integrated cantilever flap.
     objectEulerDeg:[0,-5,0], cameraDirection:[0.30,0.18,0.94], framing:1.18
   }),
   hoopEarring:Object.freeze({
