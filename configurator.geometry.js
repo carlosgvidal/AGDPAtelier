@@ -3849,6 +3849,7 @@ function makeHairCombManifold(wasm,p){
     };
     const arcLocalU=x=>clamp((x/ARC_HALF_SPAN_MM+1)*.5,0,1);
 
+    const motifClusterCount=Math.max(2,Math.min(4,motif.clusterCount||3));
     const arcPoints=[];
     const arcRadii=[];
     for(let i=0;i<=ARC_SEG;i++){
@@ -3857,7 +3858,7 @@ function makeHairCombManifold(wasm,p){
       const x=ARC_HALF_SPAN_MM*Math.cos(theta);
       const focus=Math.exp(-Math.pow((arcLocalU(x)-(motif.focusU||.5))/Math.max(.09,(motif.clusterSpan||.24)*.78),2));
       const rhythm=.5+.5*Math.sin(phaseA+u*Math.PI*(4+railCount*.45));
-      const globalPulse=.5+.5*Math.sin(phaseB+u*Math.PI*2*(2+Math.max(1,clusterCount)));
+      const globalPulse=.5+.5*Math.sin(phaseB+u*Math.PI*2*(2+Math.max(1,motifClusterCount)));
       const radiusGain=1+(.035+.045*focus)*clamp(motif.reliefBias||.7,0,1)+.028*faceting*(rhythm-.5)+.025*(globalPulse-.5);
       // Match the rail section at both junctions. This removes the blunt
       // shoulder produced when a larger arc tube met a narrower rail.
@@ -3947,7 +3948,7 @@ function makeHairCombManifold(wasm,p){
     const focusU=clamp(motif.focusU||.5,.16,.84);
     const focusX=(focusU-.5)*WIDTH_MM;
     const clusterSpan=WIDTH_MM*clamp(motif.clusterSpan||.24,.16,.34);
-    const clusterCount=Math.max(2,Math.min(4,motif.clusterCount||3));
+    const clusterCount=motifClusterCount;
     const rhythm=Array.isArray(motif.rhythm)&&motif.rhythm.length?motif.rhythm:[.34,.33,.33];
     const baseNodeR=Math.max(AGDP_MIN_WALL_MM*.78,.92+(p.nodeVolume||1.8)*.31);
 
@@ -4089,7 +4090,7 @@ function makeHairCombManifold(wasm,p){
     }
     p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
 
-    p.hairCombOperationVersion='haircomb-v21-ergonomic-full-arc-morphology';
+    p.hairCombOperationVersion='haircomb-v21.1-ergonomic-full-arc-morphology';
     parts.push(crownManifold);
   }
 
@@ -4181,7 +4182,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCranialRadiusMm=CRANIAL_RADIUS_MM;
   p.hairCombCrownCurvatureDirection='negativeYConcaveTowardHead';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v21-ergonomic-open-arc-crown';
+  p.hairCombGeneratorVersion='haircomb-v21.1-ergonomic-open-arc-crown';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4526,7 +4527,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v21-ergonomic-open-arc-crown';
+    p.hairCombGeneratorVersion='haircomb-v21.1-ergonomic-open-arc-crown';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
