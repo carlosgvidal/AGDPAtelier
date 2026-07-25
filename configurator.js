@@ -25,16 +25,10 @@
    etc.) is unchanged, so the four script files — which look up those IDs
    with document.getElementById — work exactly as they did standalone.
 
-   v0.202 note: choker and headpiece were removed as typologies (Shapeways'
-   silver casting rules cannot support a rigid full choker/headpiece at
-   wearable scale in a single piece, and their "up to 2 identical parts"
-   allowance cannot support a design split into 2 rigid halves either --
-   see project history). They are replaced by two new typologies: haircomb
-   (fixed teeth/spine, decorated crown only) and hoopEarring (fixed
-   hook/ring/socket, decorated body only). The type grid and the profile
-   picker wraps that only ever applied to choker/headpiece (chokerProfile,
-   headProfile) and the old, never-wired comb profile picker are removed
-   below accordingly.
+   v0.206 note: the unstable comb typology was removed. It is replaced by
+   brooch: a single-piece, non-articulated solid spring clip whose visible
+   face shares the AGDP morphology used by pendants and cufflinks.
+   hoopEarring remains unchanged.
    ========================================================================== */
 (function(){
   'use strict';
@@ -123,11 +117,8 @@
   /* ---------------------------------------------------------------------
      2. Panel markup — extracted verbatim from AGDP_Atelier_v0_201.html's
      <body>, injected into the mount element instead of document.body.
-     v0.202: type grid updated (choker/headpiece removed, haircomb/
-     hoopEarring added); the chokerProfile/headProfile/combProfile wraps
-     are removed since none of them apply to the current typology set
-     (haircomb has no selectable profile -- teeth/spine are fixed, only
-     size and seed vary the crown).
+     v0.206: type grid updated: brooch replaces the removed comb typology.
+     The fastening is integral and has no separate mechanism selector.
      --------------------------------------------------------------------- */
   mount.innerHTML = `
 <div class="agdp-public" id="agdpPublic">
@@ -145,7 +136,7 @@
           <button class="agdp-type-btn" data-type="pendant" data-i18n="typePendant">Colgante</button>
           <button class="agdp-type-btn" data-type="bangle" data-i18n="typeBangle">Brazalete rígido</button>
           <button class="agdp-type-btn" data-type="cuffBracelet" data-i18n="typeCuffBracelet">Brazalete abierto</button>
-          <button class="agdp-type-btn" data-type="haircomb" data-i18n="typeHaircomb">Peineta</button>
+          <button class="agdp-type-btn" data-type="brooch" data-i18n="typeBrooch">Broche</button>
           <button class="agdp-type-btn" data-type="hoopEarring" data-i18n="typeHoopEarring">Hoop earring</button>
           <button class="agdp-type-btn" data-type="cufflinks" data-i18n="typeCufflinks">Mancuernillas</button>
           <button class="agdp-type-btn" data-type="earCuff" data-i18n="typeEarCuff">Ear cuff</button>

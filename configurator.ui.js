@@ -17,27 +17,24 @@
     {key:'l',  circMm:190, label_es:'L · muñeca ~19cm',   label_en:'L · wrist ~19cm'},
     {key:'xl', circMm:205, label_es:'XL · muñeca ~20.5cm',label_en:'XL · wrist ~20.5cm'},
   ].map(w=>Object.assign(w,{diameterMm: w.circMm/Math.PI + 8}));
-  const HAIRCOMB_SIZES = [
+  const BROOCH_SIZES = [
     {
-      key:'s', totalWidthMm:95, topHeightMm:45, crownDepthMm:3.5,
-      toothLengthMm:30, toothCount:7, toothDiameterMm:2.5,
-      rootTransitionMm:4.5, cranialCurveMm:6.0, toothSweepMm:4.0,
-      label_es:'S · 95 mm · corona 45 mm · 7 dientes',
-      label_en:'S · 95 mm · 45 mm crown · 7 teeth'
+      key:'s', faceWidthMm:28, faceHeightMm:26, clipLengthMm:34,
+      clipWidthMm:6.8, clipThicknessMm:2.0, clipGapMm:2.6,
+      label_es:'S · frente 28 × 26 mm',
+      label_en:'S · 28 × 26 mm face'
     },
     {
-      key:'m', totalWidthMm:110, topHeightMm:52, crownDepthMm:4.0,
-      toothLengthMm:35, toothCount:8, toothDiameterMm:2.8,
-      rootTransitionMm:5.2, cranialCurveMm:8.0, toothSweepMm:5.5,
-      label_es:'M · 110 mm · corona 52 mm · 8 dientes',
-      label_en:'M · 110 mm · 52 mm crown · 8 teeth'
+      key:'m', faceWidthMm:32, faceHeightMm:30, clipLengthMm:36,
+      clipWidthMm:7.2, clipThicknessMm:2.0, clipGapMm:2.8,
+      label_es:'M · frente 32 × 30 mm',
+      label_en:'M · 32 × 30 mm face'
     },
     {
-      key:'l', totalWidthMm:120, topHeightMm:60, crownDepthMm:4.5,
-      toothLengthMm:40, toothCount:9, toothDiameterMm:3.0,
-      rootTransitionMm:6.0, cranialCurveMm:11.0, toothSweepMm:8.0,
-      label_es:'L · 120 mm · corona 60 mm · 9 dientes',
-      label_en:'L · 120 mm · 60 mm crown · 9 teeth'
+      key:'l', faceWidthMm:36, faceHeightMm:34, clipLengthMm:38,
+      clipWidthMm:7.6, clipThicknessMm:2.1, clipGapMm:3.0,
+      label_es:'L · frente 36 × 34 mm',
+      label_en:'L · 36 × 34 mm face'
     },
   ];
   const HOOP_EARRING_SIZES = [
@@ -60,7 +57,7 @@
     ring:{options:RING_SIZES, key:'us', kind:'ring'},
     bangle:{options:WRIST_SIZES, key:'key', kind:'wrist'},
     cuffBracelet:{options:WRIST_SIZES, key:'key', kind:'wrist'},
-    haircomb:{options:HAIRCOMB_SIZES, key:'key', kind:'haircomb'},
+    brooch:{options:BROOCH_SIZES, key:'key', kind:'brooch'},
     hoopEarring:{options:HOOP_EARRING_SIZES, key:'key', kind:'hoopEarring'},
     earCuff:null,
     pendant:{options:PENDANT_SIZES, key:'key', kind:'pendant'},
@@ -112,7 +109,7 @@
   const I18N = {
     es:{
       typeRing:'Anillo', typePendant:'Colgante', typeBangle:'Brazalete rígido', typeCuffBracelet:'Brazalete abierto',
-      typeHaircomb:'Peineta', typeHoopEarring:'Aretes', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
+      typeBrooch:'Broche', typeHoopEarring:'Aretes', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
 generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
@@ -121,22 +118,22 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
       sizeHintPendant:'Tamaño de la placa. La apertura para cadena se ajusta abajo.',
-      sizeHintHaircomb:'La talla sincroniza ancho total, altura y espesor de corona, longitud y número de dientes, transición estructural y curvatura ergonómica.',
+      sizeHintBrooch:'La talla determina la escala del frente. El clip posterior es sólido, continuo y no articulado.',
       sizeHintHoopEarring:'La talla determina el diámetro exterior del cuerpo decorado. El gancho francés mantiene dimensiones fijas de seguridad.',
       chainFitLabel:'Grosor de cadena',
       dimsTitle:'Medidas finales',
       dimInnerDiameter:'Diámetro interior', dimInnerWidth:'Ancho interior', dimInnerDepth:'Fondo interior', dimOpening:'Apertura posterior', dimWidth:'Ancho', dimHeight:'Alto', dimThickness:'Espesor', dimTargetWeight:'Rango de peso objetivo',
-      dimTotalWidth:'Ancho total', dimCrownHeight:'Altura de corona', dimCrownDepth:'Espesor de corona', dimToothCount:'Número de dientes', dimToothLength:'Longitud de dientes', dimToothSpacing:'Separación entre dientes', dimToothDiameter:'Diámetro de diente (raíz/punta)', dimRootTransition:'Transición diente–corona', dimCranialCurve:'Curvatura craneal',
+      dimBroochFace:'Frente', dimClipLength:'Longitud del clip', dimClipClearance:'Apertura útil', dimClipConstruction:'Construcción',
       dimHoopBodySpan:'Diámetro del cuerpo', dimHoopBodyDepth:'Profundidad del cuerpo',
       dimHookInsertionLength:'Longitud de inserción del gancho', dimHookTipDiameter:'Grosor de punta del gancho',
       dimOverall:'Dimensión total', dimPlate:'Placa', dimWeight:'Peso aprox. en plata',
       dimNominal:'Talla solicitada', dimDesign:'Diámetro de diseño (con compensación)',
       weightLight:'Colgante ligero', weightMedium:'Colgante medio', weightHeavy:'Colgante pesado — considerar mecanismo reforzado',
-      tagType:{ring:'Anillo',bangle:'Brazalete rígido',cuffBracelet:'Brazalete abierto',haircomb:'Peineta',hoopEarring:'Aretes',pendant:'Colgante',cufflinks:'Mancuernillas',earCuff:'Ear cuff'},
+      tagType:{ring:'Anillo',bangle:'Brazalete rígido',cuffBracelet:'Brazalete abierto',brooch:'Broche',hoopEarring:'Aretes',pendant:'Colgante',cufflinks:'Mancuernillas',earCuff:'Ear cuff'},
     },
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
-      typeHaircomb:'Hair comb', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
+      typeBrooch:'Brooch', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
 generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
@@ -145,18 +142,18 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
       sizeHintPendant:'Plate size. Chain opening is set below.',
-      sizeHintHaircomb:'Size synchronizes overall width, crown height and depth, tooth length and count, structural transition and ergonomic curvature.',
+      sizeHintBrooch:'Size determines the face scale. The rear clip is solid, continuous and non-articulated.',
       sizeHintHoopEarring:'Size determines the decorated body’s outer diameter. The French hook keeps fixed safety dimensions.',
       chainFitLabel:'Chain thickness',
       dimsTitle:'Final measurements',
       dimInnerDiameter:'Inner diameter', dimInnerWidth:'Inner width', dimInnerDepth:'Inner depth', dimOpening:'Rear opening', dimWidth:'Width', dimHeight:'Height', dimThickness:'Thickness', dimTargetWeight:'Target weight range',
-      dimTotalWidth:'Overall width', dimCrownHeight:'Crown height', dimCrownDepth:'Crown depth', dimToothCount:'Tooth count', dimToothLength:'Tooth length', dimToothSpacing:'Tooth spacing', dimToothDiameter:'Tooth diameter (root/tip)', dimRootTransition:'Tooth–crown transition', dimCranialCurve:'Cranial curvature',
+      dimBroochFace:'Face', dimClipLength:'Clip length', dimClipClearance:'Usable opening', dimClipConstruction:'Construction',
       dimHoopBodySpan:'Body diameter', dimHoopBodyDepth:'Body depth',
       dimHookInsertionLength:'Hook insertion length', dimHookTipDiameter:'Hook tip thickness',
       dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
       dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
-      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',haircomb:'Hair comb',hoopEarring:'Hoop earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
+      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',brooch:'Brooch',hoopEarring:'Hoop earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
     }
   };
 
@@ -179,7 +176,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     });
     if(selectedSizeIndex>=cfg.options.length) selectedSizeIndex=0;
     sizeSelect.value = selectedSizeIndex;
-    const hintKey = cfg.kind==='ring'?'sizeHintRing':cfg.kind==='wrist'?'sizeHintWrist':cfg.kind==='haircomb'?'sizeHintHaircomb':cfg.kind==='hoopEarring'?'sizeHintHoopEarring':'sizeHintPendant';
+    const hintKey = cfg.kind==='ring'?'sizeHintRing':cfg.kind==='wrist'?'sizeHintWrist':cfg.kind==='brooch'?'sizeHintBrooch':cfg.kind==='hoopEarring'?'sizeHintHoopEarring':'sizeHintPendant';
     sizeHint.textContent = t(hintKey);
     if(cfg.kind==='pendant'){
       chainFitWrap.style.display='block';
@@ -239,7 +236,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     const dim = result.audit.bounds.dim;
     const rows = [];
     const overallStr = dim.map(d=>d.toFixed(1)).join(' × ')+' mm';
-    // Type-specific builders (clip, money clip, haircomb, hoopEarring)
+    // Type-specific builders (brooch, money clip, hoopEarring)
     // write their own derived dimensions onto the engine's INTERNAL
     // compiled params object, exposed here as result.compiledParams --
     // NOT onto the `params` object this file itself built and passed in,
@@ -255,16 +252,11 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
     if(params.type==='ring'){
       rows.push([t('dimNominal'), (params.mainSizeNominal!=null?params.mainSizeNominal:params.mainSize).toFixed(2)+' mm']);
       rows.push([t('dimWidth'), params.bandWidth.toFixed(1)+' mm']);
-    } else if(params.type==='haircomb'){
-      rows.push([t('dimTotalWidth'), (cp.hairCombWidthMm||params.mainSize).toFixed(1)+' mm']);
-      rows.push([t('dimCrownHeight'), (cp.hairCombCrownHeightMm||params.combTopHeightMm||0).toFixed(1)+' mm']);
-      rows.push([t('dimCrownDepth'), (cp.hairCombCrownDepthMm||params.combBodyWallMm||0).toFixed(1)+' mm']);
-      rows.push([t('dimToothCount'), String(cp.hairCombToothCount||params.combToothCount||8)]);
-      rows.push([t('dimToothLength'), (cp.hairCombToothLengthMm||params.combToothLengthMm||0).toFixed(1)+' mm']);
-      rows.push([t('dimToothSpacing'), (cp.hairCombToothSpacingMm||0).toFixed(1)+' mm']);
-      rows.push([t('dimToothDiameter'), (cp.hairCombToothRootDiameterMm||params.combToothDiameterMm||2.8).toFixed(1)+' / '+(cp.hairCombToothTipDiameterMm||1.5).toFixed(1)+' mm']);
-      rows.push([t('dimRootTransition'), (cp.hairCombRootTransitionMm||params.combRootTransitionMm||0).toFixed(1)+' mm']);
-      rows.push([t('dimCranialCurve'), (cp.hairCombCranialSagMm||params.combCranialCurveMm||0).toFixed(1)+' mm']);
+    } else if(params.type==='brooch'){
+      rows.push([t('dimBroochFace'), (cp.clipFaceWidthMm||params.clipFaceWidthMm||0).toFixed(1)+' × '+(cp.clipFaceHeightMm||params.clipFaceHeightMm||0).toFixed(1)+' mm']);
+      rows.push([t('dimClipLength'), (params.clipLengthMm||36).toFixed(1)+' mm']);
+      rows.push([t('dimClipClearance'), (cp.clipEffectiveClearanceMm||params.clipGapMm||2.8).toFixed(1)+' mm']);
+      rows.push([t('dimClipConstruction'), currentLang==='es'?'Una sola pieza, sin articulaciones':'Single piece, non-articulated']);
     } else if(params.type==='hoopEarring'){
       rows.push([t('dimHoopBodySpan'), (cp.hoopBodySpanMm||params.mainSize).toFixed(1)+' mm']);
       rows.push([t('dimHoopBodyDepth'), (cp.hoopBodyDepthMm||params.bandWidth).toFixed(1)+' mm']);
@@ -360,19 +352,15 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         result.params.mainSize=shrinkCompensatedDiameter(opt.diameterMm);
       }else if(cfg.kind==='wrist'){
         result.params.mainSize=opt.diameterMm;
-      }else if(cfg.kind==='haircomb'){
-        // The preset is a complete ergonomic specification. Structural
-        // values remain fixed for the selected size; seed-driven operations
-        // are restricted to the crown by the geometry engine.
-        result.params.mainSize=opt.totalWidthMm;
-        result.params.combTopHeightMm=opt.topHeightMm;
-        result.params.combBodyWallMm=opt.crownDepthMm;
-        result.params.combToothLengthMm=opt.toothLengthMm;
-        result.params.combToothCount=opt.toothCount;
-        result.params.combToothDiameterMm=opt.toothDiameterMm;
-        result.params.combRootTransitionMm=opt.rootTransitionMm;
-        result.params.combCranialCurveMm=opt.cranialCurveMm;
-        result.params.combToothSweepMm=opt.toothSweepMm;
+      }else if(cfg.kind==='brooch'){
+        result.params.mainSize=Math.max(opt.faceWidthMm,opt.faceHeightMm);
+        result.params.clipFaceWidthMm=opt.faceWidthMm;
+        result.params.clipFaceHeightMm=opt.faceHeightMm;
+        result.params.clipLengthMm=opt.clipLengthMm;
+        result.params.clipSpringLengthMm=opt.clipLengthMm-4;
+        result.params.clipWidthMm=opt.clipWidthMm;
+        result.params.clipThicknessMm=opt.clipThicknessMm;
+        result.params.clipGapMm=opt.clipGapMm;
         result.params.segments=160;
       }else if(cfg.kind==='hoopEarring'){
         result.params.mainSize=opt.outerDiamMm;
@@ -431,13 +419,6 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         const engineFailure=/fetch|network|import|module|failed to load|loading chunk|webassembly|wasm/i.test(message);
         if(engineFailure){terminalEngineError=e;break;}
         lastFailureReason=message||String(e)||lastFailureReason;
-        const hairCombDiagnosticFailure=selectedType==='haircomb' && (e&&e.agdpHairCombFailure || /^AGDP haircomb diagnostic failure at /.test(message));
-        if(hairCombDiagnosticFailure){
-          // Preserve the complete diagnostic, but do not abort the configured
-          // retry cycle. A topology failure is seed-specific; only engine or
-          // WASM loading failures are terminal.
-          window.__AGDP_HAIRCOMB_FAILURE__=(e&&e.agdpHairCombFailure)||window.__AGDP_HAIRCOMB_FAILURE__||{message};
-        }
       }
 
       if(attempt<AGDP_MAX_GEOMETRY_ATTEMPTS-1){

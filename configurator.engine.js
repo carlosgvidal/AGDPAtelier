@@ -208,33 +208,14 @@ const SeededVariation=(()=>{
     }else if(p.type==='cufflinks'){
       p.holes=integer(rng,0,1);p.nodes=integer(rng,0,4);p.crown=false;p.spikes=0;
       p.nodeVolume=Math.min(p.nodeVolume,4.5);
-    }else if(p.type==='haircomb'){
-      // The haircomb now translates the same type-independent morphological
-      // signature used by the collection. It must retain a readable primary
-      // crown and localized perimeter events, not convert every feature family
-      // into a full-surface lattice.
-      const ms=p.motifSignature||{};
-      p.holes=ms.voidProfile==='none'?0:integer(rng,0,2);
-      p.railCount=integer(rng,1,3);
-      p.nodes=integer(rng,2,5);
-      p.nodeVolume=clamp(p.nodeVolume*.96,1.6,3.8);
-      p.frames=clamp(p.frames*.62,.08,.52);
-      p.crown=false;
-      p.spikes=0;
-      const fw=p.featureWeights||{};
-      p.featureWeights=Object.freeze(Object.assign({},fw,{
-        lattice:clamp((fw.lattice||0)*.34,.02,.42),
-        cellular:clamp((fw.cellular||0)*.48,.02,.48),
-        wrapped:clamp((fw.wrapped||0)*.76,.04,.72),
-        cage:clamp((fw.cage||0)*.46,.02,.46),
-        interweave:clamp((fw.interweave||0)*.42,.02,.44),
-        vessel:clamp(Math.max(fw.vessel||0,.34),.10,.88),
-        dome:clamp(Math.max(fw.dome||0,.30),.10,.84),
-        continuity:clamp(Math.max(fw.continuity||0,.62),.52,1)
-      }));
-      p.surfaceRelief=clamp(p.surfaceRelief*.72,.018,.095);
-      p.sideRelief=clamp(p.sideRelief*.72,.010,.070);
-      p.asymmetry=clamp(Math.max(p.asymmetry||0,(ms.asymmetry||.55)*.42),.12,.52);
+    }else if(p.type==='brooch'){
+      // The visible face uses the compact AGDP vocabulary shared with
+      // pendants and cufflinks. The rear spring clip remains protected,
+      // continuous and free of seed-driven cuts or articulations.
+      p.holes=integer(rng,0,1);p.nodes=integer(rng,0,4);p.crown=false;p.spikes=0;
+      p.nodeVolume=Math.min(p.nodeVolume,4.2);
+      p.hinges=0;
+      p.articulationCoverage=0;
     }else if(p.type==='hoopEarring'){
       // Same principle: the hook/ring/socket are fixed safety geometry
       // (see makeHoopEarringManifold) untouched by the seed. Only the
@@ -269,11 +250,7 @@ const AGDP_PROPORTION_SYSTEM=Object.freeze({
   envelopeRangesMm:Object.freeze({
     pendant:Object.freeze([23.5,40]),
     cufflinks:Object.freeze([15,25]),
-    // ADDED: haircomb's editable envelope is the CROWN height only (the
-    // teeth/spine are fixed and outside this system entirely); hoopEarring's
-    // envelope is its decorated body, matching cufflinks' modest scale
-    // since both reuse the same shared makeFaceManifold body builder.
-    haircomb:Object.freeze([30,58]),
+    brooch:Object.freeze([28,36]),
     hoopEarring:Object.freeze([15,25])
   }),
   projectionRangesMm:Object.freeze({
@@ -283,7 +260,7 @@ const AGDP_PROPORTION_SYSTEM=Object.freeze({
     earCuff:Object.freeze([2.2,4.8]),
     pendant:Object.freeze([3.2,7.2]),
     cufflinks:Object.freeze([3.2,7.0]),
-    haircomb:Object.freeze([2.6,5.5]),
+    brooch:Object.freeze([3.6,7.2]),
     hoopEarring:Object.freeze([2.6,5.5])
   })
 });
@@ -348,17 +325,9 @@ const ProportionEngine=(()=>{
     }else if(p.type==='cufflinks'){
       p.mainSize=clamp(p.mainSize||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
       p.bandWidth=projectionDepthMm;
-    }else if(p.type==='haircomb'){
-      // Only the crown's own height is governed by this system —
-      // combTopHeightMm, not mainSize (which is the fixed-teeth overall
-      // width and is set directly by ui.js's COMB_SIZES, never by the
-      // seed). Respecting a UI-set combTopHeightMm if present, same
-      // pattern as choker/headpiece's own profile-driven dimensions used
-      // to (see the historical note removed below for why that override
-      // pattern matters).
-      if(p.combTopHeightMm==null){
-        p.combTopHeightMm=clamp(p.combTopHeightMm||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
-      }
+    }else if(p.type==='brooch'){
+      p.mainSize=clamp(p.mainSize||envelopeHeightMm,envelopeRange[0],envelopeRange[1]);
+      p.bandWidth=projectionDepthMm;
     }else if(p.type==='hoopEarring'){
       // mainSize here is the hoop's OWN outer diameter (fixed-ish, set by
       // ui.js sizing), never the seed-driven envelope — only the
@@ -397,13 +366,7 @@ const SurfaceTopologyProfiles=Object.freeze({
   pendant:Object.freeze({domain:'sculpturalPendantVolume',u:'massField',v:'contour',closed:true,flow:'volumetric',relief:1.08,voids:.78,rails:.62,nodes:1.00,edgeReserve:.16}),
   cufflinks:Object.freeze({domain:'compactFace',u:'radial',v:'contour',closed:true,flow:'radial',relief:.96,voids:.70,rails:.55,nodes:.92,edgeReserve:.14}),
   earCuff:Object.freeze({domain:'openAnnular',u:'arc',v:'width',closed:false,flow:'circumferential',relief:.72,voids:.45,rails:.80,nodes:.70,edgeReserve:.22}),
-  // ADDED: haircomb's profile describes its CROWN only — the domain is a
-  // compact decorated face much like cufflinks (a sculptural volume sitting
-  // atop a fixed structural anchor), not an annular/circumferential flow,
-  // since the comb has no loop to wrap. voids stay low (0 in practice,
-  // since holes is force-zeroed for this type upstream) and rails are
-  // similarly de-emphasized since the crown has no rail system of its own.
-  haircomb:Object.freeze({domain:'compactFace',u:'horizontal',v:'contour',closed:true,flow:'longitudinal',relief:1.08,voids:.82,rails:1.00,nodes:1.00,edgeReserve:.10}),
+  brooch:Object.freeze({domain:'compactFace',u:'radial',v:'contour',closed:true,flow:'radial',relief:1.02,voids:.62,rails:.58,nodes:.96,edgeReserve:.16}),
   // ADDED: hoopEarring's profile describes its decorated body, built via
   // the same shared makeFaceManifold as cufflinks/pendant -- so it uses
   // an identical compactFace/radial domain, distinguished mainly by a
@@ -443,13 +406,11 @@ function adaptTopologyToSurface(params){
   if(p.type==='earCuff'){
     p.holes=Math.min(p.holes,2);
   }
-  if(p.type==='haircomb'){
-    // The crown now accepts the same subtractive and structural vocabulary
-    // as the other AGDP typologies. The generator itself protects the cranial
-    // face and the lower tooth-bond band geometrically.
-    p.holes=Math.max(1,Math.min(7,p.holes||0));
-    p.railCount=Math.max(2,Math.min(5,p.railCount||0));
-    p.nodes=Math.max(1,Math.min(7,p.nodes||0));
+  if(p.type==='brooch'){
+    p.holes=Math.min(1,p.holes||0);
+    p.railCount=Math.min(2,p.railCount||0);
+    p.nodes=Math.min(4,p.nodes||0);
+    p.hinges=0;
   }
   return p;
 }

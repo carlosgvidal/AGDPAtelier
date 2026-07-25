@@ -391,7 +391,7 @@ function tubeAlongPathMesh(points, radius, ringSegN, closed) {
 // cross-sections blend into one smooth tube instead of each one's own end
 // cap poking through the next segment's own volume. That poking-through is
 // exactly what produced the blocky, self-intersecting, faceted lumps in
-// the hair comb crown once cross-section radius (rx driven by
+// a continuous crest once cross-section radius (rx driven by
 // CROWN_HEIGHT_MM*crownBoost) grew larger than the spacing between
 // consecutive crownAnchors -- confirmed numerically (rx/spacing reached
 // ~1.37x at the crest's own peak), which independent capsules cannot
@@ -924,13 +924,13 @@ function diagnoseManifoldStage(manifold,label){
       });
     }
     report.failureReasons=topologyFailureReasons(report);
-    const prefix=report.ok?'AGDP haircomb diagnostic ✓':'AGDP haircomb diagnostic ✗';
+    const prefix=report.ok?'AGDP topology diagnostic ✓':'AGDP topology diagnostic ✗';
     (report.ok?console.info:console.error)(prefix,label,report);
     return report;
   }catch(error){
     const report={label:String(label||'manifold'),ok:false,exception:String(error&&error.message||error)};
     report.failureReasons=topologyFailureReasons(report);
-    console.error('AGDP haircomb diagnostic ✗',label,report);
+    console.error('AGDP topology diagnostic ✗',label,report);
     return report;
   }
 }
@@ -2410,12 +2410,12 @@ async function makeCufflinksManifold(wasm, p) {
     // independent cylinderBetween capsules (one per segment) with filler
     // spheres (postRadius*1.04) stitched at each joint to visually hide the
     // seam between them -- the same construction pattern diagnosed in the
-    // hair comb's crest, where a capsule's own radius exceeding the spacing
+    // a continuous crest, where a capsule's own radius exceeding the spacing
     // between consecutive path points produces blocky, self-intersecting
     // facets rather than a smooth continuous surface. Checked with this
     // function's own real constants (postRadius=2.6mm, spacing=postLength/
     // segments=1.5mm): ratio = 1.73x, ABOVE the 1.37x that already produced
-    // visible faceting in the comb crest before its fix -- so this was a
+    // visible faceting in a comparable crest before its fix -- so this was a
     // live risk in the post, not a hypothetical one. Replaced with a single
     // continuous tube (shared vertex rings between consecutive
     // cross-sections, same mechanism as variableEllipticalTubeMesh already
@@ -2950,17 +2950,16 @@ function makeCombManifold(wasm,p){
     parts.push(StructuralKit.buildEventMass(wasm, center, topH, dome, vessel));
   }
 
-  // Mutación de la peineta: siempre sobre la cresta/cuerpo superior — los
-  // dientes son funcionales y nunca se tocan.
+  // Mutación de la cresta superior: confinada al cuerpo ornamental y alejada de cualquier interfaz funcional.
   if (p.mutation && p.mutation.active){
     const sv=p.mutation.severity;
     if(p.mutation.mode==='hypertrophy'){
-      const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-hypertrophy');
+      const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|crest-hypertrophy');
       const idx=Math.floor(hRng()*n);
       const massR=topH*(0.16+0.18*sv);
       parts.push(flattenedNodeAt(wasm,upper[idx],massR*(1.2+.2*vessel),massR*(0.85+.2*dome),massR*(0.95+.2*dome),22));
     }else if(p.mutation.mode==='erosion'){
-      const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-erosion');
+      const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|crest-erosion');
       const cutters=[];
       const count=2+Math.round(sv*4);
       for(let k=0;k<count;k++){
@@ -2970,10 +2969,10 @@ function makeCombManifold(wasm,p){
       }
       if(cutters.length){
         try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(safeDifference(wasm,merged,unionAll(wasm,cutters))); }
-        catch(err){ console.warn('AGDP: erosión de peineta omitida por seguridad topológica',err); }
+        catch(err){ console.warn('AGDP: erosión de cresta omitida por seguridad topológica',err); }
       }
     }else if(p.mutation.mode==='proliferation'){
-      const pRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-proliferation');
+      const pRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|crest-proliferation');
       const anchorIdx=Math.floor(pRng()*n);
       const anchor=upper[anchorIdx];
       const colonyCount=6+Math.round(sv*8);
@@ -3064,14 +3063,14 @@ async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
   return face.translate([0,0,faceTh*.45]);
 }
 
-async function makeUniversalClipManifold(wasm,p){
+async function makeBroochClipManifold(wasm,p){
   const { Manifold }=wasm;
   const mechL=Math.max(34,p.clipLengthMm||36);
   const mechW=Math.max(6.4,p.clipWidthMm||7.2);
   const T=Math.max(1.8,p.clipThicknessMm||2.0);
   const gap=Math.max(2.4,p.clipGapMm||2.8);
   const springL=Math.min(mechL-4,Math.max(30,p.clipSpringLengthMm||32));
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|universal-clip-face');
+  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-face');
   const parts=[];
   const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
 
@@ -3095,7 +3094,7 @@ async function makeUniversalClipManifold(wasm,p){
   // nunca invade la garganta trasera.
   if (p.mutation && p.mutation.active && p.mutation.mode==='hypertrophy'){
     const sv=p.mutation.severity;
-    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|clip-hypertrophy');
+    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-hypertrophy');
     const fx=(hRng()*2-1)*faceW*0.28, fy=(hRng()*2-1)*faceH*0.28;
     const massR=Math.max(faceTh*0.9, faceTh*(1.0+0.9*sv));
     parts.push(sphereAt(wasm,[fx,fy,faceTh*0.35+massR*0.3],massR,24));
@@ -3151,6 +3150,11 @@ async function makeUniversalClipManifold(wasm,p){
   p.clipFaceHeightMm=faceH;
   p.clipEffectiveClearanceMm=gap;
   p.clipFaceBackZMm=faceBackZ;
+  p.broochClosureType='integratedSolidSpringClip';
+  p.broochConstruction='singlePrintedSolid';
+  p.broochArticulatedParts=0;
+  p.broochAssemblyRequired=false;
+  p.broochGeneratorVersion='brooch-v1-shared-agdp-face-solid-clip';
   return {manifold:unionAll(wasm,parts),bandW:Math.max(faceW,faceH)};
 }
 
@@ -3273,18 +3277,6 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     // hollowing path, earCuff was structurally guaranteed to fail the
     // weight audit on almost any non-trivial decoration.
     earCuff:0.85,
-    // ADDED: haircomb had no entry here either -- same bug pattern as
-    // earCuff. Confirmed via direct volume estimate: the FIXED teeth+spine
-    // alone (before any crown mass) already weigh ~46-54g across the
-    // 95-120mm width range, so the previous 58g hard ceiling with NO
-    // hollowing path meant almost every generation was rejected on
-    // weight, regardless of seed -- this is what looked like the piece
-    // "never generating" (16 retries exhausted every time), not a memory
-    // leak in makeHairCombManifold itself (verified separately: 0 leaked
-    // objects across 20 sequential full-pipeline generations with a
-    // leak-instrumented stub). 1.0mm sits at the Shapeways polished-silver
-    // floor, same reasoning as choker/headpiece previously.
-    haircomb:1.0
   }),
   escapeHoleDiameterMm:2.4,
   escapeHoleCount:2,
@@ -3311,27 +3303,13 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     // to the same relative scale as bangle/cuffBracelet; recalibrate with
     // the Node.js harness across a few real seeds if needed.
     earCuff:Object.freeze({hollowAt:22,rejectAbove:42}),
-    // ADDED: two new typologies replacing tiara/choker per design pivot
-    // (Shapeways' "2 identical parts" rule cannot support a rigid full
-    // choker/headpiece at wearable scale -- see chat history). Both are
-    // modest, mostly-solid pieces; haircomb's teeth/spine are fixed and
-    // fairly light, so its ceiling reflects the crown's own decoration
-    // budget rather than a large structural mass. hoopEarring is small
-    // by construction (20-40mm) and light.
-    // Hair-comb dimensions are governed by the dedicated ergonomic
-    // constructor. The global scaled-copy hollowing operation is deliberately
-    // disabled for this thin open typology because it cuts through teeth and
-    // crown. Consequently, finished mass is informational rather than a hard
-    // validity condition until a dedicated crown-only lightening operation is
-    // introduced and validated.
-    haircomb:Object.freeze({
-      // The supplied AGDP comb specification defines dimensions, wall
-      // thicknesses and structural transitions, but no maximum finished
-      // silver mass. Rejecting every comb above 95 g made the entire valid
-      // 95–120 mm range unreachable. Hair-comb mass remains reported in the
-      // audit/UI, but is no longer used as a geometry-validity gate.
+    // The brooch is a single solid spring clip; hoopEarring is small by
+    // construction. Neither uses the scaled-copy hollowing operation.
+    brooch:Object.freeze({
+      // One-piece solid clip. No scaled hollowing: the spring path and its
+      // attachment roots must remain continuous. Weight is capped instead.
       hollowAt:Infinity,
-      rejectAbove:Infinity
+      rejectAbove:75
     }),
     hoopEarring:Object.freeze({hollowAt:Infinity,rejectAbove:26})
   })
@@ -3349,7 +3327,7 @@ function manifoldBounds(manifold){
   return {mesh,b:bounds(mesh.V)};
 }
 function applyConservativeSilverHollowing(wasm,manifold,p){
-  if(p.type==='haircomb'){
+  if(p.type==='brooch'){
     p.silverHollowingApplied=false;
     p.silverWeightProfile=silverWeightProfileKey(p);
     return manifold;
@@ -3466,903 +3444,11 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // if it turns out to be visually noticeable in practice.
 
 // =============================================================================
-// HAIR COMB (peineta) — v1
-// Three elements, exactly as specified: teeth (agujas), spine (riel), and
-// crown (cabezal). Teeth and spine are FIXED, safety-driven geometry — no
-// seed, mutation, or featureWeights ever reach them. Only the crown is a
-// decorated, seed-varied surface, reusing the SAME structural-treatment
-// vocabulary (solid/volumetric/lattice via pickStructuralTreatment +
-// StructuralKit) already shared by ring/comb/clip/cufflinks, so the crown's
-// decoration language is consistent with the rest of the product line even
-// though the teeth/spine are locked.
-//
-// Safety/manufacturing basis (see chat history for sources):
-//   - Tooth spacing: 6-8mm center-to-center (wide-tooth range; narrower
-//     spacing risks pulling/snagging hair, per comb-industry guidance).
-//   - Tooth root diameter: 2.6-3.0mm, tapering to a ROUNDED tip (never a
-//     point) of ~1.6mm -- both comfortably above Shapeways' silver
-//     unsupported-wire floor of 1.0mm (a tooth is connected on ONE side
-//     only, at the spine, so it must clear the unsupported minimum, not
-//     the lower supported one).
-//   - Tooth insertion angle: 14-18deg convergence toward the tip, matching
-//     commercial decorative hair combs (this is a fabrication/shape angle,
-//     distinct from the ~45deg USE angle at which a comb is inserted into
-//     hair -- the two are not the same thing and should not be confused).
-//   - Spine: at least 2x the tooth's own root diameter, so it reads and
-//     behaves as a structural anchor rather than "one more tooth."
+// BROOCH — one-piece solid spring clip
+// The visible face comes from the same shared AGDP face vocabulary used by
+// pendants and cufflinks. The rear clip is a continuous, non-articulated
+// silver body: no hinge, pin, separate catch, trapped part or assembly.
 // =============================================================================
-function recordHairCombFailure(p,stage,error,details){
-  const failure={
-    type:'haircomb',
-    stage,
-    message:String(error&&error.message||error||'Unknown haircomb failure'),
-    stack:error&&error.stack?String(error.stack):null,
-    params:JSON.parse(JSON.stringify(p||{})),
-    weightPolicy:{
-      profile:silverWeightProfileKey(p||{type:'haircomb'}),
-      hollowAt:AGDP_SILVER_HOLLOWING.thresholdsGrams.haircomb.hollowAt,
-      rejectAbove:AGDP_SILVER_HOLLOWING.thresholdsGrams.haircomb.rejectAbove,
-      informationalOnly:true,
-      hollowingBypassed:true
-    },
-    details:details||{},
-    timestamp:new Date().toISOString()
-  };
-  window.__AGDP_HAIRCOMB_FAILURE__=failure;
-  try{console.error('AGDP_HAIRCOMB_DIAGNOSTIC_FAILURE',failure);}catch(e){}
-  return failure;
-}
-function throwHairCombFailure(p,stage,error,details){
-  const failure=recordHairCombFailure(p,stage,error,details);
-  const wrapped=new Error('AGDP haircomb diagnostic failure at '+stage+': '+failure.message);
-  wrapped.cause=error;
-  wrapped.agdpHairCombFailure=failure;
-  throw wrapped;
-}
-
-function makeHairCombManifold(wasm,p){
-  /*
-   * HAIR COMB v23
-   *
-   * Structural division:
-   *   crown exterior = complete AGDP operation vocabulary;
-   *   crown interior = smooth cranial contact surface;
-   *   teeth           = fixed ergonomic geometry, never decorated.
-   *
-   * The crown uses the same parameter families as the external circumference
-   * of rings and bracelets: faceting, grooves/rails, zoned mass, cellular
-   * recesses, frames, nodes, spikes, lattice, cage, wrapped, interweave,
-   * continuity, vessel and dome. Operations are integrated into one closed
-   * surface instead of intersecting decorative solids, preventing serrated
-   * boolean seams and microscopic corrupt geometry. In v7 the complete
-   * vocabulary reaches every exposed crown surface: front/exterior, top,
-   * left side and right side. The cranial interior and the lower tooth-bond
-   * surface remain geometrically smooth and operation-free.
-   */
-  const WIDTH_MM=clamp(Number.isFinite(p.mainSize)?p.mainSize:110,95,120);
-
-  function piecewiseByWidth(v95,v110,v120){
-    if(WIDTH_MM<=110){
-      const q=clamp((WIDTH_MM-95)/15,0,1);
-      return v95+(v110-v95)*q;
-    }
-    const q=clamp((WIDTH_MM-110)/10,0,1);
-    return v110+(v120-v110)*q;
-  }
-
-  const CROWN_HEIGHT_MM=clamp(
-    Number.isFinite(p.combTopHeightMm)?p.combTopHeightMm:piecewiseByWidth(45,52,60),
-    45,60
-  );
-  const CROWN_DEPTH_MM=piecewiseByWidth(3.5,4.0,4.5);
-
-  // Decorative/side comb references commonly place metal teeth around
-  // 31.75 mm at the compact end; larger French side combs reach total lengths
-  // above 80–100 mm. These longer values preserve useful insertion depth once
-  // the 45–60 mm AGDP crown is deducted.
-  const TOOTH_LENGTH_MM=piecewiseByWidth(38,44,50);
-  const TOOTH_COUNT=Math.round(piecewiseByWidth(7,8,9));
-  const TOOTH_DIAMETER_MM=piecewiseByWidth(2.5,2.8,3.0);
-  const ROOT_TRANSITION_MM=piecewiseByWidth(5.0,5.8,6.6);
-  // Transverse cranial concavity. The previous 6–11 mm parabolic bow was
-  // visually weak and convex in the wrong direction. v21 uses a circular
-  // concave support curve whose sag grows with width.
-  const SKULL_SAG_MM=piecewiseByWidth(12.5,15.5,18.0);
-  const TOOTH_SWEEP_MM=piecewiseByWidth(5.0,7.0,9.5);
-  const SIDE_MARGIN_MM=piecewiseByWidth(6.5,8.0,9.0);
-  const TOOTH_SPAN_MM=WIDTH_MM-2*SIDE_MARGIN_MM;
-  const TOOTH_SPACING_MM=TOOTH_COUNT>1?TOOTH_SPAN_MM/(TOOTH_COUNT-1):0;
-
-  const X_SEG=112;
-  const Z_SEG=28;
-  const parts=[];
-  const hairCombDiagnostics=[];
-  const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
-  const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v24');
-  const motif=p.motifSignature||(window.SeededVariation&&window.SeededVariation.buildMorphologicalSignature?window.SeededVariation.buildMorphologicalSignature(seed):{dominantSide:1,focusU:.68,clusterCount:3,clusterSpan:.24,nodeProfile:'lobed',railProfile:'short-perimeter',voidProfile:'puncture',rhythm:[.34,.33,.33],asymmetry:.62,silenceRatio:.44,reliefBias:.72,perimeterBias:.84,toothRhythm:.24});
-
-  const cellular=featureIntensity(p,'cellular');
-  const lattice=featureIntensity(p,'lattice');
-  const cage=featureIntensity(p,'cage');
-  const wrapped=featureIntensity(p,'wrapped');
-  const inter=featureIntensity(p,'interweave');
-  const continuity=featureIntensity(p,'continuity');
-  const vessel=featureIntensity(p,'vessel');
-  const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v24');
-
-  const faceting=clamp(p.faceting||0,0,1);
-  const sideRelief=clamp(p.sideRelief||0,0,1);
-  const surfaceRelief=clamp(p.surfaceRelief||0,0,.35);
-  const organic=clamp(p.organic||0,0,1);
-  const architectural=clamp(p.architectural||0,0,1);
-  const asymmetry=clamp(p.asymmetry||0,0,1);
-  const railCount=Math.round(clamp(p.railCount||0,0,5));
-  const nodeCount=Math.round(clamp(p.nodes||0,0,8));
-  const spikeCount=Math.round(clamp(p.spikes||0,0,8));
-  const holeCount=Math.round(clamp(p.holes||0,0,10));
-  const frameIntensity=clamp(p.frames||0,0,1);
-  const rivetCount=Math.round(clamp(p.rivets||0,0,10));
-
-  const phaseA=rng()*Math.PI*2;
-  const phaseB=rng()*Math.PI*2;
-  const phaseC=rng()*Math.PI*2;
-  const peakX=(clamp(motif.focusU||.5,.12,.88)-.5)*WIDTH_MM;
-  const peakSpread=WIDTH_MM*clamp((motif.clusterSpan||.24)*.62,.10,.22);
-  const secondaryX=peakX-(motif.dominantSide||1)*WIDTH_MM*(.12+.08*rng());
-  const secondarySpread=WIDTH_MM*(.08+.13*rng());
-  const tertiaryX=(-.40+.80*rng())*WIDTH_MM;
-  const tertiarySpread=WIDTH_MM*(.07+.10*rng());
-  const structuralPolarity=rng()>.5?1:-1;
-
-  function smooth01(x){
-    x=clamp(x,0,1);
-    return x*x*(3-2*x);
-  }
-
-  // Circular transverse curvature adapted to the convexity of the head.
-  // The contact path is concave toward -Y: both ends sit forward while the
-  // centre recedes by SKULL_SAG_MM. The radius is derived from chord and sag,
-  // so width changes preserve a controlled ergonomic curvature.
-  const CRANIAL_HALF_CHORD_MM=WIDTH_MM*.5;
-  const CRANIAL_RADIUS_MM=(CRANIAL_HALF_CHORD_MM*CRANIAL_HALF_CHORD_MM+SKULL_SAG_MM*SKULL_SAG_MM)/(2*SKULL_SAG_MM);
-  const CRANIAL_EDGE_Y_MM=Math.sqrt(Math.max(0,CRANIAL_RADIUS_MM*CRANIAL_RADIUS_MM-CRANIAL_HALF_CHORD_MM*CRANIAL_HALF_CHORD_MM));
-  function contactY(x){
-    const xx=clamp(x,-CRANIAL_HALF_CHORD_MM,CRANIAL_HALF_CHORD_MM);
-    return -(Math.sqrt(Math.max(0,CRANIAL_RADIUS_MM*CRANIAL_RADIUS_MM-xx*xx))-CRANIAL_EDGE_Y_MM);
-  }
-
-  function lowerZ(x){
-    const n=clamp(x/(WIDTH_MM*.5),-1,1);
-    return 2.0+2.2*(1-n*n);
-  }
-
-  function topZ(x){
-    const n=clamp(x/(WIDTH_MM*.5),-1,1);
-    const center=Math.pow(Math.max(0,1-n*n),.63);
-    const shoulderAmp=1.5+2.1*architectural;
-    const shoulders=
-      shoulderAmp*Math.exp(-Math.pow((n-.57)/.18,2))+
-      shoulderAmp*Math.exp(-Math.pow((n+.57)/.18,2));
-    const massA=(2.0+4.4*vessel+3.0*dome)*Math.exp(-Math.pow((x-peakX)/peakSpread,2));
-    const massB=(1.0+2.8*organic)*Math.exp(-Math.pow((x-secondaryX)/secondarySpread,2));
-    const asym=asymmetry*(2.0+2.6*organic)*Math.sin(Math.PI*(n+1)*.5+phaseA)*(1-n*n);
-    return lowerZ(x)+ROOT_TRANSITION_MM+
-      CROWN_HEIGHT_MM*(.25+.75*center)+shoulders+massA+.55*massB+asym;
-  }
-
-  function gaussian2(u,t,cu,ct,su,st){
-    const du=(u-cu)/Math.max(.001,su);
-    const dt=(t-ct)/Math.max(.001,st);
-    return Math.exp(-(du*du+dt*dt)*1.7);
-  }
-
-  function crownOperationField(x,t){
-    const u=clamp((x/WIDTH_MM)+.5,0,1);
-
-    const nx=(x-peakX)/(peakSpread||1);
-    const sx=(x-secondaryX)/(secondarySpread||1);
-    const tx=(x-tertiaryX)/(tertiarySpread||1);
-    const massA=Math.exp(-nx*nx*1.20);
-    const massB=Math.exp(-sx*sx*1.45);
-    const massC=Math.exp(-tx*tx*1.75);
-
-    // Ring-family faceting translated to the crown's horizontal axis.
-    const facetSides=Math.max(4,Math.round(5+faceting*15));
-    const facetWave=Math.pow(Math.abs(Math.cos(Math.PI*facetSides*u+phaseA)),6);
-    const facetField=(facetWave-.34)*(0.25+1.15*faceting);
-
-    // Ring-family longitudinal grooves / rails.
-    let grooveField=0;
-    for(let k=0;k<railCount;k++){
-      const ct=railCount===1?.5:(k+1)/(railCount+1);
-      const d=(t-ct)/(0.026+0.026*sideRelief);
-      grooveField-=Math.exp(-d*d*1.7)*(0.30+1.25*sideRelief);
-    }
-
-    // Zoned mass, directly analogous to ring outer-circumference mass lobes.
-    const zonedMass=
-      massA*(.55+2.2*vessel+1.4*dome)+
-      massB*(.25+1.4*organic)+
-      massC*(.15+.9*asymmetry);
-
-    const diagA=.5+.5*Math.sin(2*Math.PI*(2.2*u+1.55*t)+phaseA);
-    const diagB=.5+.5*Math.sin(2*Math.PI*(2.2*u-1.45*t)+phaseB);
-    const latticeField=Math.pow(Math.max(diagA,diagB),5.4);
-    const cageField=
-      Math.pow(.5+.5*Math.cos(2*Math.PI*(3.0*u)+phaseC),7.0)*
-      Math.pow(.5+.5*Math.cos(2*Math.PI*(2.0*t)+phaseA),5.0);
-    const interweaveField=Math.pow(diagA*diagB,1.65);
-    const wrappedField=Math.pow(.5+.5*Math.sin(2*Math.PI*(3.5*t+.72*u)+phaseB),4.2);
-    const continuityField=.5+.5*Math.sin(2*Math.PI*(1.0*u+.70*t)+phaseC);
-
-    // Cellular operations: broad domes and controlled recesses.
-    let cellField=0;
-    const cells=Math.max(3,4+holeCount+Math.round(cellular*3));
-    for(let i=0;i<cells;i++){
-      const cu=(i+.5)/cells;
-      const ct=.20+.60*(.5+.5*Math.sin(i*2.27+phaseA));
-      cellField+=gaussian2(u,t,cu,ct,.055+.018*cellular,.10+.035*cellular);
-    }
-    cellField=clamp(cellField,0,1.8);
-
-    // Frames create raised architectural perimeters safely inside the edge.
-    const frameU=Math.exp(-Math.pow((Math.abs(u-.5)-.34)/(.025+.025*frameIntensity),2));
-    const frameT=Math.exp(-Math.pow((Math.abs(t-.5)-.31)/(.026+.024*frameIntensity),2));
-    const frameField=Math.max(frameU,frameT);
-
-    // Nodes, rivets and spikes become integrated bosses rather than floating
-    // solids. Their amplitudes are much stronger than v5 but remain smooth.
-    let nodeField=0;
-    const nodes=Math.max(nodeCount,rivetCount>0?Math.min(6,rivetCount):0);
-    for(let i=0;i<nodes;i++){
-      const cu=(i+1)/(nodes+1);
-      const ct=.28+.44*((i%2)?1:0);
-      nodeField+=gaussian2(u,t,cu,ct,.030+.018*(1-organic),.055+.025*organic);
-    }
-
-    let spikeField=0;
-    const spikes=Math.max(spikeCount,Math.round(2.5*architectural));
-    for(let i=0;i<spikes;i++){
-      const cu=(i+1)/(spikes+1);
-      const d=(u-cu)/(.018+.012*(1-architectural));
-      const vertical=Math.exp(-Math.pow((t-.70)/(.11+.04*organic),2));
-      spikeField+=Math.exp(-d*d*1.8)*vertical;
-    }
-
-    // Shared-DNA hierarchy: most of the crown remains a readable primary
-    // mass. Complex vocabulary is localized around one dominant event and the
-    // exposed perimeter; it no longer becomes a homogeneous lattice.
-    const clusterMask=Math.exp(-Math.pow((u-(motif.focusU||.5))/Math.max(.08,(motif.clusterSpan||.24)*.72),2));
-    const topMask=smooth01(clamp((t-.54)/.46,0,1));
-    const perimeterMask=clamp(.18+topMask*(motif.perimeterBias||.82),.18,1);
-    const silenceGain=clamp(1-(motif.silenceRatio||.44)*.72,.48,.78);
-
-    let vocabulary=0;
-    if(treatment==='solid'){
-      vocabulary=
-        1.20*zonedMass+
-        .70*continuity*continuityField+
-        .35*wrapped*wrappedField+
-        .30*lattice*latticeField;
-    }else if(treatment==='volumetric'){
-      vocabulary=
-        1.55*zonedMass+
-        .80*dome*massA+
-        .65*vessel*massB+
-        .48*cellular*cellField+
-        .32*wrapped*wrappedField;
-    }else{
-      vocabulary=
-        (.16+.42*lattice)*latticeField+
-        (.12+.36*cage)*cageField+
-        .28*inter*interweaveField+
-        .42*wrapped*wrappedField+
-        .24*cellular*cellField+
-        .82*zonedMass;
-    }
-
-    vocabulary = vocabulary*silenceGain*(.28+.72*clusterMask)*perimeterMask;
-    vocabulary +=
-      facetField*.34+
-      grooveField*.38*perimeterMask+
-      (0.16+.48*frameIntensity)*frameField*clusterMask+
-      (0.18+.62*clamp(p.nodeVolume||0,0,2)/2)*nodeField*clusterMask+
-      (0.12+.42*clamp(p.spikeHeight||0,0,3)/3)*spikeField*clusterMask;
-
-    // True recess component for cellular/groove vocabulary, limited so the
-    // crown retains a safe continuous wall.
-    const recess=
-      .60*cellular*Math.max(0,cellField-.62)+
-      .55*Math.max(0,-grooveField);
-
-    const maxRaise=CROWN_DEPTH_MM*(1.05+1.20*surfaceRelief+0.42*architectural);
-    const maxRecess=CROWN_DEPTH_MM*.38;
-    return clamp(vocabulary*maxRaise*.33-recess*maxRecess,-maxRecess,maxRaise);
-  }
-
-  // Surface-specific masks. Only the two forbidden zones are forced to zero:
-  // the cranial interior (never displaced anywhere) and the lower bond face
-  // that receives the teeth. Exposed top and lateral surfaces inherit the
-  // same operation field instead of being flattened at the old boundary mask.
-  const TOP_SURFACE_SEG=12;
-  const SIDE_SURFACE_SEG=TOP_SURFACE_SEG;
-  function toothBondFade(t){ return smooth01(clamp(t/.14,0,1)); }
-  function exteriorYField(x,t){ return toothBondFade(t)*crownOperationField(x,t); }
-  function topZField(x,d){
-    const depthMask=smooth01(clamp(d,0,1));
-    const field=crownOperationField(x,.82+.18*depthMask);
-    return field*.52*depthMask;
-  }
-  function sideXField(side,t,d){
-    const depthMask=smooth01(clamp(d,0,1));
-    const x=side<0?-WIDTH_MM*.5:WIDTH_MM*.5;
-    const field=crownOperationField(x,clamp(t,0,1));
-    return side*field*.46*depthMask*toothBondFade(t);
-  }
-
-  function orientClosedMesh(V,F){
-    let signed6=0;
-    for(const f of F){
-      const a=V[f[0]],b=V[f[1]],c=V[f[2]];
-      signed6 +=
-        a[0]*(b[1]*c[2]-b[2]*c[1])-
-        a[1]*(b[0]*c[2]-b[2]*c[0])+
-        a[2]*(b[0]*c[1]-b[1]*c[0]);
-    }
-    if(signed6<0){
-      for(let i=0;i<F.length;i++) F[i]=[F[i][0],F[i][2],F[i][1]];
-    }
-    return {V,F};
-  }
-
-  // HAIRCOMB v23.2 — seeded continuous arc-and-rail support.
-  // The former broad plate has been replaced by an open, ear-cuff-like arc.
-  // Both the arc and the lower spine are continuous swept tubes; their end
-  // regions overlap volumetrically so the crown is one printable component.
-  {
-    const SPINE_TUBE_R_MM=Math.max(TOOTH_DIAMETER_MM*.84,2.25);
-    // The support is generated as one closed swept path: lower rail from left
-    // to right, then upper arc from right to left. Arc and rail therefore share
-    // actual vertices and cross-sections at both junctions; no boolean seam is
-    // required and no endpoint mismatch can occur.
-    const SUPPORT_HALF_SPAN_MM=WIDTH_MM*.5-SPINE_TUBE_R_MM;
-    const ARC_HALF_SPAN_MM=SUPPORT_HALF_SPAN_MM;
-    const BASE_ARC_RISE_MM=piecewiseByWidth(23,28,33);
-    const ARC_TUBE_R_MM=piecewiseByWidth(3.3,3.8,4.3);
-    const ARC_SEG=112;
-    const SPINE_SEG=72;
-
-    const seedRiseScale=.78+.42*rng();
-    const seedShoulderBias=(rng()*2-1)*(.10+.16*clamp(motif.asymmetry||.5,0,1));
-    const seedWaveAmp=BASE_ARC_RISE_MM*(.035+.075*rng())*(.45+.55*clamp(motif.reliefBias||.7,0,1));
-    const seedDepthAmp=CROWN_DEPTH_MM*(.18+.34*rng())*(.35+.65*clamp(motif.perimeterBias||.7,0,1));
-    const seedWaveFreq=1+Math.max(1,Math.min(4,motif.clusterCount||3));
-    const ARC_RISE_MM=BASE_ARC_RISE_MM*seedRiseScale;
-
-    const spineZAt=x=>lowerZ(x)+ROOT_TRANSITION_MM*.42;
-    const arcLocalU=x=>clamp((x/ARC_HALF_SPAN_MM+1)*.5,0,1);
-    const arcEnvelope=u=>Math.pow(Math.max(0,Math.sin(Math.PI*clamp(u,0,1))),1.55);
-    const arcZAt=x=>{
-      const xx=clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM);
-      const u=arcLocalU(xx);
-      const envelope=arcEnvelope(u);
-      const asymLift=ARC_RISE_MM*seedShoulderBias*(u-.5)*2*envelope;
-      const seededWave=seedWaveAmp*Math.sin(phaseA+u*Math.PI*2*seedWaveFreq)*envelope;
-      // The crown rises away from the tooth field. Cranial orientation is
-      // controlled in Y; the Z excursion must remain above the shared rail.
-      return spineZAt(xx)+ARC_RISE_MM*envelope+asymLift+seededWave;
-    };
-    const arcYAt=x=>{
-      const xx=clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM);
-      const u=arcLocalU(xx);
-      const envelope=arcEnvelope(u);
-      const spineY=contactY(xx)-CROWN_DEPTH_MM*.08;
-      const seededDepth=seedDepthAmp*Math.sin(phaseB+u*Math.PI*2*(seedWaveFreq-.35))*envelope;
-      return spineY+CROWN_DEPTH_MM*.14*envelope+seededDepth;
-    };
-
-    const motifClusterCount=Math.max(2,Math.min(4,motif.clusterCount||3));
-
-    // Seeded primary-surface events. These are built into the swept support,
-    // so the AGDP vocabulary remains visible even when a later boolean detail
-    // is rejected by manifold validation.
-    const embeddedEvents=[];
-    const embeddedEventCount=3+Math.floor(rng()*3);
-    const eventTypes=['boss','ridge','notch','boss','shoulder'];
-    for(let i=0;i<embeddedEventCount;i++){
-      const u=.12+.76*((i+.34+.32*rng())/embeddedEventCount);
-      embeddedEvents.push({
-        u:clamp(u,.10,.90),
-        span:.035+.055*rng(),
-        amp:.10+.18*rng(),
-        type:eventTypes[(i+Math.floor(rng()*eventTypes.length))%eventTypes.length],
-        phase:rng()*Math.PI*2
-      });
-    }
-    const embeddedOperationAt=u=>{
-      let radial=0, flatten=0;
-      for(const e of embeddedEvents){
-        const d=(u-e.u)/Math.max(.018,e.span);
-        const g=Math.exp(-d*d*1.75);
-        if(e.type==='boss') radial+=e.amp*g;
-        else if(e.type==='ridge') radial+=e.amp*g*(.55+.45*Math.cos(e.phase+d*Math.PI));
-        else if(e.type==='shoulder'){ radial+=e.amp*.72*g; flatten+=e.amp*.34*g; }
-        else if(e.type==='notch') radial-=e.amp*.48*g;
-      }
-      return {radial:clamp(radial,-.18,.42),flatten:clamp(flatten,0,.18)};
-    };
-
-    const arcPoints=[];
-    const arcRadii=[];
-    for(let i=0;i<=ARC_SEG;i++){
-      const u=i/ARC_SEG;
-      const x=-ARC_HALF_SPAN_MM+2*ARC_HALF_SPAN_MM*u;
-      const focus=Math.exp(-Math.pow((u-(motif.focusU||.5))/Math.max(.09,(motif.clusterSpan||.24)*.78),2));
-      const rhythm=.5+.5*Math.sin(phaseA+u*Math.PI*(4+railCount*.45));
-      const globalPulse=.5+.5*Math.sin(phaseB+u*Math.PI*2*(2+motifClusterCount));
-      const wave=Math.sin(phaseC+u*Math.PI*(6+motifClusterCount*1.5));
-      const bias=((motif.asymmetry||.5)-.5)*(u-.5);
-      const embedded=embeddedOperationAt(u);
-      const radiusGain=1+(.05+.10*focus)*clamp(motif.reliefBias||.7,0,1)+.045*faceting*(rhythm-.5)+.045*(globalPulse-.5)+.065*wave+.06*bias+embedded.radial;
-      // The cross-section converges exactly to the rail radius at each shared
-      // junction and expands only after the tangent-continuous endpoint zone.
-      const endpointBlend=smooth01(clamp(Math.min(u,1-u)/.12,0,1));
-      const rx=SPINE_TUBE_R_MM+(ARC_TUBE_R_MM*radiusGain*(1+embedded.flatten)-SPINE_TUBE_R_MM)*endpointBlend;
-      const ry=SPINE_TUBE_R_MM+(ARC_TUBE_R_MM*(.84+.16*radiusGain)*(1-embedded.flatten)-SPINE_TUBE_R_MM)*endpointBlend;
-      arcPoints.push([x,arcYAt(x),arcZAt(x)]);
-      arcRadii.push([rx,ry]);
-    }
-
-    const spinePoints=[];
-    const spineRadii=[];
-    for(let i=0;i<=SPINE_SEG;i++){
-      const u=i/SPINE_SEG;
-      const x=-SUPPORT_HALF_SPAN_MM+2*SUPPORT_HALF_SPAN_MM*u;
-      spinePoints.push([x,contactY(x)-CROWN_DEPTH_MM*.08,spineZAt(x)]);
-      spineRadii.push([SPINE_TUBE_R_MM,SPINE_TUBE_R_MM]);
-    }
-
-    // One closed centreline. Shared endpoint samples are included only once.
-    const supportPoints=spinePoints.concat(arcPoints.slice(1,-1).reverse());
-    const supportRadii=spineRadii.concat(arcRadii.slice(1,-1).reverse());
-    let crownManifold=null;
-    try{
-      const SUPPORT_RING_SEG=32;
-      const supportMesh=variableEllipticalTubeMesh(supportPoints,supportRadii,SUPPORT_RING_SEG,true);
-
-      // HAIRCOMB v24 — continuous combined morphology on the complete arc
-      // surface. Every operation family is embedded directly into the swept
-      // support before any boolean detail is attempted. The field varies both
-      // longitudinally and around the full 360-degree section, so front, rear,
-      // upper, lower and oblique faces all participate in the same morphology.
-      const spineRingCount=spinePoints.length;
-      const arcRingCount=arcPoints.length-2;
-      const angularPhase=rng()*Math.PI*2;
-      const familyPhase=[rng(),rng(),rng(),rng(),rng()].map(v=>v*Math.PI*2);
-      const familyCenters=[];
-      const continuousEventCount=Math.max(6,Math.min(10,5+motifClusterCount+Math.round((nodeCount+holeCount)*.18)));
-      for(let i=0;i<continuousEventCount;i++){
-        familyCenters.push({
-          u:clamp(.08+.84*(i+.35+.30*rng())/continuousEventCount,.07,.93),
-          theta:(i*Math.PI*.73+angularPhase+(rng()-.5)*.52)%(Math.PI*2),
-          spanU:.030+.045*rng(),
-          spanA:.28+.34*rng(),
-          amp:.08+.16*rng(),
-          sign:(i%4===2)?-1:1
-        });
-      }
-      const angularDistance=(a,b)=>{
-        let d=Math.abs(a-b)%(Math.PI*2);
-        return Math.min(d,Math.PI*2-d);
-      };
-      for(let ringIndex=spineRingCount;ringIndex<spineRingCount+arcRingCount;ringIndex++){
-        const local=ringIndex-spineRingCount;
-        const sourceArcIndex=ARC_SEG-1-local;
-        const u=clamp(sourceArcIndex/ARC_SEG,0,1);
-        const endpointFade=smooth01(clamp(Math.min(u,1-u)/.085,0,1));
-        const center=supportPoints[ringIndex];
-        for(let k=0;k<SUPPORT_RING_SEG;k++){
-          const vi=ringIndex*SUPPORT_RING_SEG+k;
-          const v=supportMesh.V[vi];
-          const theta=2*Math.PI*k/SUPPORT_RING_SEG;
-
-          // Mandatory combined families: longitudinal rails, wrapped bands,
-          // interweave, localized nodes and cellular recesses. None is optional;
-          // feature weights change intensity only.
-          const railFamily=(.045+.075*sideRelief)*Math.cos(2*Math.PI*(2+railCount*.35)*u+familyPhase[0])
-            *(.55+.45*Math.cos(theta*2+familyPhase[1]));
-          const wrappedFamily=(.035+.075*(.35+wrapped))*Math.sin(2*Math.PI*(3.1*u)+theta*1.45+familyPhase[2]);
-          const interFamily=(.030+.070*(.30+inter+lattice*.4))*Math.sin(2*Math.PI*(2.2*u)-theta*2.1+familyPhase[3]);
-          const frameFamily=(.025+.055*(.35+frameIntensity))*Math.pow(Math.abs(Math.cos(theta*2+familyPhase[4])),5)
-            *Math.pow(Math.abs(Math.sin(Math.PI*u)),1.2);
-
-          let eventField=0;
-          for(const e of familyCenters){
-            const du=(u-e.u)/e.spanU;
-            const da=angularDistance(theta,e.theta)/e.spanA;
-            const g=Math.exp(-(du*du+da*da)*1.45);
-            eventField+=e.sign*e.amp*g;
-          }
-
-          const cellularFamily=-(.030+.060*(.30+cellular))*
-            Math.pow(.5+.5*Math.sin(2*Math.PI*(4.0*u)+theta*2.7+phaseC),7);
-          const spikeFamily=(.020+.050*(.25+architectural))*
-            Math.pow(Math.max(0,Math.cos(2*Math.PI*(5.0*u)-theta+phaseA)),10);
-
-          const combined=endpointFade*clamp(
-            railFamily+wrappedFamily+interFamily+frameFamily+eventField+cellularFamily+spikeFamily,
-            -.24,.46
-          );
-          const dx=v[0]-center[0],dy=v[1]-center[1],dz=v[2]-center[2];
-          const scale=1+combined;
-          supportMesh.V[vi]=[center[0]+dx*scale,center[1]+dy*scale,center[2]+dz*scale];
-        }
-      }
-
-      crownManifold=meshToManifold(wasm,supportMesh.V,supportMesh.F);
-      recordStage(crownManifold,'haircomb/continuous-support-source');
-    }catch(error){
-      try{if(crownManifold)crownManifold.delete();}catch(e){}
-      throwHairCombFailure(p,'haircomb/continuous-support/construction',error,{
-        crownConstruction:'single-closed-continuous-morphology-v24',
-        arcHalfSpanMm:ARC_HALF_SPAN_MM,
-        arcRiseMm:ARC_RISE_MM,
-        arcTubeRadiusMm:ARC_TUBE_R_MM,
-        spineTubeRadiusMm:SPINE_TUBE_R_MM
-      });
-    }
-
-    const sourceReport=recordStage(crownManifold,'haircomb/crown-source');
-    if(!sourceReport.ok){
-      throwHairCombFailure(
-        p,
-        'haircomb/arc-crown/topology',
-        new Error('Arc crown topology invalid: '+topologyFailureReasons(sourceReport).join(', ')),
-        {report:sourceReport,crownConstruction:'single-closed-continuous-morphology-v24'}
-      );
-    }
-
-    // Helpers for AGDP operations distributed around the full elliptical
-    // section of the arc. theta=0 is the outer/front face, PI is the inner/
-    // rear face, +PI/2 is the upper face and -PI/2 is the lower face.
-    const arcTubeSectionAt=x=>{
-      const u=arcLocalU(clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM));
-      const cluster=Math.exp(-Math.pow((u-(motif.focusU||.5))/Math.max(.09,(motif.clusterSpan||.24)*.68),2));
-      const pulse=.5+.5*Math.sin(phaseB+u*Math.PI*2*(2+motifClusterCount));
-      const wave=.5+.5*Math.sin(phaseC+u*Math.PI*(6+motifClusterCount*1.5));
-      const gain=1+cluster*(.08+.13*clamp(motif.reliefBias||.7,0,1))+.035*(pulse-.5)+.04*(wave-.5);
-      return {
-        ry:ARC_TUBE_R_MM*(.86+.14*gain),
-        rz:ARC_TUBE_R_MM*gain
-      };
-    };
-    const arcSurfacePoint=(x,theta,inset=0)=>{
-      const section=arcTubeSectionAt(x);
-      const ry=Math.max(AGDP_MIN_WALL_MM*.65,section.ry-inset);
-      const rz=Math.max(AGDP_MIN_WALL_MM*.65,section.rz-inset);
-      return [x,arcYAt(x)+Math.cos(theta)*ry,arcZAt(x)+Math.sin(theta)*rz];
-    };
-    const arcSurfaceNormal=theta=>[0,Math.cos(theta),Math.sin(theta)];
-    const offsetPoint=(point,normal,d)=>[point[0]+normal[0]*d,point[1]+normal[1]*d,point[2]+normal[2]*d];
-
-    /*
-     * HAIRCOMB v23.2 — combined full-surface AGDP morphology.
-     *
-     * Every crown receives a combined vocabulary: embedded deformation,
-     * localized nodes, articulated members, an asymmetric bridge and voids.
-     * The discrete operations are assigned to front, rear, upper, lower and
-     * oblique faces of the arc rather than being projected onto one Y-facing
-     * surface. Seed variation changes position, scale, rhythm and face order,
-     * but does not eliminate any operation family.
-     */
-    const discreteAdds=[];
-    const discreteCuts=[];
-    const addLabels=[];
-    const cutLabels=[];
-    const addNode=(center,r,label)=>{
-      discreteAdds.push(organicNodeAt(wasm,center,r,28,rng()*Math.PI*2));
-      addLabels.push(label||'node');
-    };
-    const addMember=(a,b,r,label)=>{
-      discreteAdds.push(cylinderBetween(wasm,a,b,r,24));
-      addLabels.push(label||'member');
-    };
-    const addCut=(m,label)=>{discreteCuts.push(m);cutLabels.push(label||'cavity');};
-
-    const dominantSide=motif.dominantSide||1;
-    const focusU=clamp(motif.focusU||.5,.16,.84);
-    const clusterCount=motifClusterCount;
-    const baseNodeR=Math.max(AGDP_MIN_WALL_MM*.78,.92+(p.nodeVolume||1.8)*.31);
-    const endClearU=.09;
-
-    // Seeded face order always covers all principal and oblique faces.
-    const faceAngles=[0,Math.PI*.5,Math.PI,-Math.PI*.5,Math.PI*.25,-Math.PI*.25,Math.PI*.75,-Math.PI*.75];
-    const faceShift=Math.floor(rng()*faceAngles.length);
-    const faceAt=i=>faceAngles[(i+faceShift)%faceAngles.length];
-
-    // 1) Nodes: a dominant cluster plus counter-nodes on opposite faces.
-    const nodeOps=Math.max(5,Math.min(8,3+clusterCount+Math.round((p.nodeVolume||1.8)*.55)));
-    for(let i=0;i<nodeOps;i++){
-      const spread=(i-(nodeOps-1)*.5)/(Math.max(1,nodeOps-1));
-      const u=clamp(focusU+spread*(.16+.07*rng())*dominantSide+(rng()-.5)*.025,endClearU,1-endClearU);
-      const x=(u-.5)*2*ARC_HALF_SPAN_MM;
-      const theta=faceAt(i);
-      const n=arcSurfaceNormal(theta);
-      const r=baseNodeR*(.70+.52*rng())*(i===0?1.20:1);
-      // The centre is embedded into the section, guaranteeing a genuine union
-      // while leaving most of the node visible on its assigned face.
-      const surface=arcSurfacePoint(x,theta,0);
-      const center=offsetPoint(surface,n,-r*.42);
-      addNode(center,r,'full-surface-node-'+(i+1));
-    }
-
-    // 2) Members: longitudinal, diagonal and cross-face links. Endpoints are
-    // embedded on different faces so the operations wrap around the support.
-    const memberOps=Math.max(5,Math.min(8,3+Math.max(railCount,2)+Math.round(wrapped+inter)));
-    for(let i=0;i<memberOps;i++){
-      const u=.14+.72*(i+.5)/memberOps+(rng()-.5)*.026;
-      const halfU=.026+.042*rng();
-      const u0=clamp(u-halfU,endClearU,1-endClearU);
-      const u1=clamp(u+halfU,endClearU,1-endClearU);
-      const x0=(u0-.5)*2*ARC_HALF_SPAN_MM;
-      const x1=(u1-.5)*2*ARC_HALF_SPAN_MM;
-      const theta0=faceAt(i+2);
-      const theta1=faceAt(i+3+(i%2));
-      const r=Math.max(AGDP_MIN_WALL_MM*.52,.64+.25*wrapped+.10*rng());
-      const n0=arcSurfaceNormal(theta0), n1=arcSurfaceNormal(theta1);
-      const a=offsetPoint(arcSurfacePoint(x0,theta0,0),n0,-r*.55);
-      const b=offsetPoint(arcSurfacePoint(x1,theta1,0),n1,-r*.55);
-      addMember(a,b,r,'cross-face-member-'+(i+1));
-    }
-
-    // 3) Asymmetric raised bridge: mandatory, with roots on two different
-    // faces and an offset span. This preserves the architectural AGDP family.
-    {
-      const bu=clamp(focusU-.13*dominantSide,.19,.81);
-      const bx=(bu-.5)*2*ARC_HALF_SPAN_MM;
-      const span=ARC_HALF_SPAN_MM*(.095+.045*rng());
-      const x0=clamp(bx-span,-ARC_HALF_SPAN_MM*.80,ARC_HALF_SPAN_MM*.80);
-      const x1=clamp(bx+span,-ARC_HALF_SPAN_MM*.80,ARC_HALF_SPAN_MM*.80);
-      const theta0=faceAt(1), theta1=faceAt(5);
-      const n0=arcSurfaceNormal(theta0), n1=arcSurfaceNormal(theta1);
-      const r=Math.max(AGDP_MIN_WALL_MM*.58,.74+.22*architectural+.08*cage);
-      const lift=CROWN_DEPTH_MM*(.62+.24*rng());
-      const a=offsetPoint(arcSurfacePoint(x0,theta0,0),n0,-r*.55);
-      const b=offsetPoint(arcSurfacePoint(x1,theta1,0),n1,-r*.55);
-      const bridgeDir=[0,(n0[1]+n1[1])*.28,(n0[2]+n1[2])*.28+1];
-      const mag=Math.hypot(bridgeDir[1],bridgeDir[2])||1;
-      bridgeDir[1]/=mag;bridgeDir[2]/=mag;
-      const aa=offsetPoint(a,bridgeDir,lift);
-      const bb=offsetPoint(b,bridgeDir,lift);
-      addMember(aa,bb,r*.88,'full-surface-raised-bridge');
-      addMember(a,aa,r*.72,'bridge-root-a');
-      addMember(b,bb,r*.72,'bridge-root-b');
-    }
-
-    // 4) Voids: mandatory and distributed across different faces. Cutter
-    // centres sit inside the section and extend through it, producing visible
-    // openings rather than shallow dents or a repeated single-face motif.
-    const requestedVoids=Math.max(4,Math.min(7,3+(holeCount||2)));
-    for(let i=0;i<requestedVoids;i++){
-      const u=clamp(.13+.74*(i+.5)/requestedVoids+(rng()-.5)*.026,endClearU,1-endClearU);
-      const x=(u-.5)*2*ARC_HALF_SPAN_MM;
-      const theta=faceAt(i+4);
-      const n=arcSurfaceNormal(theta);
-      const section=arcTubeSectionAt(x);
-      const localRadius=Math.min(section.ry,section.rz);
-      const r=Math.max(AGDP_MIN_WALL_MM*.70,Math.min(localRadius*.66,.82+.24*cellular+.12*rng()));
-      const surface=arcSurfacePoint(x,theta,0);
-      const center=offsetPoint(surface,n,-localRadius*.72);
-      addCut(sphereAt(wasm,center,r*(1.02+.10*(i%3)),30),'full-surface-puncture-'+(i+1));
-    }
-
-    // Apply every subtractive operation independently. A cutter is retained
-    // only when the resulting crown remains finite, watertight, manifold and a
-    // single connected component. This prevents an early cavity from silently
-    // damaging the crown and being misreported later as an addition failure.
-    const cavityIntegration={requested:discreteCuts.length,accepted:0,rejected:[],labels:cutLabels.slice()};
-    for(let i=0;i<discreteCuts.length;i++){
-      const cutter=discreteCuts[i];
-      let candidate=null;
-      try{
-        const crownCopy=cloneManifold(wasm,crownManifold);
-        candidate=safeDifference(wasm,crownCopy,cutter);
-        const report=recordStage(candidate,'haircomb/crown-cavity-'+(i+1));
-        if(report.ok){
-          const previous=crownManifold;
-          crownManifold=candidate;
-          candidate=null;
-          cavityIntegration.accepted++;
-          try{previous.delete();}catch(e){}
-        }else{
-          cavityIntegration.rejected.push({index:i+1,operation:cutLabels[i],reasons:report.failureReasons,report});
-        }
-      }catch(error){
-        cavityIntegration.rejected.push({index:i+1,operation:cutLabels[i],reasons:['exception:'+String(error&&error.message||error)]});
-        try{cutter.delete();}catch(e){}
-      }finally{
-        if(candidate)try{candidate.delete();}catch(e){}
-      }
-    }
-    const cavitiesReport=recordStage(crownManifold,'haircomb/crown-discrete-cavities');
-    if(!cavitiesReport.ok){
-      throwHairCombFailure(
-        p,
-        'haircomb/crown-discrete-cavities',
-        new Error('Crown topology invalid after individually screened cavities: '+topologyFailureReasons(cavitiesReport).join(', ')),
-        {integration:cavityIntegration,report:cavitiesReport}
-      );
-    }
-
-    // Integrate additions one at a time rather than unioning an opaque batch.
-    // A node, rib or bridge that does not genuinely overlap the current crown
-    // is rejected locally; valid operations remain, and the diagnostic records
-    // the exact primitive index and topological reason.
-    const additionIntegration={requested:discreteAdds.length,accepted:0,rejected:[],labels:addLabels.slice()};
-    for(let i=0;i<discreteAdds.length;i++){
-      const addition=discreteAdds[i];
-      let candidate=null;
-      try{
-        const crownCopy=cloneManifold(wasm,crownManifold);
-        candidate=wasm.Manifold.union(crownCopy,addition);
-        try{crownCopy.delete();}catch(e){}
-        try{addition.delete();}catch(e){}
-        const report=recordStage(candidate,'haircomb/crown-addition-'+(i+1));
-        if(report.ok){
-          const previous=crownManifold;
-          crownManifold=candidate;
-          candidate=null;
-          additionIntegration.accepted++;
-          try{previous.delete();}catch(e){}
-        }else{
-          additionIntegration.rejected.push({index:i+1,operation:addLabels[i],reasons:report.failureReasons,report});
-        }
-      }catch(error){
-        additionIntegration.rejected.push({index:i+1,operation:addLabels[i],reasons:['exception:'+String(error&&error.message||error)]});
-        try{addition.delete();}catch(e){}
-      }finally{
-        if(candidate)try{candidate.delete();}catch(e){}
-      }
-    }
-    const additionsReport=recordStage(crownManifold,'haircomb/crown-discrete-additions');
-    if(!additionsReport.ok){
-      throwHairCombFailure(
-        p,
-        'haircomb/crown-discrete-additions',
-        new Error('Crown topology invalid after individually screened additions: '+topologyFailureReasons(additionsReport).join(', ')),
-        {integration:additionIntegration,report:additionsReport}
-      );
-    }
-    p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
-
-    p.hairCombOperationVersion='haircomb-v24-continuous-combined-full-surface-morphology';
-    parts.push(crownManifold);
-  }
-
-  // Teeth curve toward the head/contact side (-Y), opposite the crown's
-  // outward convex projection. This corrects the v5 inverted tooth sweep.
-  function makeToothMesh(xRoot,lateral){
-    const rings=21,seg=32;
-    const V=[],F=[],R=[];
-    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.42;
-    const yRoot=contactY(xRoot)-CROWN_DEPTH_MM*.08;
-    const fan=lateral*piecewiseByWidth(2.0,2.8,3.6);
-
-    for(let i=0;i<rings;i++){
-      const u=i/(rings-1);
-      const ease=smooth01(u);
-      const x=xRoot+fan*ease;
-      const y=yRoot-TOOTH_SWEEP_MM*(.16*u+.84*u*u);
-      const z=zRoot-TOOTH_LENGTH_MM*u;
-      const r0=TOOTH_DIAMETER_MM*.5;
-      const r1=Math.max(.70,r0*.48);
-      const taper=Math.pow(u,.90);
-      const rx=r0*(1-taper)+r1*taper;
-      const ry=rx*.82;
-      R[i]=[];
-      for(let k=0;k<seg;k++){
-        const a=2*Math.PI*k/seg;
-        R[i][k]=V.length;
-        V.push([x+rx*Math.cos(a),y+ry*Math.sin(a),z]);
-      }
-    }
-
-    for(let i=0;i<rings-1;i++){
-      for(let k=0;k<seg;k++){
-        const j=(k+1)%seg;
-        F.push([R[i][k],R[i][j],R[i+1][j]]);
-        F.push([R[i][k],R[i+1][j],R[i+1][k]]);
-      }
-    }
-
-    const root=V.length;
-    V.push([xRoot,yRoot,zRoot]);
-    for(let k=0;k<seg;k++){
-      const j=(k+1)%seg;
-      F.push([root,R[0][j],R[0][k]]);
-    }
-
-    const tip=V.length;
-    V.push([
-      xRoot+fan,
-      yRoot-TOOTH_SWEEP_MM,
-      zRoot-TOOTH_LENGTH_MM-.90
-    ]);
-    for(let k=0;k<seg;k++){
-      const j=(k+1)%seg;
-      F.push([R[rings-1][k],R[rings-1][j],tip]);
-    }
-    return orientClosedMesh(V,F);
-  }
-
-  for(let i=0;i<TOOTH_COUNT;i++){
-    const x=-TOOTH_SPAN_MM*.5+i*TOOTH_SPACING_MM;
-    const lateral=x/(TOOTH_SPAN_MM*.5||1);
-    const mesh=makeToothMesh(x,lateral);
-    let toothManifold;
-    try{
-      toothManifold=meshToManifold(wasm,mesh.V,mesh.F);
-    }catch(error){
-      throwHairCombFailure(p,'haircomb/tooth-'+(i+1)+'/meshToManifold',error,{toothIndex:i+1,vertices:mesh.V.length,triangles:mesh.F.length,diagnostic:diagnoseClosedTriangleMesh(mesh.V,mesh.F,'haircomb/tooth-'+(i+1)+'/input')});
-    }
-    recordStage(toothManifold,'haircomb/tooth-'+(i+1)+'-source');
-    parts.push(toothManifold);
-  }
-
-  p.hairCombWidthMm=WIDTH_MM;
-  p.hairCombCrownHeightMm=piecewiseByWidth(23,28,33);
-  p.hairCombCrownDepthMm=CROWN_DEPTH_MM;
-  p.hairCombToothCount=TOOTH_COUNT;
-  p.hairCombToothSpacingMm=TOOTH_SPACING_MM;
-  p.hairCombToothLengthMm=TOOTH_LENGTH_MM;
-  p.hairCombToothRootDiameterMm=TOOTH_DIAMETER_MM;
-  p.hairCombToothTipDiameterMm=Math.max(1.40,TOOTH_DIAMETER_MM*.48);
-  p.hairCombRootTransitionMm=ROOT_TRANSITION_MM;
-  p.hairCombCranialSagMm=SKULL_SAG_MM;
-  p.hairCombToothSweepMm=TOOTH_SWEEP_MM;
-  p.hairCombDecorationZone='openArcExteriorAndSpine';
-  p.hairCombStructuralTreatment=treatment;
-  p.hairCombOperationVocabulary='continuousCombinedFullSurfaceVocabulary';
-  p.hairCombCurvatureAxis='Y';
-  p.hairCombCranialRadiusMm=CRANIAL_RADIUS_MM;
-  p.hairCombCrownCurvatureDirection='negativeYConcaveTowardHead';
-  p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v24-continuous-combined-full-surface-morphology';
-
-  // Progressive CSG exposes the first crown/tooth union that ceases to be a
-  // single closed solid. It replaces the opaque balanced unionAll() only for
-  // this typology. Geometry is otherwise unchanged.
-  let assembled=parts.shift();
-  recordStage(assembled,'haircomb/assembly-crown');
-  for(let i=0;i<parts.length;i++){
-    const tooth=parts[i];
-    let merged;
-    try{
-      merged=wasm.Manifold.union(assembled,tooth);
-    }catch(error){
-      hairCombDiagnostics.push({label:'haircomb/union-tooth-'+(i+1),ok:false,exception:String(error&&error.message||error)});
-      try{assembled.delete();}catch(e){}
-      try{tooth.delete();}catch(e){}
-      for(let j=i+1;j<parts.length;j++)try{parts[j].delete();}catch(e){}
-      p.hairCombDiagnostics=hairCombDiagnostics;
-      throwHairCombFailure(p,'haircomb/union-tooth-'+(i+1),error,{toothIndex:i+1,completedUnions:i,diagnostics:hairCombDiagnostics.slice()});
-    }
-    try{assembled.delete();}catch(e){}
-    try{tooth.delete();}catch(e){}
-    assembled=merged;
-    const report=recordStage(assembled,'haircomb/union-tooth-'+(i+1));
-    if(!report.ok){
-      for(let j=i+1;j<parts.length;j++)try{parts[j].delete();}catch(e){}
-      p.hairCombDiagnostics=hairCombDiagnostics;
-      throwHairCombFailure(p,'haircomb/post-union-tooth-'+(i+1)+'/topology',new Error('Topology audit failed'),{toothIndex:i+1,report,diagnostics:hairCombDiagnostics.slice()});
-    }
-  }
-  p.hairCombDiagnostics=hairCombDiagnostics;
-  p.hairCombFirstFailedStage=(hairCombDiagnostics.find(r=>!r.ok)||{}).label||null;
-  return {manifold:assembled,bandW:piecewiseByWidth(23,28,33)};
-}
 
 // =============================================================================
 // HOOP EARRING — v1
@@ -4559,8 +3645,8 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     ({manifold} = await makePendantManifold(wasm, p));
   } else if (p.type==='cufflinks') {
     ({manifold} = await makeCufflinksManifold(wasm, p));
-  } else if (p.type==='haircomb') {
-    ({manifold} = makeHairCombManifold(wasm, p));
+  } else if (p.type==='brooch') {
+    ({manifold} = await makeBroochClipManifold(wasm, p));
   } else if (p.type==='hoopEarring') {
     ({manifold} = await makeHoopEarringManifold(wasm, p));
   } else {
@@ -4635,46 +3721,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hoopPairCenterSpacingMm=pairSpacing;
     p.hoopPairComponents=2;
     p.hoopPairPresentation='asymmetricJewelleryProductComposition';
-  } else if(p.type==='haircomb') {
-    // Haircomb v9: canonicalize the final CSG result before the external
-    // validator sees it. The engine manifold is already a closed solid, but
-    // boolean unions between the crown and multiple tooth roots can preserve
-    // sub-micron coincident vertex copies. Welding these copies prevents false
-    // open-edge / non-manifold reports without altering visible geometry.
-    const rawHairCombMesh=manifoldToMeshHelper(manifold);
-    const rawHairCombWeightG=silverWeightGrams(meshVolumeMm3(rawHairCombMesh.V,rawHairCombMesh.F));
-    p.hairCombDiagnosticWeightG=rawHairCombWeightG;
-    p.hairCombWeightPolicy='informationalOnly';
-    const rawReport=diagnoseClosedTriangleMesh(rawHairCombMesh.V,rawHairCombMesh.F,'haircomb/final-raw');
-    console[rawReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rawReport.ok?'✓':'✗'),'haircomb/final-raw',rawReport);
-    try{ manifold.delete(); }catch(e){}
-    manifold=null;
-    const canonicalHairComb=canonicalizeMeshForValidation(rawHairCombMesh.V,rawHairCombMesh.F,1e-5);
-    const canonicalReport=diagnoseClosedTriangleMesh(canonicalHairComb.V,canonicalHairComb.F,'haircomb/final-canonical');
-    console[canonicalReport.ok?'info':'error']('AGDP haircomb diagnostic '+(canonicalReport.ok?'✓':'✗'),'haircomb/final-canonical',canonicalReport);
-    if(!canonicalReport.ok){
-      p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport};
-      throwHairCombFailure(p,'haircomb/final-canonical/topology',new Error('Canonical topology audit failed'),{raw:rawReport,canonical:canonicalReport,weightG:rawHairCombWeightG});
-    }
-    // Round-trip through manifold-3d so triangle winding and edge incidence
-    // are regenerated from the canonical welded topology.
-    let rebuiltHairComb;
-    try{
-      rebuiltHairComb=meshToManifold(wasm,canonicalHairComb.V,canonicalHairComb.F);
-    }catch(error){
-      throwHairCombFailure(p,'haircomb/final-rebuild/meshToManifold',error,{weightG:rawHairCombWeightG,raw:rawReport,canonical:canonicalReport,canonicalization:{weldedVertices:canonicalHairComb.weldedVertices,removedDegenerate:canonicalHairComb.removedDegenerate,removedDuplicate:canonicalHairComb.removedDuplicate}});
-    }
-    ({V,F}=manifoldToMeshHelper(rebuiltHairComb));
-    const rebuiltReport=diagnoseClosedTriangleMesh(V,F,'haircomb/final-rebuilt');
-    console[rebuiltReport.ok?'info':'error']('AGDP haircomb diagnostic '+(rebuiltReport.ok?'✓':'✗'),'haircomb/final-rebuilt',rebuiltReport);
-    try{ rebuiltHairComb.delete(); }catch(e){}
-    p.hairCombFinalDiagnostics={raw:rawReport,canonical:canonicalReport,rebuilt:rebuiltReport};
-    if(!rebuiltReport.ok) throwHairCombFailure(p,'haircomb/final-rebuilt/topology',new Error('Rebuilt topology audit failed'),{weightG:rawHairCombWeightG,raw:rawReport,canonical:canonicalReport,rebuilt:rebuiltReport});
-    p.hairCombTopologyRepair='diagnosedSubMicronWeldAndManifoldRoundTrip';
-    p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
-    p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
-    p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v24-continuous-combined-full-surface-morphology';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
@@ -4697,12 +3743,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   const weightLimits=AGDP_SILVER_HOLLOWING.thresholdsGrams[silverWeightProfileKey(p)]||{rejectAbove:Infinity};
   audit.weightLimitG=weightLimits.rejectAbove;
   audit.weightOK=audit.silverG<=weightLimits.rejectAbove;
-  if(p.type==='haircomb'){
-    audit.weightLimitG=Infinity;
-    audit.weightOK=true;
-    audit.weightInformationalOnly=true;
-    audit.weightGateBypassed=true;
-  }
   audit.hollowingApplied=!!p.silverHollowingApplied;
   audit.shellWallMm=p.silverShellWallMm||null;
   audit.escapeHoleDiameterMm=p.silverEscapeHoleDiameterMm||null;
@@ -4714,16 +3754,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
   audit.discardedComponents = connected.discarded||[];
   // Exposes the fully-compiled internal params object (p), not just the
-  // caller's pre-compile() input -- type-specific builders (clip, money
-  // clip, haircomb, hoopEarring) write derived dimensions directly onto
-  // this object (p.clipFaceWidthMm, p.hairCombToothCount,
-  // p.hoopHookTipDiameterMm, etc.) for exactly this purpose: so the UI
+  // caller's pre-compile() input -- type-specific builders (brooch, moneyClip,
+  // hoopEarring) write derived dimensions directly onto this object
+  // (p.clipFaceWidthMm, p.hoopHookTipDiameterMm, etc.) so the UI
   // layer can display them without recomputing anything. Previously only
   // {V,F,audit,bandW,innerR} were returned, so none of those fields were
   // ever actually reachable by ui.js (which only ever had its OWN
-  // pre-compile params object) -- silently broken for clip/moneyClip
-  // (never wired to a UI button, so never noticed) and would have been
-  // silently broken for haircomb/hoopEarring too without this fix.
+  // pre-compile params object) -- silently broken for brooch/moneyClip and hoopEarring without this fix.
   return { V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p };
 }
 function manifoldToMeshHelper(manifoldObj){

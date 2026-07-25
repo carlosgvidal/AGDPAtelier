@@ -289,15 +289,10 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
   earCuff:Object.freeze({
     objectEulerDeg:[0,0,-10], cameraDirection:[0.49,0.21,0.85], framing:1.18
   }),
-  haircomb:Object.freeze({
-    // A comb is worn/displayed with its teeth pointing down and its
-    // decorated crown up and toward the viewer -- closest existing
-    // reference is the "Anillos" 3/4 isometric logic (moderate pitch,
-    // moderate yaw) since it's a similarly compact, presented-on-a-stand
-    // object rather than a body-worn ring/band. Slight yaw asymmetry so
-    // the crown's own sculptural relief reads with real shading instead
-    // of a flat frontal silhouette.
-    objectEulerDeg:[0,0,-4], cameraDirection:[0.42,0.30,0.86], framing:1.16
+  brooch:Object.freeze({
+    // Near-frontal presentation preserves the AGDP face while a restrained
+    // yaw reveals that the rear fastening is an integrated solid clip.
+    objectEulerDeg:[0,-5,0], cameraDirection:[0.30,0.18,0.94], framing:1.18
   }),
   hoopEarring:Object.freeze({
     // Hoops are conventionally photographed hanging with a slight
