@@ -3063,16 +3063,94 @@ async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
   return face.translate([0,0,faceTh*.45]);
 }
 
+
+async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceTh,rng){
+  const { Manifold }=wasm;
+  const minFeature=Math.max(.8,p.minFeature||.8);
+  const source=rng()<.5?'pendant':'cufflink';
+  const targetEnvelope=clamp(Math.min(targetW,targetH),source==='pendant'?23.5:15,source==='pendant'?40:25);
+  const outerR=targetEnvelope*.5;
+  const architectural=clamp(p.architectural||0,0,1);
+  const I=(p.loadGraph&&p.loadGraph.intensities)||{node:.35};
+  const annularWall=source==='pendant'
+    ? clamp(targetEnvelope*(.105+.035*architectural+.025*I.node),3.2,6.2)
+    : clamp(targetEnvelope*(.115+.030*architectural+.020*I.node),2.4,4.2);
+  const innerR=Math.max(outerR-annularWall,outerR*(source==='pendant'?.48:.46));
+  const bandWidth=Math.max(faceTh,minFeature*3.2);
+  const baseParams=Object.assign({},p,{
+    type:'pendantAnnularCore',
+    mainSize:innerR*2,
+    bandWidth,
+    holes:source==='pendant'?Math.min(2,p.holes||0):0,
+    railCount:source==='pendant'?Math.min(2,p.railCount||0):Math.min(1,p.railCount||0),
+    crown:false,
+    spikes:0,
+    opening:0,
+    mutation:source==='cufflink'?{active:false,severity:0,mode:null}:p.mutation,
+    asymmetry:source==='cufflink'?Math.min(p.asymmetry||0,.18):p.asymmetry,
+    featureWeights:source==='cufflink'
+      ? Object.freeze(Object.assign({},p.featureWeights||{}, {vessel:Math.min((p.featureWeights&&p.featureWeights.vessel)||0,.15)}))
+      : p.featureWeights
+  });
+  const built=await buildBandGeometryManifold(wasm,baseParams,{
+    type:'pendantAnnularCore',innerD:innerR*2,width:bandWidth,closed:true,opening:0
+  });
+  let base=built.manifold;
+
+  if(source==='cufflink'){
+    const crownMesh=manifoldToMesh(base);
+    const crownAudit=validate(crownMesh.V,crownMesh.F,{
+      type:'brooch-cufflink-crown',minFeature,printProfile:p.printProfile||'silverPolished'
+    });
+    if(!crownAudit.manifoldOK||crownAudit.components!==1||!crownAudit.finite){
+      throw new Error('AGDP brooch cufflink-derived crown is not a closed manifold');
+    }
+    const capDepth=Math.max(2.2,bandWidth*.46,minFeature*2.4);
+    const rearFaceZ=-bandWidth*.5;
+    const posteriorFlattenZ=-Math.max(minFeature*.22,bandWidth*.08);
+    const capTopZ=posteriorFlattenZ;
+    const capBottomZ=rearFaceZ-capDepth*.58;
+    const capHeight=capTopZ-capBottomZ;
+    const capCenterZ=(capTopZ+capBottomZ)*.5;
+    const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
+    const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
+    const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
+    const capFill=Manifold.cylinder(capHeight,1,1,160,true)
+      .scale([crownHalfX+footprintOverlap,crownHalfY+footprintOverlap,1])
+      .translate([0,0,capCenterZ]);
+    base=unionAll(wasm,[base,capFill]);
+  }
+
+  const baseMesh=manifoldToMesh(base);
+  const baseBounds=bounds(baseMesh.V);
+  const sx=targetW/Math.max(1e-6,baseBounds.dim[0]);
+  const sy=targetH/Math.max(1e-6,baseBounds.dim[1]);
+  base=base.scale([sx,sy,1]);
+
+  const finalMesh=manifoldToMesh(base);
+  const finalAudit=validate(finalMesh.V,finalMesh.F,{
+    type:'brooch-'+source+'-derived-base',minFeature,printProfile:p.printProfile||'silverPolished'
+  });
+  if(!finalAudit.manifoldOK||finalAudit.components!==1||!finalAudit.finite){
+    throw new Error('AGDP brooch '+source+'-derived base failed continuity validation');
+  }
+  return {manifold:base,source};
+}
+
 async function makeBroochClipManifold(wasm,p){
   const { Manifold }=wasm;
   const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-face');
 
-  // Preserve the v28 face pipeline and its deterministic seed mapping.
+  // The visible brooch base is restricted to the two established AGDP
+  // typologies requested for this pipeline: pendant body or cufflink crown.
+  // No slab, isolated sphere, amorphous cluster or generic three-mode face
+  // is permitted in the brooch path.
   const faceW=clamp((p.clipFaceWidthMm||32)*(0.90+rng()*.22),27,38);
   const faceH=clamp((p.clipFaceHeightMm||30)*(0.88+rng()*.26),25,37);
   const flapT=clamp(p.clipThicknessMm||2.0,1.8,2.3);
   const faceTh=Math.max(3.6,flapT*1.9);
-  const face=await buildThreeModeFace(wasm,p,faceW,faceH,faceTh,rng);
+  const baseBuild=await buildBroochBaseFromPendantOrCufflink(wasm,p,faceW,faceH,faceTh,rng);
+  const face=baseBuild.manifold;
 
   const faceMesh=manifoldToMesh(face);
   const faceBounds=bounds(faceMesh.V);
@@ -3193,7 +3271,9 @@ async function makeBroochClipManifold(wasm,p){
   p.broochConstruction='singlePrintedSolid';
   p.broochArticulatedParts=0;
   p.broochAssemblyRequired=false;
-  p.broochGeneratorVersion='brooch-v3-embedded-backer-cantilever-flap';
+  p.broochBaseSource=baseBuild.source;
+  p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
+  p.broochGeneratorVersion='brooch-v4-pendant-or-cufflink-base-cantilever-flap';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
