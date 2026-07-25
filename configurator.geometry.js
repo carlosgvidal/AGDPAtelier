@@ -3539,7 +3539,7 @@ function makeHairCombManifold(wasm,p){
   const hairCombDiagnostics=[];
   const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v15');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v17');
 
   const cellular=featureIntensity(p,'cellular');
   const lattice=featureIntensity(p,'lattice');
@@ -3549,7 +3549,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v15');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v17');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3557,10 +3557,10 @@ function makeHairCombManifold(wasm,p){
   const organic=clamp(p.organic||0,0,1);
   const architectural=clamp(p.architectural||0,0,1);
   const asymmetry=clamp(p.asymmetry||0,0,1);
-  const railCount=Math.round(clamp(p.railCount||0,0,3));
-  const nodeCount=Math.round(clamp(p.nodes||0,0,7));
+  const railCount=Math.round(clamp(p.railCount||0,0,5));
+  const nodeCount=Math.round(clamp(p.nodes||0,0,8));
   const spikeCount=Math.round(clamp(p.spikes||0,0,8));
-  const holeCount=Math.round(clamp(p.holes||0,0,8));
+  const holeCount=Math.round(clamp(p.holes||0,0,10));
   const frameIntensity=clamp(p.frames||0,0,1);
   const rivetCount=Math.round(clamp(p.rivets||0,0,10));
 
@@ -3830,12 +3830,12 @@ function makeHairCombManifold(wasm,p){
     recordStage(crownManifold,'haircomb/crown-source');
 
     /*
-     * HAIRCOMB v16 — discrete AGDP operations.
+     * HAIRCOMB v17 — integrated AGDP operations.
      *
      * v15 kept the crown manifold by translating the complete vocabulary into
      * a single continuous normal-relief field. That solved self-intersection,
      * but it also erased the categorical difference between voids, cavities,
-     * nodes, ribs and bridges. v16 retains the safe shell and applies those
+     * nodes, ribs and bridges. v17 retains the safe shell and applies those
      * operations as real additions/subtractions on exposed surfaces only:
      * exterior/front (+Y), crown/top (+Z), and lateral edges (±X). The cranial
      * contact skin and the lower tooth-bond band receive no operation anchors.
@@ -3861,7 +3861,7 @@ function makeHairCombManifold(wasm,p){
       const x=-WIDTH_MM*.40+WIDTH_MM*.80*u;
       const z=safeZAt(x,.34+.44*((i%2)?1:0));
       const r=Math.max(AGDP_MIN_WALL_MM*.72,.85+(p.nodeVolume||0)*.34);
-      addNode([x,outerYAt(x)+r*.34,z],r);
+      addNode([x,outerYAt(x)-r*.18,z],r);
     }
 
     const ribCount=Math.max(0,Math.min(7,railCount+Math.round(architectural*3)));
@@ -3870,7 +3870,7 @@ function makeHairCombManifold(wasm,p){
       const x=-WIDTH_MM*.42+WIDTH_MM*.84*u;
       const z0=safeZAt(x,.24),z1=safeZAt(x,.82);
       const r=Math.max(AGDP_MIN_WALL_MM*.48,.58+sideRelief*.42);
-      const y=outerYAt(x)+r*.22;
+      const y=outerYAt(x)-r*.34;
       addMember([x,y,z0],[x,y,z1],r);
     }
 
@@ -3889,8 +3889,8 @@ function makeHairCombManifold(wasm,p){
       const a=[x0,outerYAt(x0)+lift,z0];
       const b=[x1,outerYAt(x1)+lift,z1];
       addMember(a,b,r);
-      addMember([x0,outerYAt(x0)-r*.12,z0],a,r*.72);
-      addMember([x1,outerYAt(x1)-r*.12,z1],b,r*.72);
+      addMember([x0,outerYAt(x0)-CROWN_DEPTH_MM*.42,z0],a,r*.82);
+      addMember([x1,outerYAt(x1)-CROWN_DEPTH_MM*.42,z1],b,r*.82);
       addNode(a,r*1.18); addNode(b,r*1.18);
     }
 
@@ -3903,7 +3903,7 @@ function makeHairCombManifold(wasm,p){
       const y0=contactY(x)-CROWN_DEPTH_MM*.12;
       const y1=contactY(x)+CROWN_DEPTH_MM*.68;
       const r=Math.max(AGDP_MIN_WALL_MM*.48,.56+.30*wrapped);
-      addMember([x,y0,z-r*.18],[x,y1,z+r*.72],r);
+      addMember([x,y0,topZ(x)-r*.95],[x,y1,z+r*.72],r);
       if(i%2===0) addNode([x,y1,z+r*.72],r*1.16);
     }
 
@@ -3913,7 +3913,7 @@ function makeHairCombManifold(wasm,p){
       const z0=safeZAt(x,.30),z1=safeZAt(x,.78);
       const y=contactY(x)+CROWN_DEPTH_MM*.10;
       const r=Math.max(AGDP_MIN_WALL_MM*.50,.60+.28*cage);
-      addMember([x-side*r*.18,y,z0],[x+side*r*.78,y,z1],r);
+      addMember([x-side*r*.92,y,z0],[x+side*r*.78,y,z1],r);
       addNode([x+side*r*.78,y,z1],r*1.12);
     }
 
@@ -3951,14 +3951,20 @@ function makeHairCombManifold(wasm,p){
     if(discreteAdds.length){
       try{
         const additions=unionAll(wasm,discreteAdds);
-        crownManifold=wasm.Manifold.union(crownManifold,additions);
-        recordStage(crownManifold,'haircomb/crown-discrete-additions');
+        const previousCrown=crownManifold;
+        crownManifold=wasm.Manifold.union(previousCrown,additions);
+        try{previousCrown.delete();}catch(e){}
+        try{additions.delete();}catch(e){}
+        const additionsReport=recordStage(crownManifold,'haircomb/crown-discrete-additions');
+        if(!additionsReport.ok){
+          throw new Error('Integrated crown additions did not form one closed component');
+        }
       }catch(error){
         throwHairCombFailure(p,'haircomb/crown-discrete-additions',error,{additions:discreteAdds.length});
       }
     }
 
-    p.hairCombOperationVersion='haircomb-v16-discrete-exposed-surfaces';
+    p.hairCombOperationVersion='haircomb-v17-integrated-exposed-surfaces';
     parts.push(crownManifold);
   }
 
@@ -3967,8 +3973,8 @@ function makeHairCombManifold(wasm,p){
   function makeToothMesh(xRoot,lateral){
     const rings=21,seg=32;
     const V=[],F=[],R=[];
-    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.58;
-    const yRoot=contactY(xRoot)-CROWN_DEPTH_MM*.42;
+    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.42;
+    const yRoot=contactY(xRoot)-CROWN_DEPTH_MM*.08;
     const fan=lateral*piecewiseByWidth(2.0,2.8,3.6);
 
     for(let i=0;i<rings;i++){
@@ -4049,7 +4055,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v16-discrete-operations';
+  p.hairCombGeneratorVersion='haircomb-v17-stable-integrated-operations';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4394,7 +4400,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v16-discrete-operations';
+    p.hairCombGeneratorVersion='haircomb-v17-stable-integrated-operations';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
