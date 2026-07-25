@@ -3933,30 +3933,52 @@ function makeHairCombManifold(wasm,p){
     }
 
     p.hairCombOperationIntegration={cavities:{requested:0,accepted:0,rejected:[]},additions:{requested:0,accepted:0,rejected:[]}};
-    p.hairCombOperationVersion='haircomb-v26-root-embedded-oval-annular-crown';
+    p.hairCombOperationVersion='haircomb-v27-through-rail-tooth-root';
     parts.push(crownManifold);
   }
 
   // Teeth curve toward the head/contact side (-Y), opposite the crown's
   // outward convex projection. This corrects the v5 inverted tooth sweep.
   function makeToothMesh(xRoot,lateral){
-    const rings=21,seg=32;
+    // v27: the tooth no longer begins at a single capped plane inside the
+    // crown. Its root is a continuous embedded stem that traverses the real
+    // lower annular rail and exits below the outer skin. This guarantees a
+    // finite three-dimensional intersection with the crown at every lateral
+    // position and removes the coplanar/near-tangent seam that corrupted the
+    // first progressive boolean union.
+    const shaftRings=21,embedRings=5,seg=32;
     const V=[],F=[],R=[];
-    const zRoot=toothRootZInsideCrown(xRoot);
+    const band=lowerOvalRailIntervalAtX(xRoot);
+    const rootRadius=TOOTH_DIAMETER_MM*.5;
+    const topInset=Math.max(.55,rootRadius*.34);
+    const exitOverlap=Math.max(.85,rootRadius*.52);
+    const zEmbedTop=Math.min(band.innerLower-topInset,band.outerLower+crownWall*.76);
+    const zExit=band.outerLower-exitOverlap;
     const yRoot=contactY(xRoot)-CROWN_DEPTH_MM*.08;
     const fan=lateral*piecewiseByWidth(2.0,2.8,3.6);
+    const totalRings=embedRings+shaftRings-1;
 
-    for(let i=0;i<rings;i++){
-      const u=i/(rings-1);
-      const ease=smooth01(u);
-      const x=xRoot+fan*ease;
-      const y=yRoot-TOOTH_SWEEP_MM*(.16*u+.84*u*u);
-      const z=zRoot-TOOTH_LENGTH_MM*u;
-      const r0=TOOTH_DIAMETER_MM*.5;
-      const r1=Math.max(.70,r0*.48);
-      const taper=Math.pow(u,.90);
-      const rx=r0*(1-taper)+r1*taper;
-      const ry=rx*.82;
+    for(let i=0;i<totalRings;i++){
+      let u,x,y,z,rx,ry;
+      if(i<embedRings){
+        const q=i/(embedRings-1);
+        x=xRoot;
+        y=yRoot;
+        z=zEmbedTop+(zExit-zEmbedTop)*q;
+        rx=rootRadius*(1-.06*q);
+        ry=rx*.82;
+      }else{
+        const j=i-(embedRings-1);
+        u=j/(shaftRings-1);
+        const ease=smooth01(u);
+        x=xRoot+fan*ease;
+        y=yRoot-TOOTH_SWEEP_MM*(.16*u+.84*u*u);
+        z=zExit-TOOTH_LENGTH_MM*u;
+        const r1=Math.max(.70,rootRadius*.48);
+        const taper=Math.pow(u,.90);
+        rx=rootRadius*(1-taper)+r1*taper;
+        ry=rx*.82;
+      }
       R[i]=[];
       for(let k=0;k<seg;k++){
         const a=2*Math.PI*k/seg;
@@ -3965,7 +3987,7 @@ function makeHairCombManifold(wasm,p){
       }
     }
 
-    for(let i=0;i<rings-1;i++){
+    for(let i=0;i<totalRings-1;i++){
       for(let k=0;k<seg;k++){
         const j=(k+1)%seg;
         F.push([R[i][k],R[i][j],R[i+1][j]]);
@@ -3974,7 +3996,7 @@ function makeHairCombManifold(wasm,p){
     }
 
     const root=V.length;
-    V.push([xRoot,yRoot,zRoot]);
+    V.push([xRoot,yRoot,zEmbedTop]);
     for(let k=0;k<seg;k++){
       const j=(k+1)%seg;
       F.push([root,R[0][j],R[0][k]]);
@@ -3984,11 +4006,11 @@ function makeHairCombManifold(wasm,p){
     V.push([
       xRoot+fan,
       yRoot-TOOTH_SWEEP_MM,
-      zRoot-TOOTH_LENGTH_MM-.90
+      zExit-TOOTH_LENGTH_MM-.90
     ]);
     for(let k=0;k<seg;k++){
       const j=(k+1)%seg;
-      F.push([R[rings-1][k],R[rings-1][j],tip]);
+      F.push([R[totalRings-1][k],R[totalRings-1][j],tip]);
     }
     return orientClosedMesh(V,F);
   }
@@ -4025,7 +4047,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCranialRadiusMm=CRANIAL_RADIUS_MM;
   p.hairCombCrownCurvatureDirection='negativeYConcaveTowardHead';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v26-root-embedded-oval-annular-crown';
+  p.hairCombGeneratorVersion='haircomb-v27-through-rail-tooth-root';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4370,7 +4392,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v26-root-embedded-oval-annular-crown';
+    p.hairCombGeneratorVersion='haircomb-v27-through-rail-tooth-root';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
