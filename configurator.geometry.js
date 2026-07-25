@@ -3576,7 +3576,8 @@ function makeHairCombManifold(wasm,p){
   const hairCombDiagnostics=[];
   const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v17');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v19');
+  const motif=p.motifSignature||(window.SeededVariation&&window.SeededVariation.buildMorphologicalSignature?window.SeededVariation.buildMorphologicalSignature(seed):{dominantSide:1,focusU:.68,clusterCount:3,clusterSpan:.24,nodeProfile:'lobed',railProfile:'short-perimeter',voidProfile:'puncture',rhythm:[.34,.33,.33],asymmetry:.62,silenceRatio:.44,reliefBias:.72,perimeterBias:.84,toothRhythm:.24});
 
   const cellular=featureIntensity(p,'cellular');
   const lattice=featureIntensity(p,'lattice');
@@ -3586,7 +3587,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v17');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v19');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3604,9 +3605,9 @@ function makeHairCombManifold(wasm,p){
   const phaseA=rng()*Math.PI*2;
   const phaseB=rng()*Math.PI*2;
   const phaseC=rng()*Math.PI*2;
-  const peakX=(-.30+.60*rng())*WIDTH_MM;
-  const peakSpread=WIDTH_MM*(.12+.16*rng());
-  const secondaryX=(-.36+.72*rng())*WIDTH_MM;
+  const peakX=(clamp(motif.focusU||.5,.12,.88)-.5)*WIDTH_MM;
+  const peakSpread=WIDTH_MM*clamp((motif.clusterSpan||.24)*.62,.10,.22);
+  const secondaryX=peakX-(motif.dominantSide||1)*WIDTH_MM*(.12+.08*rng());
   const secondarySpread=WIDTH_MM*(.08+.13*rng());
   const tertiaryX=(-.40+.80*rng())*WIDTH_MM;
   const tertiarySpread=WIDTH_MM*(.07+.10*rng());
@@ -3721,6 +3722,14 @@ function makeHairCombManifold(wasm,p){
       spikeField+=Math.exp(-d*d*1.8)*vertical;
     }
 
+    // Shared-DNA hierarchy: most of the crown remains a readable primary
+    // mass. Complex vocabulary is localized around one dominant event and the
+    // exposed perimeter; it no longer becomes a homogeneous lattice.
+    const clusterMask=Math.exp(-Math.pow((u-(motif.focusU||.5))/Math.max(.08,(motif.clusterSpan||.24)*.72),2));
+    const topMask=smooth01(clamp((t-.54)/.46,0,1));
+    const perimeterMask=clamp(.18+topMask*(motif.perimeterBias||.82),.18,1);
+    const silenceGain=clamp(1-(motif.silenceRatio||.44)*.72,.48,.78);
+
     let vocabulary=0;
     if(treatment==='solid'){
       vocabulary=
@@ -3737,20 +3746,21 @@ function makeHairCombManifold(wasm,p){
         .32*wrapped*wrappedField;
     }else{
       vocabulary=
-        (.80+1.60*lattice)*latticeField+
-        (.45+1.25*cage)*cageField+
-        1.10*inter*interweaveField+
-        .65*wrapped*wrappedField+
-        .40*cellular*cellField+
-        .40*zonedMass;
+        (.16+.42*lattice)*latticeField+
+        (.12+.36*cage)*cageField+
+        .28*inter*interweaveField+
+        .42*wrapped*wrappedField+
+        .24*cellular*cellField+
+        .82*zonedMass;
     }
 
+    vocabulary = vocabulary*silenceGain*(.28+.72*clusterMask)*perimeterMask;
     vocabulary +=
-      facetField+
-      grooveField+
-      (0.45+1.25*frameIntensity)*frameField+
-      (0.32+1.20*clamp(p.nodeVolume||0,0,2)/2)*nodeField+
-      (0.24+1.05*clamp(p.spikeHeight||0,0,3)/3)*spikeField;
+      facetField*.34+
+      grooveField*.38*perimeterMask+
+      (0.16+.48*frameIntensity)*frameField*clusterMask+
+      (0.18+.62*clamp(p.nodeVolume||0,0,2)/2)*nodeField*clusterMask+
+      (0.12+.42*clamp(p.spikeHeight||0,0,3)/3)*spikeField*clusterMask;
 
     // True recess component for cellular/groove vocabulary, limited so the
     // crown retains a safe continuous wall.
@@ -3867,120 +3877,102 @@ function makeHairCombManifold(wasm,p){
     recordStage(crownManifold,'haircomb/crown-source');
 
     /*
-     * HAIRCOMB v17 — integrated AGDP operations.
+     * HAIRCOMB v19 — shared morphological signature.
      *
-     * v15 kept the crown manifold by translating the complete vocabulary into
-     * a single continuous normal-relief field. That solved self-intersection,
-     * but it also erased the categorical difference between voids, cavities,
-     * nodes, ribs and bridges. v17 retains the safe shell and applies those
-     * operations as real additions/subtractions on exposed surfaces only:
-     * exterior/front (+Y), crown/top (+Z), and lateral edges (±X). The cranial
-     * contact skin and the lower tooth-bond band receive no operation anchors.
+     * The crown remains a legible primary mass. Nodes, short members and
+     * punctures are concentrated in one dominant perimeter cluster, with a
+     * quieter counter-zone. This translates the same hierarchy visible in the
+     * ring, hoop, ear cuff and pendant instead of filling the face with a
+     * typology-specific truss.
      */
     const discreteAdds=[];
     const discreteCuts=[];
-    const outerYAt=(x)=>contactY(x)+CROWN_DEPTH_MM*.5;
+    const addLabels=[];
+    const cutLabels=[];
+    const outerYAt=(x,t=.62)=>contactY(x)+CROWN_DEPTH_MM*.5+Math.max(0,exteriorYField(x,t));
     const safeZAt=(x,t=.58)=>{
       const zb=lowerZ(x),zt=Math.max(zb+ROOT_TRANSITION_MM,topZ(x));
-      return zb+(zt-zb)*clamp(t,.20,.92);
+      return zb+(zt-zb)*clamp(t,.20,.94);
     };
-    const addNode=(center,r)=>{
+    const addNode=(center,r,label)=>{
       discreteAdds.push(organicNodeAt(wasm,center,r,28,rng()*Math.PI*2));
+      addLabels.push(label||'node');
     };
-    const addMember=(a,b,r)=>{
+    const addMember=(a,b,r,label)=>{
       discreteAdds.push(cylinderBetween(wasm,a,b,r,24));
+      addLabels.push(label||'member');
     };
+    const addCut=(m,label)=>{discreteCuts.push(m);cutLabels.push(label||'cavity');};
 
-    // FRONT / EXTERIOR: nodes and ribs are embedded into +Y only.
-    const actualNodes=Math.max(0,Math.min(6,nodeCount||Math.round(rivetCount*.55)));
-    for(let i=0;i<actualNodes;i++){
-      const u=(i+1)/(actualNodes+1);
-      const x=-WIDTH_MM*.40+WIDTH_MM*.80*u;
-      const z=safeZAt(x,.34+.44*((i%2)?1:0));
-      const r=Math.max(AGDP_MIN_WALL_MM*.72,.85+(p.nodeVolume||0)*.34);
-      addNode([x,outerYAt(x)-r*.18,z],r);
+    const dominantSide=motif.dominantSide||1;
+    const focusU=clamp(motif.focusU||.5,.16,.84);
+    const focusX=(focusU-.5)*WIDTH_MM;
+    const clusterSpan=WIDTH_MM*clamp(motif.clusterSpan||.24,.16,.34);
+    const clusterCount=Math.max(2,Math.min(4,motif.clusterCount||3));
+    const rhythm=Array.isArray(motif.rhythm)&&motif.rhythm.length?motif.rhythm:[.34,.33,.33];
+    const baseNodeR=Math.max(AGDP_MIN_WALL_MM*.78,.92+(p.nodeVolume||1.8)*.31);
+
+    // Dominant cluster: lobed modules grow from the top/front perimeter. The
+    // spacing follows the shared rhythm rather than an even comb-specific grid.
+    let cursor=-.5;
+    for(let i=0;i<clusterCount;i++){
+      const rw=rhythm[i%rhythm.length]||1/clusterCount;
+      cursor+=rw*.5;
+      const x=clamp(focusX+cursor*clusterSpan,-WIDTH_MM*.43,WIDTH_MM*.43);
+      const tier=i%2===0?.78:.62;
+      const z=safeZAt(x,tier);
+      const r=baseNodeR*(.82+rw*clusterCount*.32)*(i===0?1.14:1);
+      addNode([x,outerYAt(x,tier)-r*.30,z],r,'dominant-node-'+(i+1));
+      if(motif.nodeProfile==='paired'&&i===0){
+        const px=clamp(x-dominantSide*r*1.35,-WIDTH_MM*.43,WIDTH_MM*.43);
+        addNode([px,outerYAt(px,tier)-r*.34,z-r*.18],r*.78,'paired-node');
+      }
+      cursor+=rw*.5;
     }
 
-    const ribCount=Math.max(0,Math.min(7,railCount+Math.round(architectural*3)));
-    for(let i=0;i<ribCount;i++){
-      const u=(i+1)/(ribCount+1);
-      const x=-WIDTH_MM*.42+WIDTH_MM*.84*u;
-      const z0=safeZAt(x,.24),z1=safeZAt(x,.82);
-      const r=Math.max(AGDP_MIN_WALL_MM*.48,.58+sideRelief*.42);
-      const y=outerYAt(x)-r*.34;
-      addMember([x,y,z0],[x,y,z1],r);
-    }
-
-    // FRONT BRIDGES: raised members leave a genuine open void beneath them.
-    const bridgeCount=Math.max(0,Math.min(3,Math.round((lattice+inter+continuity)*1.25)));
-    for(let i=0;i<bridgeCount;i++){
-      const band=(i+1)/(bridgeCount+1);
-      const zRatio=.34+.44*band;
-      const half=WIDTH_MM*(.13+.045*i);
-      const cx=(i%2?-.12:.12)*WIDTH_MM;
+    // One or two short perimeter members articulate the cluster. They never
+    // traverse the complete crown and therefore cannot read as a lattice.
+    const shortMembers=Math.max(1,Math.min(2,railCount));
+    for(let i=0;i<shortMembers;i++){
+      const half=clusterSpan*(.20+.07*i);
+      const cx=clamp(focusX-dominantSide*clusterSpan*(.08*i),-WIDTH_MM*.34,WIDTH_MM*.34);
       const x0=clamp(cx-half,-WIDTH_MM*.43,WIDTH_MM*.43);
       const x1=clamp(cx+half,-WIDTH_MM*.43,WIDTH_MM*.43);
-      const z0=safeZAt(x0,zRatio),z1=safeZAt(x1,zRatio);
-      const r=Math.max(AGDP_MIN_WALL_MM*.62,.72+.30*architectural);
-      const lift=CROWN_DEPTH_MM*(.72+.34*lattice);
-      const a=[x0,outerYAt(x0)+lift,z0];
-      const b=[x1,outerYAt(x1)+lift,z1];
-      addMember(a,b,r);
-      addMember([x0,outerYAt(x0)-CROWN_DEPTH_MM*.42,z0],a,r*.82);
-      addMember([x1,outerYAt(x1)-CROWN_DEPTH_MM*.42,z1],b,r*.82);
-      addNode(a,r*1.18); addNode(b,r*1.18);
-    }
-
-    // TOP EDGE: ribs/bridges project in +Z and never touch the lower bond face.
-    const topOps=Math.max(1,Math.min(4,Math.round(1+wrapped*2+cage*2)));
-    for(let i=0;i<topOps;i++){
-      const u=(i+1)/(topOps+1);
-      const x=-WIDTH_MM*.38+WIDTH_MM*.76*u;
-      const z=topZ(x);
-      const y0=contactY(x)-CROWN_DEPTH_MM*.12;
-      const y1=contactY(x)+CROWN_DEPTH_MM*.68;
-      const r=Math.max(AGDP_MIN_WALL_MM*.48,.56+.30*wrapped);
-      addMember([x,y0,topZ(x)-r*.95],[x,y1,z+r*.72],r);
-      if(i%2===0) addNode([x,y1,z+r*.72],r*1.16);
-    }
-
-    // LATERAL EDGES: real ribs and nodes on both ±X exposed faces.
-    for(const side of [-1,1]){
-      const x=side*WIDTH_MM*.5;
-      const z0=safeZAt(x,.30),z1=safeZAt(x,.78);
-      const y=contactY(x)+CROWN_DEPTH_MM*.10;
-      const r=Math.max(AGDP_MIN_WALL_MM*.50,.60+.28*cage);
-      addMember([x-side*r*.92,y,z0],[x+side*r*.78,y,z1],r);
-      addNode([x+side*r*.78,y,z1],r*1.12);
-    }
-
-    // SHALLOW NEGATIVE OPERATIONS: cavities on exterior, top and sides. Their
-    // penetration is capped below crown depth, preserving the smooth interior.
-    const cavityCount=Math.max(0,Math.min(7,holeCount+Math.round(cellular*2)));
-    for(let i=0;i<cavityCount;i++){
-      const u=(i+1)/(cavityCount+1);
-      const x=-WIDTH_MM*.39+WIDTH_MM*.78*u;
-      const z=safeZAt(x,.28+.52*((i%3)/2));
-      const r=Math.max(AGDP_MIN_WALL_MM*.78,.90+.42*cellular);
-      discreteCuts.push(sphereAt(wasm,[x,outerYAt(x)+r*.62,z],r,28));
-    }
-    // At least one top and one lateral cavity when holes/cellular vocabulary is active.
-    if(cavityCount>0){
-      const tx=WIDTH_MM*.18*structuralPolarity;
-      const tr=Math.max(AGDP_MIN_WALL_MM*.82,1.0+.34*cellular);
-      discreteCuts.push(sphereAt(wasm,[tx,contactY(tx),topZ(tx)+tr*.68],tr,28));
-      for(const side of [-1,1]){
-        const sx=side*WIDTH_MM*.5;
-        const sr=Math.max(AGDP_MIN_WALL_MM*.74,.92+.28*cellular);
-        discreteCuts.push(sphereAt(wasm,[sx+side*sr*.68,contactY(sx),safeZAt(sx,.60)],sr,28));
+      const t=.70-.12*i;
+      const r=Math.max(AGDP_MIN_WALL_MM*.52,.62+.24*wrapped);
+      const a=[x0,outerYAt(x0,t)-r*.30,safeZAt(x0,t)];
+      const b=[x1,outerYAt(x1,t)-r*.30,safeZAt(x1,t+.035*dominantSide)];
+      addMember(a,b,r,'perimeter-member-'+(i+1));
+      if(motif.railProfile==='paired-bridge'&&i===0){
+        const lift=CROWN_DEPTH_MM*.52;
+        const aa=[a[0],a[1]+lift,a[2]+r*.18];
+        const bb=[b[0],b[1]+lift,b[2]+r*.18];
+        addMember(aa,bb,r*.82,'raised-short-bridge');
+        addMember(a,aa,r*.72,'bridge-support-a');
+        addMember(b,bb,r*.72,'bridge-support-b');
       }
+    }
+
+    // A restrained counter-event prevents the crown from becoming a centered
+    // ornament while preserving a broad silent zone.
+    const counterX=clamp(focusX-dominantSide*WIDTH_MM*(.32+.08*(motif.silenceRatio||.44)),-WIDTH_MM*.40,WIDTH_MM*.40);
+    const counterR=baseNodeR*.62;
+    addNode([counterX,outerYAt(counterX,.52)-counterR*.34,safeZAt(counterX,.52)],counterR,'counter-node');
+
+    // Discrete punctures only. No repeated cellular field across the face.
+    const requestedVoids=motif.voidProfile==='none'?0:Math.min(2,holeCount||1);
+    for(let i=0;i<requestedVoids;i++){
+      const x=clamp(focusX+dominantSide*clusterSpan*(.10+.22*i),-WIDTH_MM*.40,WIDTH_MM*.40);
+      const t=.48+.16*i;
+      const r=Math.max(AGDP_MIN_WALL_MM*.72,.82+.24*cellular);
+      addCut(sphereAt(wasm,[x,outerYAt(x,t)+r*.62,safeZAt(x,t)],r,28),'cluster-puncture-'+(i+1));
     }
 
     // Apply every subtractive operation independently. A cutter is retained
     // only when the resulting crown remains finite, watertight, manifold and a
     // single connected component. This prevents an early cavity from silently
     // damaging the crown and being misreported later as an addition failure.
-    const cavityIntegration={requested:discreteCuts.length,accepted:0,rejected:[]};
+    const cavityIntegration={requested:discreteCuts.length,accepted:0,rejected:[],labels:cutLabels.slice()};
     for(let i=0;i<discreteCuts.length;i++){
       const cutter=discreteCuts[i];
       let candidate=null;
@@ -3995,10 +3987,10 @@ function makeHairCombManifold(wasm,p){
           cavityIntegration.accepted++;
           try{previous.delete();}catch(e){}
         }else{
-          cavityIntegration.rejected.push({index:i+1,reasons:report.failureReasons,report});
+          cavityIntegration.rejected.push({index:i+1,operation:cutLabels[i],reasons:report.failureReasons,report});
         }
       }catch(error){
-        cavityIntegration.rejected.push({index:i+1,reasons:['exception:'+String(error&&error.message||error)]});
+        cavityIntegration.rejected.push({index:i+1,operation:cutLabels[i],reasons:['exception:'+String(error&&error.message||error)]});
         try{cutter.delete();}catch(e){}
       }finally{
         if(candidate)try{candidate.delete();}catch(e){}
@@ -4018,7 +4010,7 @@ function makeHairCombManifold(wasm,p){
     // A node, rib or bridge that does not genuinely overlap the current crown
     // is rejected locally; valid operations remain, and the diagnostic records
     // the exact primitive index and topological reason.
-    const additionIntegration={requested:discreteAdds.length,accepted:0,rejected:[]};
+    const additionIntegration={requested:discreteAdds.length,accepted:0,rejected:[],labels:addLabels.slice()};
     for(let i=0;i<discreteAdds.length;i++){
       const addition=discreteAdds[i];
       let candidate=null;
@@ -4035,10 +4027,10 @@ function makeHairCombManifold(wasm,p){
           additionIntegration.accepted++;
           try{previous.delete();}catch(e){}
         }else{
-          additionIntegration.rejected.push({index:i+1,reasons:report.failureReasons,report});
+          additionIntegration.rejected.push({index:i+1,operation:addLabels[i],reasons:report.failureReasons,report});
         }
       }catch(error){
-        additionIntegration.rejected.push({index:i+1,reasons:['exception:'+String(error&&error.message||error)]});
+        additionIntegration.rejected.push({index:i+1,operation:addLabels[i],reasons:['exception:'+String(error&&error.message||error)]});
         try{addition.delete();}catch(e){}
       }finally{
         if(candidate)try{candidate.delete();}catch(e){}
@@ -4055,7 +4047,7 @@ function makeHairCombManifold(wasm,p){
     }
     p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
 
-    p.hairCombOperationVersion='haircomb-v18-screened-incremental-csg';
+    p.hairCombOperationVersion='haircomb-v19-shared-morphology-perimeter-cluster';
     parts.push(crownManifold);
   }
 
@@ -4146,7 +4138,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCurvatureAxis='Y';
   p.hairCombCrownCurvatureDirection='positiveYConvex';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v17-stable-integrated-operations';
+  p.hairCombGeneratorVersion='haircomb-v19-shared-morphology';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4491,7 +4483,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v17-stable-integrated-operations';
+    p.hairCombGeneratorVersion='haircomb-v19-shared-morphology';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}

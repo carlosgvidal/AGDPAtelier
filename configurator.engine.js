@@ -1,5 +1,5 @@
 'use strict';
-const AGDP_APP_VERSION='0.202';
+const AGDP_APP_VERSION='0.203';
 window.AGDP_APP_VERSION=AGDP_APP_VERSION;
 window.addEventListener('error',function(e){
   const statusWrap=document.getElementById('agdpStatusWrap');
@@ -67,9 +67,45 @@ const SeededVariation=(()=>{
     values.continuity=extremal(rng,.28,1.00,2.15);
     return Object.freeze(values);
   }
+  function buildMorphologicalSignature(seed){
+    // One type-independent morphological genome. Every typology receives the
+    // same hierarchy, dominant region, rhythm and operation preferences; each
+    // geometry then translates them to its own functional support.
+    const rng=createGenerator(String(seed||'AGDP')+'|agdp-morphology-signature-v1');
+    const dominantSide=rng()<.5?-1:1;
+    const focusU=clamp(.50+dominantSide*range(rng,.12,.29)+signed(rng)*.045,.16,.84);
+    const clusterCount=integer(rng,2,4);
+    const rhythm=[];
+    let total=0;
+    for(let i=0;i<clusterCount;i++){
+      const v=range(rng,.55,1.45); rhythm.push(v); total+=v;
+    }
+    for(let i=0;i<rhythm.length;i++) rhythm[i]/=total;
+    const nodeProfiles=['lobed','rounded','paired'];
+    const railProfiles=['short-perimeter','paired-bridge','axial-rib'];
+    const voidProfiles=['puncture','shallow-slot','none'];
+    return Object.freeze({
+      version:'agdp-morphology-signature-v1',
+      dominantSide,
+      focusU,
+      clusterCount,
+      clusterSpan:range(rng,.18,.34),
+      nodeProfile:nodeProfiles[integer(rng,0,nodeProfiles.length-1)],
+      railProfile:railProfiles[integer(rng,0,railProfiles.length-1)],
+      voidProfile:voidProfiles[integer(rng,0,voidProfiles.length-1)],
+      rhythm:Object.freeze(rhythm),
+      asymmetry:range(rng,.42,.88),
+      silenceRatio:range(rng,.34,.58),
+      reliefBias:range(rng,.48,.92),
+      perimeterBias:range(rng,.68,.96),
+      toothRhythm:range(rng,.12,.38)
+    });
+  }
+
   function apply(params,seed){
     const p=Object.assign({},params);
     p.seed=normalize(seed||p.seed);
+    p.motifSignature=buildMorphologicalSignature(p.seed);
     const rng=createGenerator(p.seed+'|'+(p.type||'piece')+'|variation-v3-sculptural');
 
     p.variantSelector=rng();
@@ -173,25 +209,32 @@ const SeededVariation=(()=>{
       p.holes=integer(rng,0,1);p.nodes=integer(rng,0,4);p.crown=false;p.spikes=0;
       p.nodeVolume=Math.min(p.nodeVolume,4.5);
     }else if(p.type==='haircomb'){
-      // Aggressive but controlled crown seed: guarantee one subtractive, one
-      // linear/structural and one volumetric family in every variant. The
-      // protected cranial face and tooth-bond band are enforced in geometry.
-      p.holes=integer(rng,2,6);
-      p.railCount=integer(rng,2,5);
-      p.nodes=integer(rng,2,6);
-      p.nodeVolume=clamp(p.nodeVolume*1.18,1.8,4.8);
-      p.frames=clamp(Math.max(p.frames,.34),0,1);
+      // The haircomb now translates the same type-independent morphological
+      // signature used by the collection. It must retain a readable primary
+      // crown and localized perimeter events, not convert every feature family
+      // into a full-surface lattice.
+      const ms=p.motifSignature||{};
+      p.holes=ms.voidProfile==='none'?0:integer(rng,0,2);
+      p.railCount=integer(rng,1,3);
+      p.nodes=integer(rng,2,5);
+      p.nodeVolume=clamp(p.nodeVolume*.96,1.6,3.8);
+      p.frames=clamp(p.frames*.62,.08,.52);
       p.crown=false;
       p.spikes=0;
       const fw=p.featureWeights||{};
       p.featureWeights=Object.freeze(Object.assign({},fw,{
-        lattice:clamp(Math.max(fw.lattice||0,.38),.02,1),
-        cellular:clamp(Math.max(fw.cellular||0,.42),.02,1),
-        wrapped:clamp(Math.max(fw.wrapped||0,.34),.02,1),
-        cage:clamp(Math.max(fw.cage||0,.36),.02,1),
-        interweave:clamp(Math.max(fw.interweave||0,.30),.02,1),
-        continuity:clamp(Math.max(fw.continuity||0,.48),.10,1)
+        lattice:clamp((fw.lattice||0)*.34,.02,.42),
+        cellular:clamp((fw.cellular||0)*.48,.02,.48),
+        wrapped:clamp((fw.wrapped||0)*.76,.04,.72),
+        cage:clamp((fw.cage||0)*.46,.02,.46),
+        interweave:clamp((fw.interweave||0)*.42,.02,.44),
+        vessel:clamp(Math.max(fw.vessel||0,.34),.10,.88),
+        dome:clamp(Math.max(fw.dome||0,.30),.10,.84),
+        continuity:clamp(Math.max(fw.continuity||0,.62),.52,1)
       }));
+      p.surfaceRelief=clamp(p.surfaceRelief*.72,.018,.095);
+      p.sideRelief=clamp(p.sideRelief*.72,.010,.070);
+      p.asymmetry=clamp(Math.max(p.asymmetry||0,(ms.asymmetry||.55)*.42),.12,.52);
     }else if(p.type==='hoopEarring'){
       // Same principle: the hook/ring/socket are fixed safety geometry
       // (see makeHoopEarringManifold) untouched by the seed. Only the
@@ -203,7 +246,7 @@ const SeededVariation=(()=>{
     }
     return p;
   }
-  return Object.freeze({apply,newSeed,normalize,createGenerator});
+  return Object.freeze({apply,newSeed,normalize,createGenerator,buildMorphologicalSignature});
 })();
 
 function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
