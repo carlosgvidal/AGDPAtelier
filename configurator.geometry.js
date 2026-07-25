@@ -3522,7 +3522,7 @@ function throwHairCombFailure(p,stage,error,details){
 
 function makeHairCombManifold(wasm,p){
   /*
-   * HAIR COMB v20
+   * HAIR COMB v21
    *
    * Structural division:
    *   crown exterior = complete AGDP operation vocabulary;
@@ -3564,7 +3564,10 @@ function makeHairCombManifold(wasm,p){
   const TOOTH_COUNT=Math.round(piecewiseByWidth(7,8,9));
   const TOOTH_DIAMETER_MM=piecewiseByWidth(2.5,2.8,3.0);
   const ROOT_TRANSITION_MM=piecewiseByWidth(5.0,5.8,6.6);
-  const SKULL_SAG_MM=piecewiseByWidth(6.0,8.0,11.0);
+  // Transverse cranial concavity. The previous 6–11 mm parabolic bow was
+  // visually weak and convex in the wrong direction. v21 uses a circular
+  // concave support curve whose sag grows with width.
+  const SKULL_SAG_MM=piecewiseByWidth(12.5,15.5,18.0);
   const TOOTH_SWEEP_MM=piecewiseByWidth(5.0,7.0,9.5);
   const SIDE_MARGIN_MM=piecewiseByWidth(6.5,8.0,9.0);
   const TOOTH_SPAN_MM=WIDTH_MM-2*SIDE_MARGIN_MM;
@@ -3576,7 +3579,7 @@ function makeHairCombManifold(wasm,p){
   const hairCombDiagnostics=[];
   const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v19');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v21');
   const motif=p.motifSignature||(window.SeededVariation&&window.SeededVariation.buildMorphologicalSignature?window.SeededVariation.buildMorphologicalSignature(seed):{dominantSide:1,focusU:.68,clusterCount:3,clusterSpan:.24,nodeProfile:'lobed',railProfile:'short-perimeter',voidProfile:'puncture',rhythm:[.34,.33,.33],asymmetry:.62,silenceRatio:.44,reliefBias:.72,perimeterBias:.84,toothRhythm:.24});
 
   const cellular=featureIntensity(p,'cellular');
@@ -3587,7 +3590,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v19');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v21');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3618,10 +3621,16 @@ function makeHairCombManifold(wasm,p){
     return x*x*(3-2*x);
   }
 
-  // Crown centre projects outward in +Y: convex exterior.
+  // Circular transverse curvature adapted to the convexity of the head.
+  // The contact path is concave toward -Y: both ends sit forward while the
+  // centre recedes by SKULL_SAG_MM. The radius is derived from chord and sag,
+  // so width changes preserve a controlled ergonomic curvature.
+  const CRANIAL_HALF_CHORD_MM=WIDTH_MM*.5;
+  const CRANIAL_RADIUS_MM=(CRANIAL_HALF_CHORD_MM*CRANIAL_HALF_CHORD_MM+SKULL_SAG_MM*SKULL_SAG_MM)/(2*SKULL_SAG_MM);
+  const CRANIAL_EDGE_Y_MM=Math.sqrt(Math.max(0,CRANIAL_RADIUS_MM*CRANIAL_RADIUS_MM-CRANIAL_HALF_CHORD_MM*CRANIAL_HALF_CHORD_MM));
   function contactY(x){
-    const n=clamp(x/(WIDTH_MM*.5),-1,1);
-    return SKULL_SAG_MM*(1-n*n);
+    const xx=clamp(x,-CRANIAL_HALF_CHORD_MM,CRANIAL_HALF_CHORD_MM);
+    return -(Math.sqrt(Math.max(0,CRANIAL_RADIUS_MM*CRANIAL_RADIUS_MM-xx*xx))-CRANIAL_EDGE_Y_MM);
   }
 
   function lowerZ(x){
@@ -3808,16 +3817,20 @@ function makeHairCombManifold(wasm,p){
     return {V,F};
   }
 
-  // HAIRCOMB v20 — arc crown mounted on the tooth spine.
+  // HAIRCOMB v21 — arc crown mounted on the tooth spine.
   // The former broad plate has been replaced by an open, ear-cuff-like arc.
   // Both the arc and the lower spine are continuous swept tubes; their end
   // regions overlap volumetrically so the crown is one printable component.
   {
-    const ARC_HALF_SPAN_MM=WIDTH_MM*.42;
+    const SPINE_TUBE_R_MM=Math.max(TOOTH_DIAMETER_MM*.84,2.25);
+    // Arc and rail share the same effective endpoints. Their centre paths stop
+    // one rail radius inside the nominal width, so the external surfaces end
+    // exactly at the requested comb width without either body overhanging.
+    const SUPPORT_HALF_SPAN_MM=WIDTH_MM*.5-SPINE_TUBE_R_MM;
+    const ARC_HALF_SPAN_MM=SUPPORT_HALF_SPAN_MM;
     const ARC_RISE_MM=piecewiseByWidth(23,28,33);
     const ARC_TUBE_R_MM=piecewiseByWidth(3.3,3.8,4.3);
-    const SPINE_TUBE_R_MM=Math.max(TOOTH_DIAMETER_MM*.84,2.25);
-    const ARC_SEG=96;
+    const ARC_SEG=112;
     const SPINE_SEG=72;
 
     const spineZAt=x=>lowerZ(x)+ROOT_TRANSITION_MM*.42;
@@ -3827,7 +3840,13 @@ function makeHairCombManifold(wasm,p){
       const s=Math.sin(arcThetaAt(xx));
       return spineZAt(xx)+ARC_RISE_MM*Math.pow(Math.max(0,s),.92);
     };
-    const arcYAt=x=>contactY(clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM))+CROWN_DEPTH_MM*.06;
+    const arcYAt=x=>{
+      const xx=clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM);
+      const u=clamp((xx/ARC_HALF_SPAN_MM+1)*.5,0,1);
+      const junctionBlend=smooth01(clamp(Math.min(u,1-u)/.105,0,1));
+      const spineY=contactY(xx)-CROWN_DEPTH_MM*.08;
+      return spineY+CROWN_DEPTH_MM*.14*junctionBlend;
+    };
     const arcLocalU=x=>clamp((x/ARC_HALF_SPAN_MM+1)*.5,0,1);
 
     const arcPoints=[];
@@ -3836,17 +3855,23 @@ function makeHairCombManifold(wasm,p){
       const u=i/ARC_SEG;
       const theta=Math.PI*(1-u);
       const x=ARC_HALF_SPAN_MM*Math.cos(theta);
-      const cluster=Math.exp(-Math.pow((arcLocalU(x)-(motif.focusU||.5))/Math.max(.09,(motif.clusterSpan||.24)*.68),2));
-      const rhythm=.5+.5*Math.sin(phaseA+u*Math.PI*(3+railCount*.35));
-      const radiusGain=1+cluster*(.08+.13*clamp(motif.reliefBias||.7,0,1))+.035*faceting*(rhythm-.5);
+      const focus=Math.exp(-Math.pow((arcLocalU(x)-(motif.focusU||.5))/Math.max(.09,(motif.clusterSpan||.24)*.78),2));
+      const rhythm=.5+.5*Math.sin(phaseA+u*Math.PI*(4+railCount*.45));
+      const globalPulse=.5+.5*Math.sin(phaseB+u*Math.PI*2*(2+Math.max(1,clusterCount)));
+      const radiusGain=1+(.035+.045*focus)*clamp(motif.reliefBias||.7,0,1)+.028*faceting*(rhythm-.5)+.025*(globalPulse-.5);
+      // Match the rail section at both junctions. This removes the blunt
+      // shoulder produced when a larger arc tube met a narrower rail.
+      const endpointBlend=smooth01(clamp(Math.min(u,1-u)/.105,0,1));
+      const rx=SPINE_TUBE_R_MM+(ARC_TUBE_R_MM*radiusGain-SPINE_TUBE_R_MM)*endpointBlend;
+      const ry=SPINE_TUBE_R_MM+(ARC_TUBE_R_MM*(.92+.08*radiusGain)-SPINE_TUBE_R_MM)*endpointBlend;
       arcPoints.push([x,arcYAt(x),arcZAt(x)]);
-      arcRadii.push([ARC_TUBE_R_MM*radiusGain,ARC_TUBE_R_MM*(.92+.08*radiusGain)]);
+      arcRadii.push([rx,ry]);
     }
 
     const spinePoints=[];
     for(let i=0;i<=SPINE_SEG;i++){
       const u=i/SPINE_SEG;
-      const x=-WIDTH_MM*.5+WIDTH_MM*u;
+      const x=-SUPPORT_HALF_SPAN_MM+2*SUPPORT_HALF_SPAN_MM*u;
       spinePoints.push([x,contactY(x)-CROWN_DEPTH_MM*.08,spineZAt(x)]);
     }
 
@@ -3868,7 +3893,7 @@ function makeHairCombManifold(wasm,p){
       try{if(arcManifold)arcManifold.delete();}catch(e){}
       try{if(spineManifold)spineManifold.delete();}catch(e){}
       throwHairCombFailure(p,'haircomb/arc-crown/construction',error,{
-        crownConstruction:'open-elliptical-arc-on-continuous-spine-v20',
+        crownConstruction:'ergonomic-open-arc-on-aligned-spine-v21',
         arcHalfSpanMm:ARC_HALF_SPAN_MM,
         arcRiseMm:ARC_RISE_MM,
         arcTubeRadiusMm:ARC_TUBE_R_MM,
@@ -3882,7 +3907,7 @@ function makeHairCombManifold(wasm,p){
         p,
         'haircomb/arc-crown/topology',
         new Error('Arc crown topology invalid: '+topologyFailureReasons(sourceReport).join(', ')),
-        {report:sourceReport,crownConstruction:'open-elliptical-arc-on-continuous-spine-v20'}
+        {report:sourceReport,crownConstruction:'ergonomic-open-arc-on-aligned-spine-v21'}
       );
     }
 
@@ -3896,7 +3921,7 @@ function makeHairCombManifold(wasm,p){
     const outerYAt=(x,t=.62)=>arcYAt(x)+arcTubeRadiusAt(x)*(.72+.14*clamp(t,0,1));
     const safeZAt=(x,t=.58)=>arcZAt(x)+arcTubeRadiusAt(x)*(clamp(t,.20,.94)-.58)*.72;
     /*
-     * HAIRCOMB v20 — shared morphology on an open arc crown.
+     * HAIRCOMB v21 — shared morphology on an open arc crown.
      *
      * The crown remains a legible primary mass. Nodes, short members and
      * punctures are concentrated in one dominant perimeter cluster, with a
@@ -3926,60 +3951,63 @@ function makeHairCombManifold(wasm,p){
     const rhythm=Array.isArray(motif.rhythm)&&motif.rhythm.length?motif.rhythm:[.34,.33,.33];
     const baseNodeR=Math.max(AGDP_MIN_WALL_MM*.78,.92+(p.nodeVolume||1.8)*.31);
 
-    // Dominant cluster: lobed modules grow from the top/front perimeter. The
-    // spacing follows the shared rhythm rather than an even comb-specific grid.
-    let cursor=-.5;
-    for(let i=0;i<clusterCount;i++){
-      const rw=rhythm[i%rhythm.length]||1/clusterCount;
-      cursor+=rw*.5;
-      const x=clamp(focusX+cursor*clusterSpan,-ARC_HALF_SPAN_MM*.94,ARC_HALF_SPAN_MM*.94);
-      const tier=i%2===0?.78:.62;
-      const z=safeZAt(x,tier);
-      const r=baseNodeR*(.82+rw*clusterCount*.32)*(i===0?1.14:1);
-      addNode([x,outerYAt(x,tier)-r*.30,z],r,'dominant-node-'+(i+1));
-      if(motif.nodeProfile==='paired'&&i===0){
-        const px=clamp(x-dominantSide*r*1.35,-ARC_HALF_SPAN_MM*.94,ARC_HALF_SPAN_MM*.94);
-        addNode([px,outerYAt(px,tier)-r*.34,z-r*.18],r*.78,'paired-node');
+    // Distributed arc vocabulary. The motif still controls rhythm and local
+    // emphasis, but operations now occur across the complete open arc rather
+    // than being confined to a weak event on one side. End clearances protect
+    // the two structural junctions with the rail.
+    const endClearU=.075;
+    const distributedNodeCount=Math.max(4,Math.min(8,Math.max(nodeCount,clusterCount+2)));
+    for(let i=0;i<distributedNodeCount;i++){
+      const baseU=endClearU+(1-2*endClearU)*(i+.5)/distributedNodeCount;
+      const jitter=(rng()-.5)*(1-2*endClearU)/distributedNodeCount*.32;
+      const u=clamp(baseU+jitter,endClearU,1-endClearU);
+      const x=(u-.5)*2*ARC_HALF_SPAN_MM;
+      const focus=Math.exp(-Math.pow((u-focusU)/Math.max(.10,(motif.clusterSpan||.24)*.82),2));
+      const pulse=.5+.5*Math.sin(phaseA+u*Math.PI*2*(2.0+clusterCount*.45));
+      const tier=.48+.34*(.5+.5*Math.sin(phaseB+i*1.71));
+      const r=baseNodeR*(.72+.28*pulse+.18*focus);
+      addNode([x,outerYAt(x,tier)-r*.32,safeZAt(x,tier)],r,'arc-node-'+(i+1));
+      if(motif.nodeProfile==='paired' && i%3===1){
+        const pu=clamp(u+.024*dominantSide,endClearU,1-endClearU);
+        const px=(pu-.5)*2*ARC_HALF_SPAN_MM;
+        addNode([px,outerYAt(px,tier-.09)-r*.34,safeZAt(px,tier-.09)],r*.68,'paired-arc-node-'+(i+1));
       }
-      cursor+=rw*.5;
     }
 
-    // One or two short perimeter members articulate the cluster. They never
-    // traverse the complete crown and therefore cannot read as a lattice.
-    const shortMembers=Math.max(1,Math.min(2,railCount));
-    for(let i=0;i<shortMembers;i++){
-      const half=clusterSpan*(.20+.07*i);
-      const cx=clamp(focusX-dominantSide*clusterSpan*(.08*i),-ARC_HALF_SPAN_MM*.78,ARC_HALF_SPAN_MM*.78);
-      const x0=clamp(cx-half,-ARC_HALF_SPAN_MM*.94,ARC_HALF_SPAN_MM*.94);
-      const x1=clamp(cx+half,-ARC_HALF_SPAN_MM*.94,ARC_HALF_SPAN_MM*.94);
-      const t=.70-.12*i;
-      const r=Math.max(AGDP_MIN_WALL_MM*.52,.62+.24*wrapped);
+    // Short overlapping members articulate several regions of the arc. Each
+    // follows a local chord and remains short enough not to read as a truss.
+    const distributedMembers=Math.max(2,Math.min(5,Math.max(railCount,3)));
+    for(let i=0;i<distributedMembers;i++){
+      const u=.13+.74*(i+.5)/distributedMembers;
+      const halfU=.055+.018*((i+clusterCount)%3);
+      const u0=clamp(u-halfU,endClearU,1-endClearU);
+      const u1=clamp(u+halfU,endClearU,1-endClearU);
+      const x0=(u0-.5)*2*ARC_HALF_SPAN_MM;
+      const x1=(u1-.5)*2*ARC_HALF_SPAN_MM;
+      const t=.50+.23*(.5+.5*Math.sin(phaseC+i*1.39));
+      const r=Math.max(AGDP_MIN_WALL_MM*.52,.62+.22*wrapped);
       const a=[x0,outerYAt(x0,t)-r*.30,safeZAt(x0,t)];
-      const b=[x1,outerYAt(x1,t)-r*.30,safeZAt(x1,t+.035*dominantSide)];
-      addMember(a,b,r,'perimeter-member-'+(i+1));
-      if(motif.railProfile==='paired-bridge'&&i===0){
-        const lift=CROWN_DEPTH_MM*.52;
-        const aa=[a[0],a[1]+lift,a[2]+r*.18];
-        const bb=[b[0],b[1]+lift,b[2]+r*.18];
-        addMember(aa,bb,r*.82,'raised-short-bridge');
-        addMember(a,aa,r*.72,'bridge-support-a');
-        addMember(b,bb,r*.72,'bridge-support-b');
+      const b=[x1,outerYAt(x1,t)-r*.30,safeZAt(x1,t+.035*Math.sin(phaseA+i))];
+      addMember(a,b,r,'arc-member-'+(i+1));
+      if(motif.railProfile==='paired-bridge' && i===Math.floor(distributedMembers/2)){
+        const lift=CROWN_DEPTH_MM*.48;
+        const aa=[a[0],a[1]+lift,a[2]+r*.16];
+        const bb=[b[0],b[1]+lift,b[2]+r*.16];
+        addMember(aa,bb,r*.80,'raised-arc-bridge');
+        addMember(a,aa,r*.70,'arc-bridge-support-a');
+        addMember(b,bb,r*.70,'arc-bridge-support-b');
       }
     }
 
-    // A restrained counter-event prevents the crown from becoming a centered
-    // ornament while preserving a broad silent zone.
-    const counterX=clamp(focusX-dominantSide*WIDTH_MM*(.32+.08*(motif.silenceRatio||.44)),-ARC_HALF_SPAN_MM*.90,ARC_HALF_SPAN_MM*.90);
-    const counterR=baseNodeR*.62;
-    addNode([counterX,outerYAt(counterX,.52)-counterR*.34,safeZAt(counterX,.52)],counterR,'counter-node');
-
-    // Discrete punctures only. No repeated cellular field across the face.
-    const requestedVoids=motif.voidProfile==='none'?0:Math.min(2,holeCount||1);
+    // Punctures are likewise distributed, but staggered away from the rail
+    // junctions and from one another.
+    const requestedVoids=motif.voidProfile==='none'?0:Math.min(4,Math.max(1,holeCount||1));
     for(let i=0;i<requestedVoids;i++){
-      const x=clamp(focusX+dominantSide*clusterSpan*(.10+.22*i),-ARC_HALF_SPAN_MM*.90,ARC_HALF_SPAN_MM*.90);
-      const t=.48+.16*i;
-      const r=Math.max(AGDP_MIN_WALL_MM*.72,.82+.24*cellular);
-      addCut(sphereAt(wasm,[x,outerYAt(x,t)+r*.62,safeZAt(x,t)],r,28),'cluster-puncture-'+(i+1));
+      const u=endClearU+(1-2*endClearU)*(i+1)/(requestedVoids+1);
+      const x=(u-.5)*2*ARC_HALF_SPAN_MM;
+      const t=.42+.25*(i%2);
+      const r=Math.max(AGDP_MIN_WALL_MM*.68,.78+.20*cellular);
+      addCut(sphereAt(wasm,[x,outerYAt(x,t)+r*.58,safeZAt(x,t)],r,28),'arc-puncture-'+(i+1));
     }
 
     // Apply every subtractive operation independently. A cutter is retained
@@ -4061,7 +4089,7 @@ function makeHairCombManifold(wasm,p){
     }
     p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
 
-    p.hairCombOperationVersion='haircomb-v20-open-arc-shared-morphology';
+    p.hairCombOperationVersion='haircomb-v21-ergonomic-full-arc-morphology';
     parts.push(crownManifold);
   }
 
@@ -4150,9 +4178,10 @@ function makeHairCombManifold(wasm,p){
   p.hairCombStructuralTreatment=treatment;
   p.hairCombOperationVocabulary='sharedOpenArcVocabulary';
   p.hairCombCurvatureAxis='Y';
-  p.hairCombCrownCurvatureDirection='positiveYConvex';
+  p.hairCombCranialRadiusMm=CRANIAL_RADIUS_MM;
+  p.hairCombCrownCurvatureDirection='negativeYConcaveTowardHead';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v20-open-arc-crown';
+  p.hairCombGeneratorVersion='haircomb-v21-ergonomic-open-arc-crown';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4497,7 +4526,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v20-open-arc-crown';
+    p.hairCombGeneratorVersion='haircomb-v21-ergonomic-open-arc-crown';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
