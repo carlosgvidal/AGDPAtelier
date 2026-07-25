@@ -433,8 +433,10 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
         lastFailureReason=message||String(e)||lastFailureReason;
         const hairCombDiagnosticFailure=selectedType==='haircomb' && (e&&e.agdpHairCombFailure || /^AGDP haircomb diagnostic failure at /.test(message));
         if(hairCombDiagnosticFailure){
+          // Preserve the complete diagnostic, but do not abort the configured
+          // retry cycle. A topology failure is seed-specific; only engine or
+          // WASM loading failures are terminal.
           window.__AGDP_HAIRCOMB_FAILURE__=(e&&e.agdpHairCombFailure)||window.__AGDP_HAIRCOMB_FAILURE__||{message};
-          break;
         }
       }
 

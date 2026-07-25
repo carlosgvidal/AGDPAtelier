@@ -888,18 +888,55 @@ function diagnoseClosedTriangleMesh(V,F,label){
   report.ok=report.finite&&report.invalidIndices===0&&report.degenerateTriangles===0&&report.boundaryEdges===0&&report.nonManifoldEdges===0&&report.connectedComponents===1&&Math.abs(report.signedVolumeMm3)>1e-8;
   return report;
 }
+function topologyFailureReasons(report){
+  if(!report) return ['missing-report'];
+  const reasons=[];
+  if(!report.finite) reasons.push('non-finite-coordinates');
+  if(report.invalidIndices) reasons.push('invalid-indices:'+report.invalidIndices);
+  if(report.degenerateTriangles) reasons.push('degenerate-triangles:'+report.degenerateTriangles);
+  if(report.boundaryEdges) reasons.push('boundary-edges:'+report.boundaryEdges);
+  if(report.nonManifoldEdges) reasons.push('non-manifold-edges:'+report.nonManifoldEdges);
+  if(report.connectedComponents!==1) reasons.push('connected-components:'+report.connectedComponents);
+  if(!(Math.abs(report.signedVolumeMm3)>1e-8)) reasons.push('near-zero-volume');
+  if(report.exception) reasons.push('exception:'+report.exception);
+  return reasons;
+}
 function diagnoseManifoldStage(manifold,label){
   try{
     const mesh=manifoldToMesh(manifold);
-    const report=diagnoseClosedTriangleMesh(mesh.V,mesh.F,label);
+    const raw=diagnoseClosedTriangleMesh(mesh.V,mesh.F,label);
+    let report=raw;
+    // Manifold CSG can retain sub-micron duplicate vertices at otherwise
+    // closed seams. Audit a canonicalized copy before classifying the stage as
+    // failed, so index-level duplication is not confused with a real opening
+    // or disconnected solid.
+    if(!raw.ok){
+      const canonical=canonicalizeMeshForValidation(mesh.V,mesh.F,1e-5);
+      const normalized=diagnoseClosedTriangleMesh(canonical.V,canonical.F,label+'-canonical');
+      report=Object.assign({},normalized,{
+        label:String(label||'manifold'),
+        raw,
+        canonicalization:{
+          weldedVertices:canonical.weldedVertices,
+          removedDegenerate:canonical.removedDegenerate,
+          removedDuplicate:canonical.removedDuplicate
+        }
+      });
+    }
+    report.failureReasons=topologyFailureReasons(report);
     const prefix=report.ok?'AGDP haircomb diagnostic ✓':'AGDP haircomb diagnostic ✗';
     (report.ok?console.info:console.error)(prefix,label,report);
     return report;
   }catch(error){
     const report={label:String(label||'manifold'),ok:false,exception:String(error&&error.message||error)};
+    report.failureReasons=topologyFailureReasons(report);
     console.error('AGDP haircomb diagnostic ✗',label,report);
     return report;
   }
+}
+function cloneManifold(wasm,manifold){
+  const mesh=manifoldToMesh(manifold);
+  return meshToManifold(wasm,mesh.V,mesh.F);
 }
 
 function removeFloatingComponents(V,F,keepCount){
@@ -3939,32 +3976,86 @@ function makeHairCombManifold(wasm,p){
       }
     }
 
-    if(discreteCuts.length){
+    // Apply every subtractive operation independently. A cutter is retained
+    // only when the resulting crown remains finite, watertight, manifold and a
+    // single connected component. This prevents an early cavity from silently
+    // damaging the crown and being misreported later as an addition failure.
+    const cavityIntegration={requested:discreteCuts.length,accepted:0,rejected:[]};
+    for(let i=0;i<discreteCuts.length;i++){
+      const cutter=discreteCuts[i];
+      let candidate=null;
       try{
-        const cutters=unionAll(wasm,discreteCuts);
-        crownManifold=safeDifference(wasm,crownManifold,cutters);
-        recordStage(crownManifold,'haircomb/crown-discrete-cavities');
-      }catch(error){
-        throwHairCombFailure(p,'haircomb/crown-discrete-cavities',error,{cutters:discreteCuts.length});
-      }
-    }
-    if(discreteAdds.length){
-      try{
-        const additions=unionAll(wasm,discreteAdds);
-        const previousCrown=crownManifold;
-        crownManifold=wasm.Manifold.union(previousCrown,additions);
-        try{previousCrown.delete();}catch(e){}
-        try{additions.delete();}catch(e){}
-        const additionsReport=recordStage(crownManifold,'haircomb/crown-discrete-additions');
-        if(!additionsReport.ok){
-          throw new Error('Integrated crown additions did not form one closed component');
+        const crownCopy=cloneManifold(wasm,crownManifold);
+        candidate=safeDifference(wasm,crownCopy,cutter);
+        const report=recordStage(candidate,'haircomb/crown-cavity-'+(i+1));
+        if(report.ok){
+          const previous=crownManifold;
+          crownManifold=candidate;
+          candidate=null;
+          cavityIntegration.accepted++;
+          try{previous.delete();}catch(e){}
+        }else{
+          cavityIntegration.rejected.push({index:i+1,reasons:report.failureReasons,report});
         }
       }catch(error){
-        throwHairCombFailure(p,'haircomb/crown-discrete-additions',error,{additions:discreteAdds.length});
+        cavityIntegration.rejected.push({index:i+1,reasons:['exception:'+String(error&&error.message||error)]});
+        try{cutter.delete();}catch(e){}
+      }finally{
+        if(candidate)try{candidate.delete();}catch(e){}
       }
     }
+    const cavitiesReport=recordStage(crownManifold,'haircomb/crown-discrete-cavities');
+    if(!cavitiesReport.ok){
+      throwHairCombFailure(
+        p,
+        'haircomb/crown-discrete-cavities',
+        new Error('Crown topology invalid after individually screened cavities: '+topologyFailureReasons(cavitiesReport).join(', ')),
+        {integration:cavityIntegration,report:cavitiesReport}
+      );
+    }
 
-    p.hairCombOperationVersion='haircomb-v17-integrated-exposed-surfaces';
+    // Integrate additions one at a time rather than unioning an opaque batch.
+    // A node, rib or bridge that does not genuinely overlap the current crown
+    // is rejected locally; valid operations remain, and the diagnostic records
+    // the exact primitive index and topological reason.
+    const additionIntegration={requested:discreteAdds.length,accepted:0,rejected:[]};
+    for(let i=0;i<discreteAdds.length;i++){
+      const addition=discreteAdds[i];
+      let candidate=null;
+      try{
+        const crownCopy=cloneManifold(wasm,crownManifold);
+        candidate=wasm.Manifold.union(crownCopy,addition);
+        try{crownCopy.delete();}catch(e){}
+        try{addition.delete();}catch(e){}
+        const report=recordStage(candidate,'haircomb/crown-addition-'+(i+1));
+        if(report.ok){
+          const previous=crownManifold;
+          crownManifold=candidate;
+          candidate=null;
+          additionIntegration.accepted++;
+          try{previous.delete();}catch(e){}
+        }else{
+          additionIntegration.rejected.push({index:i+1,reasons:report.failureReasons,report});
+        }
+      }catch(error){
+        additionIntegration.rejected.push({index:i+1,reasons:['exception:'+String(error&&error.message||error)]});
+        try{addition.delete();}catch(e){}
+      }finally{
+        if(candidate)try{candidate.delete();}catch(e){}
+      }
+    }
+    const additionsReport=recordStage(crownManifold,'haircomb/crown-discrete-additions');
+    if(!additionsReport.ok){
+      throwHairCombFailure(
+        p,
+        'haircomb/crown-discrete-additions',
+        new Error('Crown topology invalid after individually screened additions: '+topologyFailureReasons(additionsReport).join(', ')),
+        {integration:additionIntegration,report:additionsReport}
+      );
+    }
+    p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
+
+    p.hairCombOperationVersion='haircomb-v18-screened-incremental-csg';
     parts.push(crownManifold);
   }
 
