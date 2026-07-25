@@ -3579,7 +3579,7 @@ function makeHairCombManifold(wasm,p){
   const hairCombDiagnostics=[];
   const recordStage=(manifold,label)=>{const r=diagnoseManifoldStage(manifold,label);hairCombDiagnostics.push(r);return r;};
   const seed=String(p.seed||'AGDP');
-  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v23');
+  const rng=window.SeededVariation.createGenerator(seed+'|haircomb-crown-v23.1');
   const motif=p.motifSignature||(window.SeededVariation&&window.SeededVariation.buildMorphologicalSignature?window.SeededVariation.buildMorphologicalSignature(seed):{dominantSide:1,focusU:.68,clusterCount:3,clusterSpan:.24,nodeProfile:'lobed',railProfile:'short-perimeter',voidProfile:'puncture',rhythm:[.34,.33,.33],asymmetry:.62,silenceRatio:.44,reliefBias:.72,perimeterBias:.84,toothRhythm:.24});
 
   const cellular=featureIntensity(p,'cellular');
@@ -3590,7 +3590,7 @@ function makeHairCombManifold(wasm,p){
   const continuity=featureIntensity(p,'continuity');
   const vessel=featureIntensity(p,'vessel');
   const dome=featureIntensity(p,'dome');
-  const treatment=pickStructuralTreatment(p,'haircomb-crown-v23');
+  const treatment=pickStructuralTreatment(p,'haircomb-crown-v23.1');
 
   const faceting=clamp(p.faceting||0,0,1);
   const sideRelief=clamp(p.sideRelief||0,0,1);
@@ -3817,7 +3817,7 @@ function makeHairCombManifold(wasm,p){
     return {V,F};
   }
 
-  // HAIRCOMB v23 — seeded continuous arc-and-rail support.
+  // HAIRCOMB v23.2 — seeded continuous arc-and-rail support.
   // The former broad plate has been replaced by an open, ear-cuff-like arc.
   // Both the arc and the lower spine are continuous swept tubes; their end
   // regions overlap volumetrically so the crown is one printable component.
@@ -3850,9 +3850,9 @@ function makeHairCombManifold(wasm,p){
       const envelope=arcEnvelope(u);
       const asymLift=ARC_RISE_MM*seedShoulderBias*(u-.5)*2*envelope;
       const seededWave=seedWaveAmp*Math.sin(phaseA+u*Math.PI*2*seedWaveFreq)*envelope;
-      // The crown bends toward the opposite side of v22. The rail remains
-      // unchanged; only the arc excursion is reversed around the shared ends.
-      return spineZAt(xx)-ARC_RISE_MM*envelope+asymLift+seededWave;
+      // The crown rises away from the tooth field. Cranial orientation is
+      // controlled in Y; the Z excursion must remain above the shared rail.
+      return spineZAt(xx)+ARC_RISE_MM*envelope+asymLift+seededWave;
     };
     const arcYAt=x=>{
       const xx=clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM);
@@ -3935,7 +3935,7 @@ function makeHairCombManifold(wasm,p){
     }catch(error){
       try{if(crownManifold)crownManifold.delete();}catch(e){}
       throwHairCombFailure(p,'haircomb/continuous-support/construction',error,{
-        crownConstruction:'single-closed-seeded-support-v23',
+        crownConstruction:'single-closed-seeded-support-v23.2',
         arcHalfSpanMm:ARC_HALF_SPAN_MM,
         arcRiseMm:ARC_RISE_MM,
         arcTubeRadiusMm:ARC_TUBE_R_MM,
@@ -3949,27 +3949,42 @@ function makeHairCombManifold(wasm,p){
         p,
         'haircomb/arc-crown/topology',
         new Error('Arc crown topology invalid: '+topologyFailureReasons(sourceReport).join(', ')),
-        {report:sourceReport,crownConstruction:'single-closed-seeded-support-v23'}
+        {report:sourceReport,crownConstruction:'single-closed-seeded-support-v23.2'}
       );
     }
 
-    // Helpers used by the shared discrete AGDP vocabulary below. Operations
-    // are anchored to the arc itself, never to an imaginary plate surface.
-    const arcTubeRadiusAt=x=>{
+    // Helpers for AGDP operations distributed around the full elliptical
+    // section of the arc. theta=0 is the outer/front face, PI is the inner/
+    // rear face, +PI/2 is the upper face and -PI/2 is the lower face.
+    const arcTubeSectionAt=x=>{
       const u=arcLocalU(clamp(x,-ARC_HALF_SPAN_MM,ARC_HALF_SPAN_MM));
       const cluster=Math.exp(-Math.pow((u-(motif.focusU||.5))/Math.max(.09,(motif.clusterSpan||.24)*.68),2));
-      return ARC_TUBE_R_MM*(1+cluster*(.08+.13*clamp(motif.reliefBias||.7,0,1)));
+      const pulse=.5+.5*Math.sin(phaseB+u*Math.PI*2*(2+motifClusterCount));
+      const wave=.5+.5*Math.sin(phaseC+u*Math.PI*(6+motifClusterCount*1.5));
+      const gain=1+cluster*(.08+.13*clamp(motif.reliefBias||.7,0,1))+.035*(pulse-.5)+.04*(wave-.5);
+      return {
+        ry:ARC_TUBE_R_MM*(.86+.14*gain),
+        rz:ARC_TUBE_R_MM*gain
+      };
     };
-    const outerYAt=(x,t=.62)=>arcYAt(x)+arcTubeRadiusAt(x)*(.72+.14*clamp(t,0,1));
-    const safeZAt=(x,t=.58)=>arcZAt(x)+arcTubeRadiusAt(x)*(clamp(t,.20,.94)-.58)*.72;
+    const arcSurfacePoint=(x,theta,inset=0)=>{
+      const section=arcTubeSectionAt(x);
+      const ry=Math.max(AGDP_MIN_WALL_MM*.65,section.ry-inset);
+      const rz=Math.max(AGDP_MIN_WALL_MM*.65,section.rz-inset);
+      return [x,arcYAt(x)+Math.cos(theta)*ry,arcZAt(x)+Math.sin(theta)*rz];
+    };
+    const arcSurfaceNormal=theta=>[0,Math.cos(theta),Math.sin(theta)];
+    const offsetPoint=(point,normal,d)=>[point[0]+normal[0]*d,point[1]+normal[1]*d,point[2]+normal[2]*d];
+
     /*
-     * HAIRCOMB v23 — shared morphology on a seeded continuous support.
+     * HAIRCOMB v23.2 — combined full-surface AGDP morphology.
      *
-     * The crown remains a legible primary mass. Nodes, short members and
-     * punctures are concentrated in one dominant perimeter cluster, with a
-     * quieter counter-zone. This translates the same hierarchy visible in the
-     * ring, hoop, ear cuff and pendant instead of filling the face with a
-     * typology-specific truss.
+     * Every crown receives a combined vocabulary: embedded deformation,
+     * localized nodes, articulated members, an asymmetric bridge and voids.
+     * The discrete operations are assigned to front, rear, upper, lower and
+     * oblique faces of the arc rather than being projected onto one Y-facing
+     * surface. Seed variation changes position, scale, rhythm and face order,
+     * but does not eliminate any operation family.
      */
     const discreteAdds=[];
     const discreteCuts=[];
@@ -3987,70 +4002,89 @@ function makeHairCombManifold(wasm,p){
 
     const dominantSide=motif.dominantSide||1;
     const focusU=clamp(motif.focusU||.5,.16,.84);
-    const focusX=(focusU-.5)*WIDTH_MM;
-    const clusterSpan=WIDTH_MM*clamp(motif.clusterSpan||.24,.16,.34);
     const clusterCount=motifClusterCount;
-    const rhythm=Array.isArray(motif.rhythm)&&motif.rhythm.length?motif.rhythm:[.34,.33,.33];
     const baseNodeR=Math.max(AGDP_MIN_WALL_MM*.78,.92+(p.nodeVolume||1.8)*.31);
+    const endClearU=.09;
 
-    // Mixed AGDP vocabulary. Operations are intentionally heterogeneous:
-    // a localized node group, articulated members, one asymmetric bridge and
-    // punctures of unequal scale. No family is repeated as a uniform border.
-    const endClearU=.085;
-    const nodeOps=Math.max(2,Math.min(4,nodeCount||clusterCount));
+    // Seeded face order always covers all principal and oblique faces.
+    const faceAngles=[0,Math.PI*.5,Math.PI,-Math.PI*.5,Math.PI*.25,-Math.PI*.25,Math.PI*.75,-Math.PI*.75];
+    const faceShift=Math.floor(rng()*faceAngles.length);
+    const faceAt=i=>faceAngles[(i+faceShift)%faceAngles.length];
+
+    // 1) Nodes: a dominant cluster plus counter-nodes on opposite faces.
+    const nodeOps=Math.max(5,Math.min(8,3+clusterCount+Math.round((p.nodeVolume||1.8)*.55)));
     for(let i=0;i<nodeOps;i++){
-      const local=(i-(nodeOps-1)*.5)*(.045+.018*rng());
-      const u=clamp(focusU+local*dominantSide+(rng()-.5)*.018,endClearU,1-endClearU);
+      const spread=(i-(nodeOps-1)*.5)/(Math.max(1,nodeOps-1));
+      const u=clamp(focusU+spread*(.16+.07*rng())*dominantSide+(rng()-.5)*.025,endClearU,1-endClearU);
       const x=(u-.5)*2*ARC_HALF_SPAN_MM;
-      const tier=.38+.46*rng();
-      const r=baseNodeR*(.72+.48*rng())*(i===0?1.18:1);
-      addNode([x,outerYAt(x,tier)+r*.16,safeZAt(x,tier)],r,'cluster-node-'+(i+1));
+      const theta=faceAt(i);
+      const n=arcSurfaceNormal(theta);
+      const r=baseNodeR*(.70+.52*rng())*(i===0?1.20:1);
+      // The centre is embedded into the section, guaranteeing a genuine union
+      // while leaving most of the node visible on its assigned face.
+      const surface=arcSurfacePoint(x,theta,0);
+      const center=offsetPoint(surface,n,-r*.42);
+      addNode(center,r,'full-surface-node-'+(i+1));
     }
 
-    const memberOps=Math.max(2,Math.min(4,Math.max(railCount,2+Math.round(wrapped+inter))));
+    // 2) Members: longitudinal, diagonal and cross-face links. Endpoints are
+    // embedded on different faces so the operations wrap around the support.
+    const memberOps=Math.max(5,Math.min(8,3+Math.max(railCount,2)+Math.round(wrapped+inter)));
     for(let i=0;i<memberOps;i++){
-      const u=.16+.68*(i+.5)/memberOps+(rng()-.5)*.035;
-      const halfU=.035+.035*rng();
+      const u=.14+.72*(i+.5)/memberOps+(rng()-.5)*.026;
+      const halfU=.026+.042*rng();
       const u0=clamp(u-halfU,endClearU,1-endClearU);
       const u1=clamp(u+halfU,endClearU,1-endClearU);
       const x0=(u0-.5)*2*ARC_HALF_SPAN_MM;
       const x1=(u1-.5)*2*ARC_HALF_SPAN_MM;
-      const t=.35+.48*rng();
-      const r=Math.max(AGDP_MIN_WALL_MM*.55,.68+.28*wrapped+.12*rng());
-      const a=[x0,outerYAt(x0,t)+r*.10,safeZAt(x0,t-.08)];
-      const b=[x1,outerYAt(x1,t)+r*.10,safeZAt(x1,t+.08)];
-      addMember(a,b,r,'articulated-member-'+(i+1));
+      const theta0=faceAt(i+2);
+      const theta1=faceAt(i+3+(i%2));
+      const r=Math.max(AGDP_MIN_WALL_MM*.52,.64+.25*wrapped+.10*rng());
+      const n0=arcSurfaceNormal(theta0), n1=arcSurfaceNormal(theta1);
+      const a=offsetPoint(arcSurfacePoint(x0,theta0,0),n0,-r*.55);
+      const b=offsetPoint(arcSurfacePoint(x1,theta1,0),n1,-r*.55);
+      addMember(a,b,r,'cross-face-member-'+(i+1));
     }
 
-    // One unmistakable asymmetric bridge translates the architectural/cage
-    // vocabulary used by other typologies without turning the comb into a
-    // repeated truss.
-    if(architectural>.18 || cage>.18 || motif.railProfile==='paired-bridge'){
-      const bu=clamp(focusU-.13*dominantSide,.18,.82);
+    // 3) Asymmetric raised bridge: mandatory, with roots on two different
+    // faces and an offset span. This preserves the architectural AGDP family.
+    {
+      const bu=clamp(focusU-.13*dominantSide,.19,.81);
       const bx=(bu-.5)*2*ARC_HALF_SPAN_MM;
-      const span=ARC_HALF_SPAN_MM*(.10+.035*rng());
-      const x0=clamp(bx-span,-ARC_HALF_SPAN_MM*.82,ARC_HALF_SPAN_MM*.82);
-      const x1=clamp(bx+span,-ARC_HALF_SPAN_MM*.82,ARC_HALF_SPAN_MM*.82);
-      const r=Math.max(AGDP_MIN_WALL_MM*.58,.76+.20*architectural);
-      const lift=CROWN_DEPTH_MM*(.68+.20*rng());
-      const a=[x0,outerYAt(x0,.58)+r*.08,safeZAt(x0,.46)];
-      const b=[x1,outerYAt(x1,.58)+r*.08,safeZAt(x1,.70)];
-      const aa=[a[0],a[1]+lift,a[2]+r*.25];
-      const bb=[b[0],b[1]+lift,b[2]+r*.25];
-      addMember(aa,bb,r*.86,'asymmetric-raised-bridge');
-      addMember(a,aa,r*.70,'bridge-root-a');
-      addMember(b,bb,r*.70,'bridge-root-b');
+      const span=ARC_HALF_SPAN_MM*(.095+.045*rng());
+      const x0=clamp(bx-span,-ARC_HALF_SPAN_MM*.80,ARC_HALF_SPAN_MM*.80);
+      const x1=clamp(bx+span,-ARC_HALF_SPAN_MM*.80,ARC_HALF_SPAN_MM*.80);
+      const theta0=faceAt(1), theta1=faceAt(5);
+      const n0=arcSurfaceNormal(theta0), n1=arcSurfaceNormal(theta1);
+      const r=Math.max(AGDP_MIN_WALL_MM*.58,.74+.22*architectural+.08*cage);
+      const lift=CROWN_DEPTH_MM*(.62+.24*rng());
+      const a=offsetPoint(arcSurfacePoint(x0,theta0,0),n0,-r*.55);
+      const b=offsetPoint(arcSurfacePoint(x1,theta1,0),n1,-r*.55);
+      const bridgeDir=[0,(n0[1]+n1[1])*.28,(n0[2]+n1[2])*.28+1];
+      const mag=Math.hypot(bridgeDir[1],bridgeDir[2])||1;
+      bridgeDir[1]/=mag;bridgeDir[2]/=mag;
+      const aa=offsetPoint(a,bridgeDir,lift);
+      const bb=offsetPoint(b,bridgeDir,lift);
+      addMember(aa,bb,r*.88,'full-surface-raised-bridge');
+      addMember(a,aa,r*.72,'bridge-root-a');
+      addMember(b,bb,r*.72,'bridge-root-b');
     }
 
-    const requestedVoids=motif.voidProfile==='none'?0:Math.max(1,Math.min(3,holeCount||2));
+    // 4) Voids: mandatory and distributed across different faces. Cutter
+    // centres sit inside the section and extend through it, producing visible
+    // openings rather than shallow dents or a repeated single-face motif.
+    const requestedVoids=Math.max(4,Math.min(7,3+(holeCount||2)));
     for(let i=0;i<requestedVoids;i++){
-      const u=clamp(.22+.56*(i+.5)/requestedVoids+(rng()-.5)*.05,endClearU,1-endClearU);
+      const u=clamp(.13+.74*(i+.5)/requestedVoids+(rng()-.5)*.026,endClearU,1-endClearU);
       const x=(u-.5)*2*ARC_HALF_SPAN_MM;
-      const t=i%2?.68:.36;
-      const r=Math.max(AGDP_MIN_WALL_MM*.74,.88+.26*cellular+.12*rng());
-      // The cutter centre is biased into the tube to ensure a legible opening,
-      // while its unequal radii prevent a repeated perforation pattern.
-      addCut(sphereAt(wasm,[x,outerYAt(x,t)-r*.32,safeZAt(x,t)],r*(1.12+.12*i),30),'asymmetric-puncture-'+(i+1));
+      const theta=faceAt(i+4);
+      const n=arcSurfaceNormal(theta);
+      const section=arcTubeSectionAt(x);
+      const localRadius=Math.min(section.ry,section.rz);
+      const r=Math.max(AGDP_MIN_WALL_MM*.70,Math.min(localRadius*.66,.82+.24*cellular+.12*rng()));
+      const surface=arcSurfacePoint(x,theta,0);
+      const center=offsetPoint(surface,n,-localRadius*.72);
+      addCut(sphereAt(wasm,center,r*(1.02+.10*(i%3)),30),'full-surface-puncture-'+(i+1));
     }
 
     // Apply every subtractive operation independently. A cutter is retained
@@ -4132,7 +4166,7 @@ function makeHairCombManifold(wasm,p){
     }
     p.hairCombOperationIntegration={cavities:cavityIntegration,additions:additionIntegration};
 
-    p.hairCombOperationVersion='haircomb-v23-reversed-arc-diverse-morphology';
+    p.hairCombOperationVersion='haircomb-v23.2-upright-crown-diverse-morphology';
     parts.push(crownManifold);
   }
 
