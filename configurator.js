@@ -26,7 +26,7 @@
    with document.getElementById — work exactly as they did standalone.
 
    v0.206 note: the unstable comb typology was removed. It is replaced by
-   brooch: a single-piece, non-articulated cantilever flap whose visible
+   brooch: a single-piece, non-articulated solid spring clip whose visible
    face shares the AGDP morphology used by pendants and cufflinks.
    hoopEarring remains unchanged.
    ========================================================================== */

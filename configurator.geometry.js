@@ -3065,8 +3065,9 @@ async function buildThreeModeFace(wasm, p, faceW, faceH, faceTh, rng){
 
 async function makeBroochClipManifold(wasm,p){
   const { Manifold }=wasm;
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-flap-face');
+  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-face');
 
+  // Preserve the v28 face pipeline and its deterministic seed mapping.
   const faceW=clamp((p.clipFaceWidthMm||32)*(0.90+rng()*.22),27,38);
   const faceH=clamp((p.clipFaceHeightMm||30)*(0.88+rng()*.26),25,37);
   const flapT=clamp(p.clipThicknessMm||2.0,1.8,2.3);
@@ -3076,68 +3077,124 @@ async function makeBroochClipManifold(wasm,p){
   const faceMesh=manifoldToMesh(face);
   const faceBounds=bounds(faceMesh.V);
   const faceBackZ=faceBounds.min[2];
-  const parts=[face];
 
-  // La mutación permanece confinada a la cara visible. El mecanismo
-  // funcional no cambia con la semilla ni recibe protuberancias.
-  if(p.mutation&&p.mutation.active&&p.mutation.mode==='hypertrophy'){
-    const sv=p.mutation.severity;
-    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-flap-hypertrophy');
-    const fx=(hRng()*2-1)*faceW*.28;
-    const fy=(hRng()*2-1)*faceH*.28;
-    const massR=Math.max(faceTh*.9,faceTh*(1+.9*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*.35+massR*.3],massR,24));
+  // SIMPLE MONOBLOC FLAP
+  // The visible face remains untouched. A broad hidden backer is embedded
+  // into the rear of the face and carries one cantilever tongue. There is no
+  // hinge, pin, catch, return tube, articulated support or simulated clasp.
+  const gap=clamp(p.clipGapMm||2.6,2.2,3.2);
+  const flapL=clamp(p.clipSpringLengthMm||faceW*.62,faceW*.52,faceW*.70);
+  const flapW=clamp(p.clipWidthMm||faceH*.20,6.0,8.0);
+  const rootL=clamp(flapT*2.25,4.2,5.4);
+
+  // The backer deliberately crosses a wide central area. This makes the
+  // attachment independent of a single local point on amorphous, annular or
+  // rotated faces. Its front portion is buried inside the generated face.
+  const embedDepth=clamp(faceTh*.30,1.05,1.45);
+  const backerT=clamp(flapT*.95,1.8,2.2);
+  const backerW=Math.min(faceW*.66,Math.max(flapL+3.0,19.0));
+  const backerH=Math.min(faceH*.34,Math.max(flapW+3.2,9.0));
+  const backerDepth=backerT+embedDepth;
+  const backerZ=faceBackZ+(embedDepth-backerT)/2;
+  const backer=Manifold.cube([backerW,backerH,backerDepth],true)
+    .translate([0,0,backerZ]);
+
+  // Reject a face/backer pair that does not share real volume. This prevents
+  // removeFloatingComponents() from silently discarding the mechanism later.
+  const faceBackerOverlap=Manifold.intersection(face,backer);
+  const faceBackerOverlapMesh=manifoldToMesh(faceBackerOverlap);
+  const faceBackerOverlapVolumeMm3=Math.abs(meshVolumeMm3(faceBackerOverlapMesh.V,faceBackerOverlapMesh.F));
+  try{ faceBackerOverlap.delete(); }catch(e){}
+  const MIN_FACE_BACKER_OVERLAP_MM3=2.0;
+  if(!Number.isFinite(faceBackerOverlapVolumeMm3)||faceBackerOverlapVolumeMm3<MIN_FACE_BACKER_OVERLAP_MM3){
+    try{ face.delete(); }catch(e){}
+    try{ backer.delete(); }catch(e){}
+    throw new Error('AGDP brooch face/backer overlap below structural minimum');
   }
 
-  // SOLAPA MONOBLOQUE
-  // Una sola lengüeta rectangular, abierta por tres lados y unida a la
-  // cara únicamente por su raíz. No hay bisagra, eje, seguro, apoyos
-  // dobles, retorno tubular ni geometría que simule articulación.
-  const gap=clamp(p.clipGapMm||2.4,2.0,3.2);
-  const flapL=clamp(p.clipSpringLengthMm||faceW*.62,faceW*.50,faceW*.70);
-  const flapW=clamp(p.clipWidthMm||faceH*.19,5.8,7.8);
-  const rootL=clamp(flapT*1.8,3.2,4.4);
-  const edgeMargin=Math.max(2.6,(faceW-flapL)/2);
-  const rootX=-faceW/2+edgeMargin+rootL/2;
-  const freeX=rootX+flapL-rootL;
-  const flapCenterX=(rootX+freeX)/2;
-  const flapSpan=freeX-rootX;
-  const flapZ=faceBackZ-gap-flapT/2;
-
-  // Raíz maciza: única unión entre la cara y la solapa.
-  const rootDepth=gap+flapT;
-  const rootZ=faceBackZ-rootDepth/2+.04;
+  const backerRearZ=faceBackZ-backerT;
+  const flapTopZ=backerRearZ-gap;
+  const flapCenterZ=flapTopZ-flapT/2;
+  const overlapIntoBacker=clamp(flapT*.48,.85,1.10);
+  const rootDepth=gap+flapT+overlapIntoBacker;
+  const rootFrontZ=backerRearZ+overlapIntoBacker;
+  const rootZ=rootFrontZ-rootDepth/2;
+  const rootX=-flapL/2+rootL/2;
   const root=Manifold.cube([rootL,flapW,rootDepth],true)
     .translate([rootX,0,rootZ]);
 
-  // Lengüeta plana. Una inclinación mínima acerca el extremo libre a la
-  // tela sin cerrar la garganta ni crear una segunda unión con la cara.
-  const rise=Math.min(.55,gap*.22);
-  const angleDeg=Math.atan2(rise,Math.max(1,flapSpan))*180/Math.PI;
-  const tongue=Manifold.cube([flapSpan,flapW,flapT],true)
+  // The tongue overlaps the root longitudinally. A slight upward rake at the
+  // free end provides pressure while preserving an open usable throat.
+  const tongueStartX=rootX+rootL*.38;
+  const freeX=flapL/2;
+  const tongueL=freeX-tongueStartX;
+  const tongueCenterX=(tongueStartX+freeX)/2;
+  const rise=Math.min(.50,gap*.18);
+  const angleDeg=Math.atan2(rise,Math.max(1,tongueL))*180/Math.PI;
+  const tongue=Manifold.cube([tongueL,flapW,flapT],true)
     .rotate([0,-angleDeg,0])
-    .translate([flapCenterX,0,flapZ+rise/2]);
+    .translate([tongueCenterX,0,flapCenterZ+rise/2]);
 
-  // Extremo libre ligeramente ensanchado dentro del mismo plano. Sirve
-  // como zona de presión y conserva un borde legible, sin fingir un cierre.
-  const padL=Math.max(2.6,flapT*1.6);
-  const padW=Math.min(flapW+1.0,8.4);
+  // A modest terminal pressure pad is fused to the same tongue. It does not
+  // close against the face and does not imitate a separate catch.
+  const padL=Math.max(2.8,flapT*1.55);
+  const padW=Math.min(flapW+.8,8.6);
   const pad=Manifold.cube([padL,padW,flapT],true)
     .rotate([0,-angleDeg,0])
-    .translate([freeX-padL/2,0,flapZ+rise]);
+    .translate([freeX-padL/2,0,flapCenterZ+rise]);
 
-  parts.push(root,tongue,pad);
+  const flapAssembly=unionAll(wasm,[root,tongue,pad]);
+  const backerFlapOverlap=Manifold.intersection(backer,flapAssembly);
+  const backerFlapOverlapMesh=manifoldToMesh(backerFlapOverlap);
+  const backerFlapOverlapVolumeMm3=Math.abs(meshVolumeMm3(backerFlapOverlapMesh.V,backerFlapOverlapMesh.F));
+  try{ backerFlapOverlap.delete(); }catch(e){}
+  const MIN_BACKER_FLAP_OVERLAP_MM3=1.0;
+  if(!Number.isFinite(backerFlapOverlapVolumeMm3)||backerFlapOverlapVolumeMm3<MIN_BACKER_FLAP_OVERLAP_MM3){
+    try{ face.delete(); }catch(e){}
+    try{ backer.delete(); }catch(e){}
+    try{ flapAssembly.delete(); }catch(e){}
+    throw new Error('AGDP brooch backer/flap overlap below structural minimum');
+  }
+
+  let manifold=unionAll(wasm,[face,backer,flapAssembly]);
+
+  // Confirm the brooch core is one connected solid before any downstream
+  // cleanup can conceal a disconnected flap.
+  const coreMesh=manifoldToMesh(manifold);
+  const canonicalCore=canonicalizeMeshForValidation(coreMesh.V,coreMesh.F,1e-5);
+  const coreConnectivity=removeFloatingComponents(canonicalCore.V,canonicalCore.F,1);
+  if(coreConnectivity.totalComponents!==1||coreConnectivity.retainedComponents!==1||coreConnectivity.discarded.length){
+    try{ manifold.delete(); }catch(e){}
+    throw new Error('AGDP brooch mechanism is not a single connected solid');
+  }
+
+  // Preserve the v28 hypertrophy behavior and seed namespace. It remains
+  // confined to the visible face and does not alter the mechanism dimensions.
+  if(p.mutation&&p.mutation.active&&p.mutation.mode==='hypertrophy'){
+    const sv=p.mutation.severity;
+    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|brooch-clip-hypertrophy');
+    const fx=(hRng()*2-1)*faceW*.28;
+    const fy=(hRng()*2-1)*faceH*.28;
+    const massR=Math.max(faceTh*.9,faceTh*(1+.9*sv));
+    const mutationMass=sphereAt(wasm,[fx,fy,faceTh*.35+massR*.3],massR,24);
+    const merged=Manifold.union(manifold,mutationMass);
+    try{ manifold.delete(); }catch(e){}
+    try{ mutationMass.delete(); }catch(e){}
+    manifold=merged;
+  }
 
   p.clipFaceWidthMm=faceW;
   p.clipFaceHeightMm=faceH;
   p.clipEffectiveClearanceMm=gap-rise;
   p.clipFaceBackZMm=faceBackZ;
+  p.broochFaceBackerOverlapVolumeMm3=faceBackerOverlapVolumeMm3;
+  p.broochBackerFlapOverlapVolumeMm3=backerFlapOverlapVolumeMm3;
   p.broochClosureType='integratedCantileverFlap';
   p.broochConstruction='singlePrintedSolid';
   p.broochArticulatedParts=0;
   p.broochAssemblyRequired=false;
-  p.broochGeneratorVersion='brooch-v2-simple-cantilever-flap';
-  return {manifold:unionAll(wasm,parts),bandW:Math.max(faceW,faceH)};
+  p.broochGeneratorVersion='brooch-v3-embedded-backer-cantilever-flap';
+  return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
 async function makeMoneyClipManifold(wasm,p){
@@ -3425,10 +3482,10 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 // if it turns out to be visually noticeable in practice.
 
 // =============================================================================
-// BROOCH — one-piece solid cantilever flap
+// BROOCH — one-piece solid spring clip
 // The visible face comes from the same shared AGDP face vocabulary used by
-// pendants and cufflinks. The rear mechanism is a single cantilever flap joined at one end only:
-// no hinge, pin, simulated catch, trapped part or assembly.
+// pendants and cufflinks. The rear clip is a continuous, non-articulated
+// silver body: no hinge, pin, separate catch, trapped part or assembly.
 // =============================================================================
 
 // =============================================================================

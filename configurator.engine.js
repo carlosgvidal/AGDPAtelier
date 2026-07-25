@@ -210,7 +210,7 @@ const SeededVariation=(()=>{
       p.nodeVolume=Math.min(p.nodeVolume,4.5);
     }else if(p.type==='brooch'){
       // The visible face uses the compact AGDP vocabulary shared with
-      // pendants and cufflinks. The rear cantilever flap remains protected,
+      // pendants and cufflinks. The rear spring clip remains protected,
       // continuous and free of seed-driven cuts or articulations.
       p.holes=integer(rng,0,1);p.nodes=integer(rng,0,4);p.crown=false;p.spikes=0;
       p.nodeVolume=Math.min(p.nodeVolume,4.2);
