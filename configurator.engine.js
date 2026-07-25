@@ -1,5 +1,5 @@
 'use strict';
-const AGDP_APP_VERSION='0.203';
+const AGDP_APP_VERSION='0.204';
 window.AGDP_APP_VERSION=AGDP_APP_VERSION;
 window.addEventListener('error',function(e){
   const statusWrap=document.getElementById('agdpStatusWrap');
