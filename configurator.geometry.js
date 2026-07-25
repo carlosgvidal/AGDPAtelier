@@ -3821,20 +3821,44 @@ function makeHairCombManifold(wasm,p){
     return {V,F};
   }
 
-  // HAIRCOMB v25 — oval annular crown derived from the same closed,
-  // indexed annular topology used by the ring family. The previous swept
-  // tubular crown has been removed completely. This crown is one continuous
-  // oval frame with an integral lower rail; no intersecting capsules, no
-  // floating additions and no subtractive decoration are used.
+  // HAIRCOMB v26 — oval annular crown derived from the same closed,
+  // indexed annular topology used by the ring family. Crown dimensions are
+  // retained outside the construction block because tooth roots must be
+  // placed inside the crown's REAL lower annular rail, not against an
+  // unrelated baseline. The v25 baseline could put a tooth inside the oval
+  // opening or merely tangent to the rail; the first boolean union then
+  // produced multiple components / zero-area contact seams.
+  const crownWall=Math.max(3.4,TOOTH_DIAMETER_MM*1.35,(p.minFeature||.8)*3.8);
+  const outerHalfW=WIDTH_MM*.5;
+  const outerHalfH=piecewiseByWidth(16.5,20.0,23.5);
+  const innerHalfW=Math.max(outerHalfW-crownWall,outerHalfW*.70);
+  const innerHalfH=Math.max(outerHalfH-crownWall,outerHalfH*.56);
+  const crownDepth=Math.max(CROWN_DEPTH_MM,TOOTH_DIAMETER_MM*1.55);
+  const crownCenterZ=lowerZ(0)+ROOT_TRANSITION_MM*.42+outerHalfH-crownWall*.72;
+  const crownCenter=[0,-CROWN_DEPTH_MM*.08,crownCenterZ];
+
+  function lowerOvalRailIntervalAtX(x){
+    const xo=clamp(x/outerHalfW,-.999999,.999999);
+    const outerLower=crownCenterZ-outerHalfH*Math.sqrt(Math.max(0,1-xo*xo));
+    if(Math.abs(x)>=innerHalfW){
+      // Outside the inner opening, the entire local section is solid. Keep
+      // the tooth root safely above the outer skin by a structural inset.
+      return {outerLower,innerLower:outerLower+crownWall};
+    }
+    const xi=clamp(x/innerHalfW,-.999999,.999999);
+    const innerLower=crownCenterZ-innerHalfH*Math.sqrt(Math.max(0,1-xi*xi));
+    return {outerLower,innerLower};
+  }
+
+  function toothRootZInsideCrown(x){
+    const band=lowerOvalRailIntervalAtX(x);
+    const span=Math.max(crownWall*.72,band.innerLower-band.outerLower);
+    // Root centre sits deep inside the material. Its upper half therefore
+    // overlaps the crown volumetrically rather than touching one surface.
+    return band.outerLower+Math.min(span*.48,Math.max(TOOTH_DIAMETER_MM*.72,crownWall*.40));
+  }
+
   {
-    const crownWall=Math.max(3.4,TOOTH_DIAMETER_MM*1.35,(p.minFeature||.8)*3.8);
-    const outerHalfW=WIDTH_MM*.5;
-    const outerHalfH=piecewiseByWidth(16.5,20.0,23.5);
-    const innerHalfW=Math.max(outerHalfW-crownWall,outerHalfW*.70);
-    const innerHalfH=Math.max(outerHalfH-crownWall,outerHalfH*.56);
-    const crownDepth=Math.max(CROWN_DEPTH_MM,TOOTH_DIAMETER_MM*1.55);
-    const crownCenterZ=lowerZ(0)+ROOT_TRANSITION_MM*.42+outerHalfH-crownWall*.72;
-    const crownCenter=[0,-CROWN_DEPTH_MM*.08,crownCenterZ];
 
     // X is the horizontal oval axis, Z the vertical oval axis, and Y the
     // thickness axis. annularPrismMesh supplies a closed four-surface frame
@@ -3909,7 +3933,7 @@ function makeHairCombManifold(wasm,p){
     }
 
     p.hairCombOperationIntegration={cavities:{requested:0,accepted:0,rejected:[]},additions:{requested:0,accepted:0,rejected:[]}};
-    p.hairCombOperationVersion='haircomb-v25-ring-derived-oval-annular-crown';
+    p.hairCombOperationVersion='haircomb-v26-root-embedded-oval-annular-crown';
     parts.push(crownManifold);
   }
 
@@ -3918,7 +3942,7 @@ function makeHairCombManifold(wasm,p){
   function makeToothMesh(xRoot,lateral){
     const rings=21,seg=32;
     const V=[],F=[],R=[];
-    const zRoot=lowerZ(xRoot)+ROOT_TRANSITION_MM*.42;
+    const zRoot=toothRootZInsideCrown(xRoot);
     const yRoot=contactY(xRoot)-CROWN_DEPTH_MM*.08;
     const fan=lateral*piecewiseByWidth(2.0,2.8,3.6);
 
@@ -4001,7 +4025,7 @@ function makeHairCombManifold(wasm,p){
   p.hairCombCranialRadiusMm=CRANIAL_RADIUS_MM;
   p.hairCombCrownCurvatureDirection='negativeYConcaveTowardHead';
   p.hairCombToothCurvatureDirection='negativeYTowardHead';
-  p.hairCombGeneratorVersion='haircomb-v25-ring-derived-oval-annular-crown';
+  p.hairCombGeneratorVersion='haircomb-v26-root-embedded-oval-annular-crown';
 
   // Progressive CSG exposes the first crown/tooth union that ceases to be a
   // single closed solid. It replaces the opaque balanced unionAll() only for
@@ -4346,7 +4370,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     p.hairCombWeldedVertexCount=canonicalHairComb.weldedVertices;
     p.hairCombRemovedDegenerateTriangles=canonicalHairComb.removedDegenerate;
     p.hairCombRemovedDuplicateTriangles=canonicalHairComb.removedDuplicate;
-    p.hairCombGeneratorVersion='haircomb-v25-ring-derived-oval-annular-crown';
+    p.hairCombGeneratorVersion='haircomb-v26-root-embedded-oval-annular-crown';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
