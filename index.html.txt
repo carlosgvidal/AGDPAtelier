@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>A GROSS DOMESTIC PRODUCT.® — Structural Objects in Sterling Silver</title>
+<meta name="description" content="A GROSS DOMESTIC PRODUCT. Sterling silver .925 objects produced through a structural configuration engine. Each object is generated once, to order."/>
+
+<!-- Import map for the Configurator's 3D engine (manifold-3d, three.js).
+     Declared in <head> because import maps must exist before any module
+     script executes, even though the widget itself is injected further
+     down the page by configurator.js. -->
+<script type="importmap">
+{
+  "imports": {
+    "manifold-3d": "https://unpkg.com/manifold-3d@3.5.1/manifold.js",
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<link rel="stylesheet" href="agdp-site.css"/>
+</head>
+<body>
+
+<!-- ============ AGDP SITE HEADER (external) ============ -->
+<div id="agdp-header-mount"></div>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="top">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <h1 class="hero-title"><strong>Objects generated.</strong><br/><strong><em>Never repeated.</em></strong></h1>
+    <div class="hero-rule"></div>
+    <p class="hero-sub">No object precedes its <strong>configuration</strong>. Existence begins at the point of <em>execution</em>.</p>
+    <a class="hero-cta" href="#configurator">
+      <span>Generate</span><span class="arrow">↓</span>
+    </a>
+  </div>
+</header>
+
+<div class="hero-strip">
+  <div class="col"><strong>Configuration</strong> precedes production.<br/>No object exists before its <em>order</em>.</div>
+  <div class="col"><strong>Computational precision.</strong><br/>Metallurgical <em>execution</em>.</div>
+  <div class="col">Produced <strong>to order.</strong><br/>Shipped upon <em>completion</em>.</div>
+  <div class="col"><strong>Finite operations.</strong><br/>Infinite <em>outcomes</em>.</div>
+</div>
+<div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
+
+<!-- ============ CONFIGURATOR ============ -->
+<section class="configurator-section" id="configurator">
+  <div class="configurator-inner">
+    <div class="configurator-head">
+      <div class="configurator-title-block">
+        <div class="configurator-eyebrow">Atelier</div>
+        <h2>Enter the Atelier.</h2>
+      </div>
+      <p>Select a <strong>typology</strong>. Develop a <strong>piece</strong>. Export a print-ready file. Sterling silver .925, produced to order. <em>No seed yields an identical object.</em></p>
+    </div>
+    <div id="agdp-configurator-mount">
+      <!-- AGDP Atelier widget is injected here by configurator.js -->
+    </div>
+  </div>
+</section>
+
+<!-- ============ AGDP SITE FOOTER (external) ============ -->
+<div id="agdp-footer-mount"></div>
+
+<script>
+(() => {
+  const loadFragment = async (mountId, url) => {
+    const mount = document.getElementById(mountId);
+    if (!mount) return null;
+
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) {
+      throw new Error(`Unable to load ${url}: ${response.status} ${response.statusText}`);
+    }
+
+    mount.innerHTML = await response.text();
+    return mount;
+  };
+
+  const initNavigation = (headerMount) => {
+    if (!headerMount) return;
+
+    const navToggle = headerMount.querySelector('#navToggle');
+    const navLinks = headerMount.querySelector('#navLinks');
+
+    if (!navToggle || !navLinks) return;
+
+    navToggle.addEventListener('click', () => {
+      const isOpen = navLinks.classList.toggle('open');
+      navToggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    headerMount.querySelectorAll('[data-dropdown]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (window.innerWidth > 860) return;
+
+        const item = button.closest('.nav-item');
+        if (!item) return;
+
+        const isOpen = item.classList.toggle('open');
+        button.setAttribute('aria-expanded', String(isOpen));
+      });
+    });
+
+    navLinks.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth > 860) return;
+        navLinks.classList.remove('open');
+        navToggle.setAttribute('aria-expanded', 'false');
+      });
+    });
+  };
+
+  Promise.all([
+    loadFragment('agdp-header-mount', 'agdp-header.html'),
+    loadFragment('agdp-footer-mount', 'agdp-footer.html')
+  ])
+    .then(([headerMount]) => {
+      initNavigation(headerMount);
+    })
+    .catch((error) => {
+      console.error('[AGDP] External site component loading failed.', error);
+    });
+})();
+</script>
+
+<!-- ============ AGDP ATELIER CONFIGURATOR (scoped mount) ============ -->
+<script src="configurator.js" defer></script>
+</body>
+</html>
