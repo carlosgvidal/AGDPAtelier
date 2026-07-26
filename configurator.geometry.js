@@ -45,7 +45,9 @@ const COMMERCIAL_DIMENSION_REFERENCE_LIMITS = Object.freeze({
     axialWidthMm: Object.freeze({ min: 2.6, max: 5.7 })
   }),
   cufflinks: Object.freeze({
-    faceDiameterMm: Object.freeze({ nominal: 12.0 })
+    faceDiameterMm: Object.freeze({ nominal: 12.0 }),
+    postLengthMm: Object.freeze({ min: 10.0, nominal: 12.5, max: 15.0 }),
+    toggleLengthMm: Object.freeze({ min: 15.0, nominal: 16.5, max: 18.0 })
   }),
   brooch: Object.freeze({
     faceWidthMm: Object.freeze({ nominal: 26.0 }),
@@ -2226,12 +2228,21 @@ async function makeCufflinksManifold(wasm, p) {
   /* Closed posterior finding. All joints overlap by at least one structural
      wall, preventing isolated components after boolean evaluation. */
   const postRadius=Math.max(2.60,minFeature*.9);
-  const postLength=21.0;
+  const postLength=clamp(
+    Number.isFinite(p.cufflinkPostLengthMm) ? p.cufflinkPostLengthMm : COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.postLengthMm.nominal,
+    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.postLengthMm.min,
+    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.postLengthMm.max
+  );
   const postCurvatureRadius=34.0;
   const postTiltRad=4*Math.PI/180;
   const rootRadius=Math.max(2.15,postRadius*2.25,minFeature*1.7);
   const rootDepth=Math.max(3.4,minFeature*3.0);
-  const toggleLength=19.0,toggleWidth=4.2,toggleThickness=3.0;
+  const toggleLength=clamp(
+    Number.isFinite(p.cufflinkToggleLengthMm) ? p.cufflinkToggleLengthMm : COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.toggleLengthMm.nominal,
+    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.toggleLengthMm.min,
+    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.toggleLengthMm.max
+  );
+  const toggleWidth=4.2,toggleThickness=3.0;
   function cufflinkPostPoint(s){
     const half=postLength*.5;
     const sagitta=postCurvatureRadius-Math.sqrt(Math.max(0,postCurvatureRadius*postCurvatureRadius-half*half));
@@ -2368,6 +2379,8 @@ async function makeCufflinksManifold(wasm, p) {
   p.cufflinkMinimumClearGapMm=minimumClearGapMm;
   p.cufflinkUnitComponents=unitAudit.components;
   p.cufflinkPairComponents=pairAudit.components;
+  p.cufflinkPostLengthMm=postLength;
+  p.cufflinkToggleLengthMm=toggleLength;
   p.cufflinkCapFootprintMm=[capHalfX*2,capHalfY*2];
   p.cufflinkCapClosure='fullDeformedFootprint';
   p.cufflinkDnaSurface='+ZFrontOnly';
@@ -3022,10 +3035,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
 
   const expectedComponents = (p.type==='cufflinks'||p.type==='hoopEarring') ? 2 : 1;
-  const connected = removeFloatingComponents(V, F, expectedComponents);
-  V = connected.V; F = connected.F;
-  if(connected.discarded && connected.discarded.length){
-    console.warn('AGDP: '+connected.discarded.length+' componente(s) descartado(s) de '+connected.totalComponents+' total — ', connected.discarded);
+  // Never repair topology by deleting triangles or connected components.
+  // That strategy can turn a defective boolean result into a visibly open
+  // mesh. Preserve the generated mesh intact and reject it instead, so a
+  // broken ring or ear cuff can never be exported with artificial holes.
+  const connectivityProbe = removeFloatingComponents(V, F, Math.max(expectedComponents, F.length||1));
+  if(connectivityProbe.totalComponents!==expectedComponents){
+    throw new Error('AGDP topology rejected: expected '+expectedComponents+' connected solid(s), found '+connectivityProbe.totalComponents+'. No geometry was deleted.');
   }
   const extra = {
     type:p.type, innerD:(p.type==='ring'||p.type==='bangle'||p.type==='earCuff')?p.mainSize:(p.type==='cuffBracelet'?p.mainSize*0.85:0),
@@ -3048,7 +3064,8 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     audit.ok=false;
     audit.warning='FALLA: masa de plata superior al límite ergonómico y económico';
   }
-  audit.discardedComponents = connected.discarded||[];
+  audit.discardedComponents = [];
+  audit.componentDeletionPolicy = 'disabled-reject-instead';
   // Exposes the fully-compiled internal params object (p), not just the
   // caller's pre-compile() input -- type-specific builders (brooch,
   // hoopEarring) write derived dimensions directly onto this object
