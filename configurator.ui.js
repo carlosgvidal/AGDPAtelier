@@ -91,6 +91,18 @@
   const dimsPanel=document.getElementById('agdpDimsPanel');
   const statusBadge=document.getElementById('agdpStatusBadge');
   const legacyCanvas=document.getElementById('view');
+  let productionRequestSerial=0;
+  let productionPhase='quote';
+
+  function resetProductionState(){
+    productionRequestSerial++;
+    productionPhase='quote';
+    window.AGDP_currentProductionModelId=null;
+    window.AGDP_currentProductionUpload=null;
+    window.AGDP_currentProductionQuote=null;
+    orderBtn.disabled=true;
+    orderBtn.textContent=t('orderBtn');
+  }
 
   function mountLegacyVisualization(){
     if(!legacyCanvas) return;
@@ -162,6 +174,11 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
   function applyStaticTexts(){
     document.querySelectorAll('[data-i18n]').forEach(el=>{ el.textContent = t(el.getAttribute('data-i18n')); });
     renderSizeOptions();
+    if(productionPhase==='ready'&&window.AGDP_currentProductionQuote){
+      const q=window.AGDP_currentProductionQuote;
+      const p=formatQuotePrice(q.price,q.currency);
+      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza · '+p:'Order this piece · '+p;
+    }
   }
 
   function renderSizeOptions(){
@@ -325,6 +342,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
   }
   async function runGenerate(){
     if(!selectedType)return;
+    resetProductionState();
     if(generateBtn.disabled&&generateBtn.dataset.busy==='1')return;
     await agdpMaybeResetEngineIfNeeded();
     const serial=++generationSerial;
@@ -549,10 +567,144 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     throw new Error('The model is still being analyzed');
   }
 
+  function ensureOrderDialog(){
+    let overlay=document.getElementById('agdpOrderOverlay');
+    if(overlay)return overlay;
+
+    const style=document.createElement('style');
+    style.textContent=`
+      .agdp-order-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+      .agdp-order-overlay.open{display:flex}
+      .agdp-order-dialog{width:min(680px,100%);max-height:92vh;overflow:auto;background:#fbf9fa;color:#000;padding:28px;box-sizing:border-box;font-family:Helvetica,Arial,sans-serif}
+      .agdp-order-dialog h2{font-size:21px;margin:0 0 8px;font-weight:500}
+      .agdp-order-dialog p{font-size:14px;line-height:1.45;margin:0 0 20px}
+      .agdp-order-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+      .agdp-order-field{display:flex;flex-direction:column;gap:5px}
+      .agdp-order-field.full{grid-column:1/-1}
+      .agdp-order-field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+      .agdp-order-field input{font:inherit;border:1px solid #777;background:#fff;padding:11px;box-sizing:border-box;width:100%}
+      .agdp-order-confirm{display:flex;gap:10px;align-items:flex-start;margin:20px 0;font-size:13px;line-height:1.4}
+      .agdp-order-actions{display:flex;gap:10px;justify-content:flex-end}
+      .agdp-order-actions button{font:inherit;padding:11px 18px;cursor:pointer}
+      .agdp-order-message{min-height:20px;margin-top:14px;font-size:13px}
+      @media(max-width:600px){.agdp-order-grid{grid-template-columns:1fr}.agdp-order-field.full{grid-column:auto}.agdp-order-dialog{padding:20px}}
+    `;
+    document.head.appendChild(style);
+
+    overlay=document.createElement('div');
+    overlay.id='agdpOrderOverlay';
+    overlay.className='agdp-order-overlay';
+    overlay.innerHTML=`
+      <div class="agdp-order-dialog" role="dialog" aria-modal="true" aria-labelledby="agdpOrderTitle">
+        <h2 id="agdpOrderTitle"></h2>
+        <p id="agdpOrderSummary"></p>
+        <form id="agdpOrderForm">
+          <div class="agdp-order-grid">
+            <div class="agdp-order-field"><label for="agdpFirstName">Nombre</label><input id="agdpFirstName" name="firstName" autocomplete="given-name" required></div>
+            <div class="agdp-order-field"><label for="agdpLastName">Apellidos</label><input id="agdpLastName" name="lastName" autocomplete="family-name" required></div>
+            <div class="agdp-order-field"><label for="agdpCountry">País (código de 2 letras)</label><input id="agdpCountry" name="country" value="MX" maxlength="2" autocomplete="country" required></div>
+            <div class="agdp-order-field"><label for="agdpState">Estado</label><input id="agdpState" name="state" autocomplete="address-level1" required></div>
+            <div class="agdp-order-field"><label for="agdpCity">Ciudad</label><input id="agdpCity" name="city" autocomplete="address-level2" required></div>
+            <div class="agdp-order-field"><label for="agdpZip">Código postal</label><input id="agdpZip" name="zipCode" autocomplete="postal-code" required></div>
+            <div class="agdp-order-field full"><label for="agdpAddress1">Dirección</label><input id="agdpAddress1" name="address1" autocomplete="address-line1" required></div>
+            <div class="agdp-order-field full"><label for="agdpAddress2">Dirección adicional</label><input id="agdpAddress2" name="address2" autocomplete="address-line2"></div>
+            <div class="agdp-order-field full"><label for="agdpPhone">Teléfono</label><input id="agdpPhone" name="phoneNumber" autocomplete="tel" required></div>
+          </div>
+          <label class="agdp-order-confirm"><input type="checkbox" name="confirmed" required><span id="agdpConfirmText"></span></label>
+          <div class="agdp-order-actions">
+            <button type="button" id="agdpOrderCancel">Cancelar</button>
+            <button type="submit" id="agdpOrderSubmit">Confirmar pedido</button>
+          </div>
+          <div id="agdpOrderMessage" class="agdp-order-message" aria-live="polite"></div>
+        </form>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#agdpOrderCancel').addEventListener('click',()=>overlay.classList.remove('open'));
+    overlay.addEventListener('click',event=>{if(event.target===overlay)overlay.classList.remove('open');});
+    overlay.querySelector('#agdpOrderForm').addEventListener('submit',submitProductionOrder);
+    return overlay;
+  }
+
+  function openOrderDialog(){
+    const quote=window.AGDP_currentProductionQuote;
+    if(!quote||!quote.orderToken)return;
+    const overlay=ensureOrderDialog();
+    const priceText=formatQuotePrice(quote.price,quote.currency);
+    overlay.querySelector('#agdpOrderTitle').textContent=currentLang==='es'?'Pedido de pieza única':'Order unique piece';
+    overlay.querySelector('#agdpOrderSummary').textContent=currentLang==='es'
+      ?'Plata pulida · Precio final '+priceText+' · Envío calculado por producción.'
+      :'Polished Silver · Final price '+priceText+' · Shipping calculated by production.';
+    overlay.querySelector('#agdpConfirmText').textContent=currentLang==='es'
+      ?'Confirmo que los datos son correctos y autorizo el envío inmediato de esta pieza única a producción.'
+      :'I confirm the details are correct and authorize this unique piece to be sent to production immediately.';
+    overlay.querySelector('#agdpOrderSubmit').textContent=currentLang==='es'?'Confirmar pedido':'Confirm order';
+    overlay.querySelector('#agdpOrderCancel').textContent=currentLang==='es'?'Cancelar':'Cancel';
+    overlay.querySelector('#agdpOrderMessage').textContent='';
+    overlay.classList.add('open');
+  }
+
+  async function submitProductionOrder(event){
+    event.preventDefault();
+    const form=event.currentTarget;
+    const quote=window.AGDP_currentProductionQuote;
+    if(!quote||!quote.orderToken)return;
+    const submit=form.querySelector('#agdpOrderSubmit');
+    const cancel=form.querySelector('#agdpOrderCancel');
+    const message=form.querySelector('#agdpOrderMessage');
+    const data=new FormData(form);
+    submit.disabled=true; cancel.disabled=true;
+    message.textContent=currentLang==='es'?'Enviando pedido a producción…':'Sending order to production…';
+    try{
+      const response=await fetch(AGDP_PRODUCTION_API+'/order',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          orderToken:quote.orderToken,
+          confirmed:data.get('confirmed')==='on',
+          shipping:{
+            firstName:data.get('firstName'),lastName:data.get('lastName'),country:data.get('country'),
+            state:data.get('state'),city:data.get('city'),address1:data.get('address1'),address2:data.get('address2'),
+            zipCode:data.get('zipCode'),phoneNumber:data.get('phoneNumber')
+          }
+        })
+      });
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok||!payload||payload.ok!==true){
+        throw new Error(payload&&payload.error&&payload.error.message?payload.error.message:'Order failed');
+      }
+      productionPhase='ordered';
+      window.AGDP_currentProductionOrder=payload.order;
+      message.textContent=currentLang==='es'
+        ?'Pedido confirmado. Referencia AGDP '+payload.order.orderId+'.'
+        :'Order confirmed. AGDP reference '+payload.order.orderId+'.';
+      statusBadge.textContent=currentLang==='es'
+        ?'Pedido confirmado · Referencia '+payload.order.orderId
+        :'Order confirmed · Reference '+payload.order.orderId;
+      orderBtn.textContent=currentLang==='es'?'Pedido confirmado':'Order confirmed';
+      orderBtn.disabled=true;
+      submit.style.display='none';
+      cancel.disabled=false;
+      cancel.textContent=currentLang==='es'?'Cerrar':'Close';
+    }catch(error){
+      console.error('AGDP: order failed',error);
+      message.textContent=currentLang==='es'
+        ?'No fue posible confirmar el pedido: '+error.message
+        :'The order could not be confirmed: '+error.message;
+      submit.disabled=false; cancel.disabled=false;
+    }
+  }
+
   async function uploadCurrentSTL(){
+    if(productionPhase==='ready'){
+      openOrderDialog();
+      return;
+    }
+    if(productionPhase!=='quote')return;
     if(!window.AGDP_currentMesh||!window.AGDP_currentMesh.V||!window.AGDP_currentMesh.V.length)return;
 
+    const requestSerial=++productionRequestSerial;
     const originalText=orderBtn.textContent;
+    productionPhase='working';
     orderBtn.disabled=true;
     orderBtn.textContent=currentLang==='es'?'Enviando modelo…':'Uploading model…';
 
@@ -566,61 +718,50 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     form.append('seed',currentSeed||window.AGDP_currentSeed||'');
 
     try{
-      const response=await fetch(AGDP_PRODUCTION_API+'/upload',{
-        method:'POST',
-        body:form
-      });
+      const response=await fetch(AGDP_PRODUCTION_API+'/upload',{method:'POST',body:form});
       const payload=await response.json().catch(()=>null);
-
+      if(requestSerial!==productionRequestSerial)return;
       if(!response.ok||!payload||payload.ok!==true){
-        const message=payload&&payload.error&&payload.error.message
-          ?payload.error.message
-          :'Model upload failed';
-        throw new Error(message);
+        throw new Error(payload&&payload.error&&payload.error.message?payload.error.message:'Model upload failed');
       }
 
       const modelId=payload.modelId||null;
       if(!modelId)throw new Error('The production service did not return a model identifier');
-
       window.AGDP_currentProductionModelId=modelId;
       window.AGDP_currentProductionUpload=payload;
 
-      orderBtn.textContent=currentLang==='es'
-        ?'Calculando precio…'
-        :'Calculating price…';
-      statusBadge.textContent=currentLang==='es'
-        ?'Analizando la pieza en plata pulida…'
-        :'Analyzing the piece in Polished Silver…';
+      orderBtn.textContent=currentLang==='es'?'Calculando precio…':'Calculating price…';
+      statusBadge.textContent=currentLang==='es'?'Analizando la pieza en plata pulida…':'Analyzing the piece in Polished Silver…';
       statusBadge.className='agdp-status-badge';
 
       const quote=await waitForPolishedSilverQuote(modelId);
-
+      if(requestSerial!==productionRequestSerial)return;
       const finalPrice=Number(quote&&quote.price);
-      if(!Number.isFinite(finalPrice)||finalPrice<=0){
-        throw new Error('Invalid production price');
-      }
+      if(!Number.isFinite(finalPrice)||finalPrice<=0||!quote.orderToken)throw new Error('Invalid production quote');
 
       window.AGDP_currentProductionQuote=quote;
-
+      productionPhase='ready';
       const priceText=formatQuotePrice(finalPrice,quote.currency);
-      const materialTitle=quote.material&&quote.material.title
-        ?quote.material.title
-        :(currentLang==='es'?'Plata pulida':'Polished Silver');
-
-      orderBtn.textContent=priceText;
       statusBadge.textContent=currentLang==='es'
         ?'Plata pulida · Precio final · '+priceText
         :'Polished Silver · Final price · '+priceText;
       statusBadge.className='agdp-status-badge ready';
-      orderBtn.disabled=true;
+      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza · '+priceText:'Order this piece · '+priceText;
+      orderBtn.disabled=false;
+      generateBtn.disabled=false;
+      newSeedBtn.disabled=false;
     }catch(error){
+      if(requestSerial!==productionRequestSerial)return;
       console.error('AGDP: production upload/quote failed',error);
+      productionPhase='quote';
       orderBtn.disabled=false;
       orderBtn.textContent=originalText;
       statusBadge.textContent=currentLang==='es'
         ?'No fue posible obtener la cotización. Intenta de nuevo.'
         :'The quote could not be obtained. Try again.';
       statusBadge.className='agdp-status-badge';
+      generateBtn.disabled=false;
+      newSeedBtn.disabled=false;
     }
   }
 
