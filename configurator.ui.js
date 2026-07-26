@@ -268,24 +268,15 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     // parameters are left out of this default view.
     if(params.type==='ring'){
       rows.push([t('dimNominal'), (params.mainSizeNominal!=null?params.mainSizeNominal:params.mainSize).toFixed(2)+' mm']);
-      rows.push([t('dimWidth'), params.bandWidth.toFixed(1)+' mm']);
     } else if(params.type==='brooch'){
       rows.push([t('dimBroochFace'), (cp.clipFaceWidthMm||params.clipFaceWidthMm||0).toFixed(1)+' × '+(cp.clipFaceHeightMm||params.clipFaceHeightMm||0).toFixed(1)+' mm']);
-      rows.push([t('dimClipLength'), (params.clipLengthMm||36).toFixed(1)+' mm']);
-      rows.push([t('dimClipClearance'), (cp.clipEffectiveClearanceMm||params.clipGapMm||2.8).toFixed(1)+' mm']);
-      rows.push([t('dimClipConstruction'), currentLang==='es'?'Una sola pieza, sin articulaciones':'Single piece, non-articulated']);
     } else if(params.type==='hoopEarring'){
       rows.push([t('dimHoopBodySpan'), (cp.hoopBodySpanMm||params.mainSize).toFixed(1)+' mm']);
-      rows.push([t('dimHoopBodyDepth'), (cp.hoopBodyDepthMm||params.bandWidth).toFixed(1)+' mm']);
-      rows.push([t('dimHookInsertionLength'), (cp.hoopHookInsertionLengthMm||12.0).toFixed(1)+' mm']);
-      rows.push([t('dimHookTipDiameter'), (cp.hoopHookTipDiameterMm||0.9).toFixed(1)+' mm']);
     } else if(params.type==='cuffBracelet'){
       rows.push([t('dimInnerWidth'), (params.mainSize*1.20).toFixed(1)+' mm']);
       rows.push([t('dimInnerDepth'), (params.mainSize*0.85).toFixed(1)+' mm']);
-      rows.push([t('dimWidth'), params.bandWidth.toFixed(1)+' mm']);
     } else if(params.type==='bangle'||params.type==='earCuff'){
       rows.push([t('dimInnerDiameter'), params.mainSize.toFixed(1)+' mm']);
-      rows.push([t('dimWidth'), params.bandWidth.toFixed(1)+' mm']);
     } else if(params.type==='pendant'||params.type==='cufflinks'){
       rows.push([t('dimPlate'), params.mainSize.toFixed(1)+' mm']);
     }
@@ -600,20 +591,20 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
         <p id="agdpOrderSummary"></p>
         <form id="agdpOrderForm">
           <div class="agdp-order-grid">
-            <div class="agdp-order-field"><label for="agdpFirstName">Nombre</label><input id="agdpFirstName" name="firstName" autocomplete="given-name" required></div>
-            <div class="agdp-order-field"><label for="agdpLastName">Apellidos</label><input id="agdpLastName" name="lastName" autocomplete="family-name" required></div>
-            <div class="agdp-order-field"><label for="agdpCountry">País (código de 2 letras)</label><input id="agdpCountry" name="country" value="MX" maxlength="2" autocomplete="country" required></div>
-            <div class="agdp-order-field"><label for="agdpState">Estado</label><input id="agdpState" name="state" autocomplete="address-level1" required></div>
-            <div class="agdp-order-field"><label for="agdpCity">Ciudad</label><input id="agdpCity" name="city" autocomplete="address-level2" required></div>
-            <div class="agdp-order-field"><label for="agdpZip">Código postal</label><input id="agdpZip" name="zipCode" autocomplete="postal-code" required></div>
-            <div class="agdp-order-field full"><label for="agdpAddress1">Dirección</label><input id="agdpAddress1" name="address1" autocomplete="address-line1" required></div>
-            <div class="agdp-order-field full"><label for="agdpAddress2">Dirección adicional</label><input id="agdpAddress2" name="address2" autocomplete="address-line2"></div>
-            <div class="agdp-order-field full"><label for="agdpPhone">Teléfono</label><input id="agdpPhone" name="phoneNumber" autocomplete="tel" required></div>
+            <div class="agdp-order-field"><label for="agdpFirstName">First name</label><input id="agdpFirstName" name="firstName" autocomplete="given-name" required></div>
+            <div class="agdp-order-field"><label for="agdpLastName">Last name</label><input id="agdpLastName" name="lastName" autocomplete="family-name" required></div>
+            <div class="agdp-order-field"><label for="agdpCountry">Country (2-letter code)</label><input id="agdpCountry" name="country" value="MX" maxlength="2" autocomplete="country" required></div>
+            <div class="agdp-order-field"><label for="agdpState">State / Province / Region</label><input id="agdpState" name="state" autocomplete="address-level1" required></div>
+            <div class="agdp-order-field"><label for="agdpCity">City</label><input id="agdpCity" name="city" autocomplete="address-level2" required></div>
+            <div class="agdp-order-field"><label for="agdpZip">Postal code</label><input id="agdpZip" name="zipCode" autocomplete="postal-code" required></div>
+            <div class="agdp-order-field full"><label for="agdpAddress1">Address line 1</label><input id="agdpAddress1" name="address1" autocomplete="address-line1" required></div>
+            <div class="agdp-order-field full"><label for="agdpAddress2">Address line 2 (optional)</label><input id="agdpAddress2" name="address2" autocomplete="address-line2"></div>
+            <div class="agdp-order-field full"><label for="agdpPhone">Phone number</label><input id="agdpPhone" name="phoneNumber" autocomplete="tel" required></div>
           </div>
           <label class="agdp-order-confirm"><input type="checkbox" name="confirmed" required><span id="agdpConfirmText"></span></label>
           <div class="agdp-order-actions">
-            <button type="button" id="agdpOrderCancel">Cancelar</button>
-            <button type="submit" id="agdpOrderSubmit">Confirmar pedido</button>
+            <button type="button" id="agdpOrderCancel">Cancel</button>
+            <button type="submit" id="agdpOrderSubmit">Confirm order</button>
           </div>
           <div id="agdpOrderMessage" class="agdp-order-message" aria-live="polite"></div>
         </form>
@@ -630,15 +621,11 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     if(!quote||!quote.orderToken)return;
     const overlay=ensureOrderDialog();
     const priceText=formatQuotePrice(quote.price,quote.currency);
-    overlay.querySelector('#agdpOrderTitle').textContent=currentLang==='es'?'Pedido de pieza única':'Order unique piece';
-    overlay.querySelector('#agdpOrderSummary').textContent=currentLang==='es'
-      ?'Plata pulida · Precio final '+priceText+' · Envío calculado por producción.'
-      :'Polished Silver · Final price '+priceText+' · Shipping calculated by production.';
-    overlay.querySelector('#agdpConfirmText').textContent=currentLang==='es'
-      ?'Confirmo que los datos son correctos y autorizo el envío inmediato de esta pieza única a producción.'
-      :'I confirm the details are correct and authorize this unique piece to be sent to production immediately.';
-    overlay.querySelector('#agdpOrderSubmit').textContent=currentLang==='es'?'Confirmar pedido':'Confirm order';
-    overlay.querySelector('#agdpOrderCancel').textContent=currentLang==='es'?'Cancelar':'Cancel';
+    overlay.querySelector('#agdpOrderTitle').textContent='Order unique piece';
+    overlay.querySelector('#agdpOrderSummary').textContent='Polished Silver · Final price '+priceText+' · Shipping calculated by production.';
+    overlay.querySelector('#agdpConfirmText').textContent='I confirm the details are correct and authorize this unique piece to be sent to production immediately.';
+    overlay.querySelector('#agdpOrderSubmit').textContent='Confirm order';
+    overlay.querySelector('#agdpOrderCancel').textContent='Cancel';
     overlay.querySelector('#agdpOrderMessage').textContent='';
     overlay.classList.add('open');
   }
@@ -653,7 +640,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     const message=form.querySelector('#agdpOrderMessage');
     const data=new FormData(form);
     submit.disabled=true; cancel.disabled=true;
-    message.textContent=currentLang==='es'?'Enviando pedido a producción…':'Sending order to production…';
+    message.textContent='Sending order to production…';
     try{
       const response=await fetch(AGDP_PRODUCTION_API+'/order',{
         method:'POST',
@@ -674,22 +661,16 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       }
       productionPhase='ordered';
       window.AGDP_currentProductionOrder=payload.order;
-      message.textContent=currentLang==='es'
-        ?'Pedido confirmado. Referencia AGDP '+payload.order.orderId+'.'
-        :'Order confirmed. AGDP reference '+payload.order.orderId+'.';
-      statusBadge.textContent=currentLang==='es'
-        ?'Pedido confirmado · Referencia '+payload.order.orderId
-        :'Order confirmed · Reference '+payload.order.orderId;
-      orderBtn.textContent=currentLang==='es'?'Pedido confirmado':'Order confirmed';
+      message.textContent='Order confirmed. AGDP reference '+payload.order.orderId+'.';
+      statusBadge.textContent='Order confirmed · Reference '+payload.order.orderId;
+      orderBtn.textContent='Order confirmed';
       orderBtn.disabled=true;
       submit.style.display='none';
       cancel.disabled=false;
-      cancel.textContent=currentLang==='es'?'Cerrar':'Close';
+      cancel.textContent='Close';
     }catch(error){
       console.error('AGDP: order failed',error);
-      message.textContent=currentLang==='es'
-        ?'No fue posible confirmar el pedido: '+error.message
-        :'The order could not be confirmed: '+error.message;
+      message.textContent='The order could not be confirmed: '+error.message;
       submit.disabled=false; cancel.disabled=false;
     }
   }
