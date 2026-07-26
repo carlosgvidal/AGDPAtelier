@@ -2392,6 +2392,67 @@ function flattenedNodeAt(wasm,center,rx,ry,rz,segments){
   return Manifold.sphere(1,segments||18).scale([rx,ry,rz]).translate(center);
 }
 
+// Applies the same visible geometric vocabulary used by makeFaceManifold to
+// the exposed +Z face of the cufflink-derived brooch cap. The structural cap
+// itself remains unchanged toward -Z, so the fastening mechanism and its
+// clearances are not affected.
+function decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature){
+  const { Manifold }=wasm;
+  const domeI=featureIntensity(p,'dome');
+  const vesselI=featureIntensity(p,'vessel');
+  const cageI=featureIntensity(p,'cage');
+  const wrappedI=featureIntensity(p,'wrapped');
+  const interI=featureIntensity(p,'interweave');
+  const effR=Math.max(minFeature*2.4,Math.min(capHalfX,capHalfY));
+  const reliefDepth=clamp(effR*(.16+.18*Math.max(domeI,vesselI,cageI,wrappedI,interI)),1.2,4.2);
+  const overlap=Math.max(.18,minFeature*.24);
+  const parts=[];
+
+  if(domeI>.08){
+    const rr=effR*(.30+.24*domeI);
+    parts.push(sphereAt(wasm,[0,0,capTopZ-overlap],rr,24).scale([1,1,.38+.28*domeI]));
+  }
+  if(vesselI>.08){
+    const polarity=(p.variation?.offset||0)>=0?1:-1;
+    const rr=effR*(.20+.22*vesselI);
+    parts.push(sphereAt(wasm,[polarity*effR*.20,-effR*.09,capTopZ-overlap],rr,24).scale([1.16,.86,.44+.20*vesselI]));
+  }
+  if(cageI>.08){
+    const barR=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.045+.025*cageI));
+    const span=effR*(.48+.20*cageI);
+    parts.push(cylinderBetween(wasm,[-span,0,capTopZ-overlap],[span,0,capTopZ-overlap],barR,24));
+    parts.push(cylinderBetween(wasm,[0,-span,capTopZ-overlap],[0,span,capTopZ-overlap],barR,24));
+  }
+  if(wrappedI>.08){
+    const count=2+Math.round(wrappedI*2);
+    for(let i=0;i<count;i++){
+      const a=(p.variation?.phaseB||0)+i*Math.PI*2/count;
+      const rr=effR*(.58+.07*Math.sin(a*2));
+      const nr=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.05+.035*wrappedI));
+      parts.push(sphereAt(wasm,[Math.cos(a)*rr,Math.sin(a)*rr,capTopZ-overlap],nr,24));
+    }
+  }
+  if(interI>.12){
+    const r=Math.max(AGDP_MIN_WALL_MM*.75,effR*(.038+.026*interI));
+    const span=effR*.66;
+    parts.push(cylinderBetween(wasm,[-span*.72,-span*.38,capTopZ-overlap],[span*.72,span*.38,capTopZ-overlap],r,24));
+    parts.push(cylinderBetween(wasm,[-span*.72,span*.38,capTopZ-overlap],[span*.72,-span*.38,capTopZ-overlap],r,24));
+  }
+
+  if(!parts.length) return capFill;
+
+  // Restrict every added operation to the cap footprint and to the outward
+  // side only. This keeps all new volume away from the rear mechanism.
+  const margin=Math.max(minFeature*.34,AGDP_STRUCTURAL_WALL_MM*.22);
+  const maskHalfX=Math.max(minFeature*1.8,capHalfX-margin);
+  const maskHalfY=Math.max(minFeature*1.8,capHalfY-margin);
+  const mask=Manifold.cylinder(reliefDepth+overlap*2,1,1,160,true)
+    .scale([maskHalfX,maskHalfY,1])
+    .translate([0,0,capTopZ+(reliefDepth-overlap*2)*.5]);
+  const relief=Manifold.intersection(unionAll(wasm,parts),mask);
+  return unionAll(wasm,[capFill,relief]);
+}
+
 // Shared by clip-like typologies (universal clip and related mechanisms, any
 // future one): the seed picks among three genuinely different visible
 // masses — continuous (via the same makeFaceManifold pendants and
@@ -2481,9 +2542,12 @@ async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceT
     const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
     const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
     const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
-    const capFill=Manifold.cylinder(capHeight,1,1,160,true)
-      .scale([crownHalfX+footprintOverlap,crownHalfY+footprintOverlap,1])
+    const capHalfX=crownHalfX+footprintOverlap;
+    const capHalfY=crownHalfY+footprintOverlap;
+    let capFill=Manifold.cylinder(capHeight,1,1,160,true)
+      .scale([capHalfX,capHalfY,1])
       .translate([0,0,capCenterZ]);
+    capFill=decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature);
     base=unionAll(wasm,[base,capFill]);
   }
 
