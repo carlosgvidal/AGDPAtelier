@@ -22,6 +22,30 @@ const SHAPEWAYS_SILVER_925 = Object.freeze({
 });
 window.SHAPEWAYS_SILVER_925 = SHAPEWAYS_SILVER_925;
 
+
+const CARTIER_LOVE_REFERENCE_LIMITS = Object.freeze({
+  sourceRole: 'commercial-dimensional-reference',
+  units: 'mm',
+  ring: Object.freeze({
+    innerCircumferenceMm: Object.freeze({ min: 44, max: 77 }),
+    innerDiameterMm: Object.freeze({ min: 44 / Math.PI, max: 77 / Math.PI }),
+    bandWidthMm: Object.freeze({ min: 2.6, max: 6.5 })
+  }),
+  bracelet: Object.freeze({
+    nominalCircumferenceMm: Object.freeze({ min: 150, max: 220 }),
+    circularEquivalentDiameterMm: Object.freeze({ min: 150 / Math.PI, max: 220 / Math.PI }),
+    bandWidthMm: Object.freeze({ min: 3.6, max: 7.0 })
+  }),
+  pendant: Object.freeze({
+    circularBodyOuterDiameterMm: Object.freeze({ min: 10.8, max: 23.5 })
+  }),
+  hoopEarring: Object.freeze({
+    outerDiameterMm: Object.freeze({ min: 12.8, max: 35.0 }),
+    axialWidthMm: Object.freeze({ min: 2.6, max: 5.7 })
+  })
+});
+window.CARTIER_LOVE_REFERENCE_LIMITS = CARTIER_LOVE_REFERENCE_LIMITS;
+
 // Existing geometry uses these aliases extensively. Both now resolve to the
 // centralized manufacturing profile rather than independent numeric literals.
 const AGDP_MIN_WALL_MM = SHAPEWAYS_SILVER_925.wallsMm.polished.supported;
@@ -654,7 +678,7 @@ function canonicalizeMeshForValidation(V,F,tolerance){
 
 
 
-// Detailed topology audit used by the hair-comb diagnostic pipeline. This is
+// Detailed topology audit used by the geometry diagnostic pipeline. This is
 // intentionally independent from window.validate so a failing intermediate
 // CSG stage can be identified before the final product audit is reached.
 function diagnoseClosedTriangleMesh(V,F,label){
@@ -993,7 +1017,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   }
 
   const computedWall = AGDP_STRUCTURAL_WALL_MM*(0.95+p.architectural*0.85+p.sideRelief*3.4);
-  const baseWall = Math.max(AGDP_STRUCTURAL_WALL_MM, opts.type==='comb'?(p.combBodyWallMm||computedWall):computedWall);
+  const baseWall = Math.max(AGDP_STRUCTURAL_WALL_MM, computedWall);
   const facetCount = p.forcedSides!==undefined ? (p.forcedSides>0?Math.round(p.forcedSides):0) : (p.faceting>0.14?Math.round(clamp(6+p.faceting*44,6,48)):0);
   const facetDepth = facetCount<=0?0:(p.forcedSides!==undefined ? Math.min(baseWall*0.68, 0.55+Math.max(0,6-facetCount)*0.11+p.faceting*0.5) : Math.min(baseWall*0.55, 0.28+p.faceting*1.05));
   const coverageOffset = (p.articulationOffset||0)*Math.PI/180;
@@ -1603,7 +1627,7 @@ function featureIntensity(p,key,fallback=.35){ return clamp((p.featureWeights&&N
    builder — which is exactly what let the same class of bug (piercing,
    floating decorations, inconsistent "solid/volumetric/lattice" meaning)
    surface repeatedly in different places. This does not merge the several
-   different mesh topologies into one impossible function — a comb, a
+   different mesh topologies into one impossible function — each product
    clip, and a ring are genuinely different shapes — but it does mean
    every one of them computes clearance, embedding, connecting veins, the
    mandatory event-mass, and treatment intensities the same way, once.
@@ -1833,7 +1857,7 @@ function weightedPick(rng, weights){
 
 // The one shared surface-treatment decision every typology consults with
 // the same criteria: how solid, how voluminous, or how lattice-like a
-// piece's secondary body reads. Ring, comb, money clip, cufflinks — any
+// piece's secondary body reads. Ring, cufflinks, brooch — any
 // builder that needs this question answered asks it the same way, from
 // the same underlying intensities, rather than inventing its own weights
 // per category. What differs between categories is only how each one's
@@ -1987,7 +2011,7 @@ async function makePendantManifold(wasm, p) {
      ring. The central void is functional as a sculptural field rather than
      a finger aperture, and every interior member is embedded into the band. */
   const {Manifold}=wasm;
-  const targetEnvelope=clamp(p.mainSize||28,23.5,40);
+  const targetEnvelope=clamp(p.mainSize||19,CARTIER_LOVE_REFERENCE_LIMITS.pendant.circularBodyOuterDiameterMm.min,CARTIER_LOVE_REFERENCE_LIMITS.pendant.circularBodyOuterDiameterMm.max);
   const targetDepth=clamp(p.bandWidth||4.8,3.6,7.2);
   const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|pendant-annular-v180');
   const I=(p.loadGraph&&p.loadGraph.intensities)||{bridge:.35,void:.25,node:.35,suspension:.3,continuity:.75,organism:.5};
@@ -2220,7 +2244,7 @@ async function makeCufflinksManifold(wasm, p) {
     // live risk in the post, not a hypothetical one. Replaced with a single
     // continuous tube (shared vertex rings between consecutive
     // cross-sections, same mechanism as variableEllipticalTubeMesh already
-    // used for the comb's crown) which cannot develop this defect
+    // used for continuous crowns) which cannot develop this defect
     // regardless of radius/spacing ratio, and no longer needs the filler
     // spheres that were papering over the old seams.
     const segments=14;
@@ -2330,226 +2354,12 @@ async function makeCufflinksManifold(wasm, p) {
   return {manifold};
 }
 
-function ellipticalSegmentBetween(wasm,p0,p1,rx,ry,segments){
-  const { Manifold }=wasm;
-  const dx=p1[0]-p0[0],dy=p1[1]-p0[1],dz=p1[2]-p0[2];
-  const len=Math.hypot(dx,dy,dz)||1e-6;
-  let solid=Manifold.cylinder(len,1,1,segments||16,true).scale([rx,ry,1]);
-  const thetaDeg=Math.acos(clamp(dz/len,-1,1))*180/Math.PI;
-  const phiDeg=Math.atan2(dy,dx)*180/Math.PI;
-  solid=solid.rotate([0,thetaDeg,0]).rotate([0,0,phiDeg]);
-  return solid.translate([(p0[0]+p1[0])/2,(p0[1]+p1[1])/2,(p0[2]+p1[2])/2]);
-}
-
 function flattenedNodeAt(wasm,center,rx,ry,rz,segments){
   const { Manifold }=wasm;
   return Manifold.sphere(1,segments||18).scale([rx,ry,rz]).translate(center);
 }
 
-function makeCombManifold(wasm,p){
-  const width=Math.max(80,p.mainSize||110);
-  const topH=Math.max(35,p.combTopHeightMm||50);
-  const toothL=Math.max(25,p.combToothLengthMm||35);
-  const toothCount=Math.max(5,Math.round(p.combToothCount||8));
-  const bodyR=Math.max(2.35,(p.combBodyWallMm||4)/2*1.35);
-  const toothT=Math.max(1.25,(p.combToothDiameterMm||2.8)/2);
-  const depth=Math.max(7,p.combDepthMm||10);
-  const arch=Math.max(3,p.combArchMm||7);
-  const cranialCurve=Math.max(4,p.combCranialCurveMm||8);
-  const insertionAngle=(p.combInsertionAngleDeg||16)*Math.PI/180;
-  const toothSweep=Math.max(4,p.combToothSweepMm||7);
-  const tipReturn=Math.max(1.5,p.combTipReturnMm||2.5);
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|comb-continuous-field');
-  const fw=p.featureWeights||{};
-  const lattice=featureIntensity(p,'lattice'),cellular=featureIntensity(p,'cellular');
-  const vessel=featureIntensity(p,'vessel'),dome=featureIntensity(p,'dome');
-  const wrapped=featureIntensity(p,'wrapped'),cage=featureIntensity(p,'cage');
-  const inter=featureIntensity(p,'interweave'),continuity=featureIntensity(p,'continuity');
-  const parts=[];
-  const n=34;
-  const upper=[],lower=[],mid=[];
-  // The upper body's treatment is the same shared structural-treatment
-  // decision every typology consults — solid (thick, unbroken), volumetric
-  // (soft mass lobes), or lattice (crossed members) — the teeth stay the
-  // generative focus regardless of which one the seed picks.
-  const upperBodyMode=pickStructuralTreatment(p, 'comb-upper-body');
-  const combTreatmentMul = StructuralKit.treatmentMultipliers(upperBodyMode);
-  const solidBoost = combTreatmentMul.thicknessBoost;
-  // Where the crest's mass concentrates is itself seed-driven — not
-  // always a symmetric bulge centered on the comb, which is what made
-  // every generation read as the same silhouette.
-  const crestPeakU = 0.30+0.42*rng();
-  const crestWidth = 0.30+0.20*rng();
-  for(let i=0;i<n;i++){
-    const u=i/(n-1),x=-width/2+width*u,nx=x/(width/2);
-    const archWave=Math.sin(Math.PI*u);
-    const asym=(p.asymmetry||0)*3.2*Math.sin(2*Math.PI*u+(p.variation?.phaseA||0));
-    const skullY=cranialCurve*(1-nx*nx);
-    const zLower=toothL*.08+arch*archWave+asym*.18;
-    const volumeLift=topH*(.10*dome+.08*vessel)*Math.pow(archWave,1.35);
-    const localH=topH*(.34+.48*archWave+.12*continuity+.08*vessel*Math.sin(Math.PI*u+(p.variation?.phaseB||0)));
-    const y=depth*.16+skullY+depth*.16*vessel*archWave;
-    lower.push([x,y,zLower]);
-    upper.push([x,y+depth*(.08+.16*dome)*archWave,zLower+localH+volumeLift]);
-    mid.push([x,y+depth*.08*archWave,zLower+localH*(.42+.14*Math.sin(2*Math.PI*u+(p.variation?.phaseC||0)))]);
-  }
-  // Build the two principal rails as continuous shared-ring tubes. The
-  // previous implementation used one capped elliptical cylinder per span;
-  // once the crest radius exceeded the spacing between samples, neighboring
-  // caps penetrated one another and the subsequent boolean union could become
-  // non-manifold. A single tube has no internal caps and therefore removes the
-  // source of that topology failure.
-  {
-    const lowerRadii=lower.map(()=>[
-      bodyR*(1.00+.18*continuity),
-      bodyR*.72
-    ]);
-    const lowerMesh=variableEllipticalTubeMesh(lower,lowerRadii,18,false);
-    parts.push(meshToManifold(wasm,lowerMesh.V,lowerMesh.F));
-
-    const crestRadii=upper.map((_,i)=>{
-      const q=i/(n-1);
-      const distFromPeak=(q-crestPeakU)/crestWidth;
-      const taperEdge=Math.exp(-distFromPeak*distFromPeak*1.3);
-      return [
-        topH*(0.20+0.05*dome+0.04*vessel)*solidBoost*(0.42+0.58*taperEdge),
-        topH*(0.15+0.04*dome)*solidBoost*(0.42+0.58*taperEdge)
-      ];
-    });
-    const crestMesh=variableEllipticalTubeMesh(upper,crestRadii,24,false);
-    parts.push(meshToManifold(wasm,crestMesh.V,crestMesh.F));
-  }
-
-  for(let i=0;i<n-1;i++){
-    if(upperBodyMode!=='lattice'){
-      // La zona media, entre el riel inferior y la cresta, se rellena con
-      // masa real en vez de quedar vacía salvo por cruces ocasionales —
-      // es justamente la franja que se veía como un tejido delgado sin
-      // sentido en vez de una pieza escultórica continua.
-      const midR=bodyR*(0.72+0.18*dome+0.14*vessel)*(upperBodyMode==='volumetric'?1.15:1.0);
-      parts.push(ellipticalSegmentBetween(wasm,lower[i],mid[i],midR,midR*.82,14));
-      parts.push(ellipticalSegmentBetween(wasm,mid[i],upper[i],midR*.92,midR*.76,14));
-    }
-    if(upperBodyMode==='lattice' && lattice>.16 && (i%Math.max(2,5-Math.round(lattice*3))===0||i===n-2)){
-      const j=Math.min(n-1,i+2);
-      parts.push(ellipticalSegmentBetween(wasm,lower[i],upper[j],bodyR*(.66+.22*lattice),bodyR*.52,14));
-      parts.push(ellipticalSegmentBetween(wasm,upper[i],lower[j],bodyR*(.62+.20*inter),bodyR*.48,14));
-    }
-    if(upperBodyMode==='lattice' && cage>.22 && i%4===1){
-      parts.push(ellipticalSegmentBetween(wasm,mid[i],mid[Math.min(n-1,i+2)],bodyR*(.48+.24*cage),bodyR*.42,12));
-    }
-  }
-  if(upperBodyMode==='lattice' && wrapped>.18){
-    const strands=1+Math.round(wrapped*2);
-    for(let sIdx=0;sIdx<strands;sIdx++){
-      const pts=[];
-      for(let i=0;i<n;i++){
-        const q=i/(n-1),mix=.30+.28*sIdx/Math.max(1,strands-1)+.12*Math.sin(q*Math.PI*2+(p.variation?.phaseB||0)+sIdx);
-        pts.push([
-          lower[i][0],
-          lower[i][1]+depth*(.04+.08*wrapped)*Math.sin(Math.PI*q+sIdx),
-          lower[i][2]+(upper[i][2]-lower[i][2])*clamp(mix,.18,.78)
-        ]);
-      }
-      const mesh=tubeAlongPathMesh(pts,Math.max(AGDP_MIN_WALL_MM*.72,bodyR*(.38+.20*wrapped)),10,false);
-      parts.push(meshToManifold(wasm,mesh.V,mesh.F));
-    }
-  }
-  parts.push(flattenedNodeAt(wasm,lower[0],bodyR*1.35,bodyR*.88,bodyR*1.05,16));
-  parts.push(flattenedNodeAt(wasm,lower[n-1],bodyR*1.35,bodyR*.88,bodyR*1.05,16));
-  const nodeCount=upperBodyMode==='solid' ? 0 : Math.max(2,Math.round(2+cellular*4+inter*2));
-  for(let k=0;k<nodeCount;k++){
-    const u=(k+1)/(nodeCount+1),idx=Math.round(u*(n-1));
-    const z=lower[idx][2]+(upper[idx][2]-lower[idx][2])*(.28+.48*rng());
-    const rr=bodyR*(.82+.52*cellular+.22*rng());
-    parts.push(flattenedNodeAt(wasm,[lower[idx][0],lower[idx][1]+rr*.12,z],rr*(1.0+.18*vessel),rr*(.62+.18*dome),rr*(.82+.20*continuity),16));
-  }
-  // El evento de masa obligatorio (Regla 7), construido por la misma
-  // función compartida que cualquier otra tipología usaría para su propio
-  // centro semántico.
-  {
-    const idx=Math.round(clamp(crestPeakU,0,1)*(n-1));
-    const center=[upper[idx][0],upper[idx][1]+depth*.08,upper[idx][2]-topH*.04];
-    parts.push(StructuralKit.buildEventMass(wasm, center, topH, dome, vessel));
-  }
-
-  // Mutación de la cresta superior: confinada al cuerpo ornamental y alejada de cualquier interfaz funcional.
-  if (p.mutation && p.mutation.active){
-    const sv=p.mutation.severity;
-    if(p.mutation.mode==='hypertrophy'){
-      const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|crest-hypertrophy');
-      const idx=Math.floor(hRng()*n);
-      const massR=topH*(0.16+0.18*sv);
-      parts.push(flattenedNodeAt(wasm,upper[idx],massR*(1.2+.2*vessel),massR*(0.85+.2*dome),massR*(0.95+.2*dome),22));
-    }else if(p.mutation.mode==='erosion'){
-      const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|crest-erosion');
-      const cutters=[];
-      const count=2+Math.round(sv*4);
-      for(let k=0;k<count;k++){
-        const idx=Math.floor(eRng()*n);
-        const vr=Math.max(1.0, topH*(0.09+0.09*sv));
-        cutters.push(sphereAt(wasm,mid[idx],vr,24));
-      }
-      if(cutters.length){
-        try{ const merged=unionAll(wasm,parts); parts.length=0; parts.push(safeDifference(wasm,merged,unionAll(wasm,cutters))); }
-        catch(err){ console.warn('AGDP: erosión de cresta omitida por seguridad topológica',err); }
-      }
-    }else if(p.mutation.mode==='proliferation'){
-      const pRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|crest-proliferation');
-      const anchorIdx=Math.floor(pRng()*n);
-      const anchor=upper[anchorIdx];
-      const colonyCount=6+Math.round(sv*8);
-      for(let k=0;k<colonyCount;k++){
-        const jitter=topH*0.22;
-        const pt=[anchor[0]+(pRng()*2-1)*jitter, anchor[1]+(pRng()*2-1)*jitter*0.5, anchor[2]+(pRng()*2-1)*jitter*0.6];
-        const r=Math.max(0.5, topH*(0.03+0.025*pRng()));
-        parts.push(flattenedNodeAt(wasm,pt,r,r*0.85,r*0.9,10));
-      }
-    }
-  }
-  if(upperBodyMode==='volumetric' || (upperBodyMode==='lattice' && (dome>.20||vessel>.20))){
-    const lobes=(upperBodyMode==='volumetric'?2:1)+Math.round(Math.max(dome,vessel)*2);
-    for(let k=0;k<lobes;k++){
-      const u=.24+.52*(lobes===1?.5:k/(lobes-1)),idx=Math.round(u*(n-1));
-      const rr=topH*(upperBodyMode==='volumetric'?0.085:0.055)*(1+dome+vessel*0.8);
-      parts.push(flattenedNodeAt(wasm,[upper[idx][0],upper[idx][1]+depth*.05,upper[idx][2]-rr*.45],rr*(1.1+.25*vessel),rr*(.72+.22*dome),rr*(.80+.30*dome),20));
-    }
-  }
-
-  const usable=width-18;
-  for(let k=0;k<toothCount;k++){
-    const x0=-usable/2+usable*(toothCount===1?.5:k/(toothCount-1));
-    const u=(x0+width/2)/width,idx=Math.max(0,Math.min(n-1,Math.round(u*(n-1))));
-    const lateral=x0/(usable/2||1),root=[x0,lower[idx][1],lower[idx][2]+bodyR*.18];
-    const rootWidth=Math.max(2.25,bodyR*(1.05+.18*cage));
-    const shaftWidth=Math.max(1.35,toothT*(.88+.16*continuity));
-    const flat=Math.max(.72,toothT*(.50+.10*dome));
-    const lean=Math.tan(insertionAngle)*toothL,sideConverge=-lateral*(1.4+1.0*wrapped),sway=(rng()-.5)*(0.4+0.5*inter);
-    const pts=[root],steps=6;
-    for(let j=1;j<=steps;j++){
-      const q=j/steps,ease=q*q*(3-2*q);
-      pts.push([x0+sideConverge*ease+sway*q,root[1]-lean*q+toothSweep*Math.sin(Math.PI*q)*(.72+.28*Math.abs(lateral)),root[2]-toothL*q-1.2*Math.sin(Math.PI*q)*Math.abs(lateral)]);
-    }
-    pts[steps][1]+=tipReturn;
-    // Each tooth is likewise one continuous tapered tube. This avoids six
-    // mutually intersecting capped capsules per tooth and keeps the root-to-tip
-    // transition watertight before it is joined to the lower rail.
-    const toothRadii=pts.map((_,j)=>{
-      const q=j/steps;
-      return [
-        rootWidth*(1-q)+shaftWidth*q,
-        (bodyR*.72)*(1-q)+flat*q
-      ];
-    });
-    const toothMesh=variableEllipticalTubeMesh(pts,toothRadii,18,false);
-    parts.push(meshToManifold(wasm,toothMesh.V,toothMesh.F));
-    parts.push(flattenedNodeAt(wasm,root,rootWidth*1.08,bodyR*.82,rootWidth*.92,16));
-    parts.push(flattenedNodeAt(wasm,pts[steps],shaftWidth*1.05,flat*1.05,shaftWidth*.92,16));
-  }
-  return {manifold:unionAll(wasm,parts),bandW:topH};
-}
-
-// Shared by every clip-like typology (universal clip, money clip, any
+// Shared by clip-like typologies (universal clip and related mechanisms, any
 // future one): the seed picks among three genuinely different visible
 // masses — continuous (via the same makeFaceManifold pendants and
 // cufflinks use), amorphous, or a rotated slab with lobes — built once
@@ -2800,106 +2610,7 @@ async function makeBroochClipManifold(wasm,p){
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
-async function makeMoneyClipManifold(wasm,p){
-  const { Manifold }=wasm;
-  const L=clamp(p.moneyClipLengthMm||55,48,64);
-  const W=clamp(p.moneyClipWidthMm||23,18,28);
-  const T=clamp(p.moneyClipThicknessMm||2.0,1.8,2.4);
-  const gap=clamp(p.moneyClipGapMm||3.8,2.6,5.2);
-  // El radio funcional deriva de la separación real entre las dos láminas.
-  // Esto mantiene el retorno cerrado y continuo en todas las tallas.
-  const returnR=Math.max(T*.72,(gap+T)/2);
-  const requestedRearL=Math.max(L*.72,p.moneyClipRearLengthMm||L-8);
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|money-clip-face');
-  const parts=[];
-  const capsule=(a,b,r)=>unionAll(wasm,[cylinderBetween(wasm,a,b,r,24),sphereAt(wasm,a,r,24),sphereAt(wasm,b,r,24)]);
-
-  // El frente usa la misma función compartida que el clip universal —
-  // no una copia propia con constantes ligeramente distintas — adaptada
-  // a las proporciones alargadas del money clip vía faceL/faceW.
-  const faceL=clamp(L*(0.90+rng()*.10),40,60);
-  const faceW=clamp(W*(0.86+rng()*.16),16,26);
-  const faceTh=Math.max(3.4,T*1.9);
-  const face=await buildThreeModeFace(wasm, p, faceL, faceW, faceTh, rng);
-
-  // La distancia del mecanismo se calcula desde la superficie posterior
-  // real de la cara generada, igual que en el clip universal — así una
-  // cara abombada o amorfa nunca invade la garganta ni queda descentrada.
-  const faceMesh=manifoldToMesh(face);
-  const faceBounds=bounds(faceMesh.V);
-  const faceBackZ=faceBounds.min[2];
-  parts.push(face);
-
-  // Mutación de money clip: hipertrofia sobre la cara frontal — el brazo
-  // trasero ya midió su holgura desde la cara original, la masa nunca
-  // invade la capacidad útil para el billete.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='hypertrophy'){
-    const sv=p.mutation.severity;
-    const hRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|moneyclip-hypertrophy');
-    const fx=(hRng()*2-1)*faceL*0.30, fy=(hRng()*2-1)*faceW*0.28;
-    const massR=Math.max(faceTh*0.85, faceTh*(0.95+0.85*sv));
-    parts.push(sphereAt(wasm,[fx,fy,faceTh*0.4+massR*0.3],massR,24));
-  }
-
-  // Punteras redondeadas discretas en los extremos, ancladas a la cara real.
-  const tipR=Math.max(1.7,W*.095);
-  [[-faceL*.47,0],[faceL*.47,0]].forEach(([x,y])=>{
-    parts.push(flattenedNodeAt(wasm,[x,y,faceBackZ+tipR*.6],tipR,tipR*.82,tipR*.7,20));
-  });
-
-  // Brazo posterior elástico, paralelo al frente y con garganta útil
-  // constante, medida desde la superficie posterior real de la cara —
-  // nunca desde un z=0 asumido.
-  const rearZ=faceBackZ-gap-T*.5;
-  const x0=-L/2+returnR+1.0;
-  const maxRearEnd=L/2-2.2;
-  const rearL=Math.min(requestedRearL,maxRearEnd-x0);
-  const x1=x0+rearL;
-  const rear=Manifold.cube([rearL,W*.54,T],true).translate([(x0+x1)/2,0,rearZ]);
-  parts.push(rear);
-
-  // Placa posterior de unión, oculta detrás de la cara.
-  const backW=Math.min(faceL*.62,rearL+6);
-  const backH=Math.min(faceW*.58,W*.7);
-  const plateT=Math.max(1.6,T);
-  const zBack=faceBackZ-plateT*.5+0.08;
-  const backPlate=Manifold.cube([backW,backH,plateT],true).translate([0,0,zBack]);
-  parts.push(backPlate);
-  parts.push(cylinderBetween(wasm,[-backW*.30,0,zBack],[-backW*.30,0,rearZ],Math.max(0.85,T*.44),24));
-  parts.push(cylinderBetween(wasm,[ backW*.30,0,zBack],[ backW*.30,0,rearZ],Math.max(0.85,T*.44),24));
-
-  // Retorno en U construido desde la separación efectiva entre frente y brazo.
-  // Sus extremos coinciden exactamente con zBack y rearZ, por lo que no quedan
-  // segmentos truncados ni uniones parciales al aumentar la talla.
-  const bend=[];
-  const centerZ=(zBack+rearZ)/2;
-  const bendR=Math.abs(zBack-rearZ)*.5;
-  for(let i=0;i<=24;i++){
-    const a=Math.PI/2+Math.PI*i/24;
-    bend.push([x0+bendR*Math.cos(a),0,centerZ+bendR*Math.sin(a)]);
-  }
-  const bendMesh=tubeAlongPathMesh(bend,Math.max(0.92,T*.50),18,false);
-  parts.push(meshToManifold(wasm,bendMesh.V,bendMesh.F));
-
-  // Punta de presión completa, redondeada y contenida dentro de la longitud nominal.
-  const p0=[x1-5.2,0,rearZ];
-  const p1=[x1-2.2,0,rearZ+.62];
-  const p2=[Math.min(L/2-0.8,x1+1.4),0,rearZ+1.35];
-  const pr=Math.max(1.35,T*.72);
-  parts.push(capsule(p0,p1,pr));
-  parts.push(capsule(p1,p2,pr*.94));
-  parts.push(sphereAt(wasm,p2,pr,28));
-
-  p.moneyClipLengthMm=L;
-  p.moneyClipWidthMm=W;
-  p.moneyClipThicknessMm=T;
-  p.moneyClipGapMm=gap;
-  p.moneyClipReturnRadiusMm=returnR;
-  p.moneyClipRearLengthMm=rearL;
-  return {manifold:unionAll(wasm,parts),bandW:Math.max(faceL,faceW)};
-}
-
-const AGDP_SILVER_HOLLOWING=Object.freeze({
+async const AGDP_SILVER_HOLLOWING=Object.freeze({
   manufacturingProfile: SHAPEWAYS_SILVER_925,
   conservativeShellWallMm:Object.freeze({
     bangle:1.7,
@@ -3073,8 +2784,8 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 function makeHoopEarringManifold(wasm, p){
   // Commercial configurator policy, expressed in millimetres. This is a
   // product range rather than a claim of one universal international size.
-  const HOOP_BODY_MIN_OD_MM = 14;
-  const HOOP_BODY_MAX_OD_MM = 35;
+  const HOOP_BODY_MIN_OD_MM = CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.outerDiameterMm.min;
+  const HOOP_BODY_MAX_OD_MM = CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.outerDiameterMm.max;
   const HOOP_BODY_DEFAULT_OD_MM = 24;
   const HOOK_TIP_R_MM = 0.45;        // 0.90 mm insertion diameter
   const HOOK_SHAFT_R_MM = 0.58;
@@ -3086,7 +2797,7 @@ function makeHoopEarringManifold(wasm, p){
   const HOOK_INSERTION_MM = 12.0;
   const HOOK_TAIL_FLARE_MM = 0.9;
   const BODY_SPAN_MM = clamp(Number.isFinite(p.mainSize)?p.mainSize:HOOP_BODY_DEFAULT_OD_MM, HOOP_BODY_MIN_OD_MM, HOOP_BODY_MAX_OD_MM);
-  const BODY_DEPTH_MM = clamp(p.bandWidth||4.8, 3.6, 7.2);
+  const BODY_DEPTH_MM = clamp(Number.isFinite(p.bandWidth)?p.bandWidth:3.6, CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.axialWidthMm.min, CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.axialWidthMm.max);
 
   return (async () => {
     const I=(p.loadGraph&&p.loadGraph.intensities)||{bridge:.35,void:.25,node:.35,suspension:.3,continuity:.75,organism:.5};
@@ -3222,7 +2933,29 @@ function makeHoopEarringManifold(wasm, p){
 }
 
 async function makeMeshManifoldEntry(wasm, inputParams){
+  const removedTypes = new Set(['comb', 'moneyClip']);
+  if (removedTypes.has(inputParams?.type)) {
+    throw new Error('AGDP typology removed from catalog: ' + inputParams.type);
+  }
   const p = window.GenerationLayers.compile(Object.assign({}, inputParams));
+  if (removedTypes.has(p.type)) {
+    throw new Error('AGDP typology removed from catalog: ' + p.type);
+  }
+  if (p.type==='ring') {
+    p.mainSize=clamp(Number.isFinite(p.mainSize)?p.mainSize:18,
+      CARTIER_LOVE_REFERENCE_LIMITS.ring.innerDiameterMm.min,
+      CARTIER_LOVE_REFERENCE_LIMITS.ring.innerDiameterMm.max);
+    p.bandWidth=clamp(Number.isFinite(p.bandWidth)?p.bandWidth:3.6,
+      CARTIER_LOVE_REFERENCE_LIMITS.ring.bandWidthMm.min,
+      CARTIER_LOVE_REFERENCE_LIMITS.ring.bandWidthMm.max);
+  } else if (p.type==='bangle') {
+    p.mainSize=clamp(Number.isFinite(p.mainSize)?p.mainSize:60,
+      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.circularEquivalentDiameterMm.min,
+      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.circularEquivalentDiameterMm.max);
+    p.bandWidth=clamp(Number.isFinite(p.bandWidth)?p.bandWidth:4.8,
+      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.bandWidthMm.min,
+      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.bandWidthMm.max);
+  }
   let manifold;
   if (p.type==='pendant') {
     ({manifold} = await makePendantManifold(wasm, p));
@@ -3297,13 +3030,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
   audit.discardedComponents = connected.discarded||[];
   // Exposes the fully-compiled internal params object (p), not just the
-  // caller's pre-compile() input -- type-specific builders (brooch, moneyClip,
+  // caller's pre-compile() input -- type-specific builders (brooch,
   // hoopEarring) write derived dimensions directly onto this object
   // (p.clipFaceWidthMm, p.hoopHookTipDiameterMm, etc.) so the UI
   // layer can display them without recomputing anything. Previously only
   // {V,F,audit,bandW,innerR} were returned, so none of those fields were
   // ever actually reachable by ui.js (which only ever had its OWN
-  // pre-compile params object) -- silently broken for brooch/moneyClip and hoopEarring without this fix.
+  // pre-compile params object) -- silently broken for brooch and hoopEarring without this fix.
   return { V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p };
 }
 function manifoldToMeshHelper(manifoldObj){
