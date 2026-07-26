@@ -2953,7 +2953,7 @@ function makeHoopEarringManifold(wasm, p){
 }
 
 async function makeMeshManifoldEntry(wasm, inputParams){
-  const removedTypes = new Set(['choker', 'headpiece', 'comb', 'moneyClip']);
+  const removedTypes = new Set(['comb', 'moneyClip']);
   if (removedTypes.has(inputParams?.type)) {
     throw new Error('AGDP typology removed from catalog: ' + inputParams.type);
   }
