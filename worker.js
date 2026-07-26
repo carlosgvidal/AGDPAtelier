@@ -6,6 +6,8 @@ const ALLOWED_ORIGINS = new Set([
 const SHAPEWAYS_TOKEN_URL = "https://api.shapeways.com/oauth2/token";
 const SHAPEWAYS_MODELS_URL = "https://api.shapeways.com/models/v1";
 const SHAPEWAYS_MATERIALS_URL = "https://api.shapeways.com/materials/v1";
+const SHAPEWAYS_ORDERS_URL = "https://api.shapeways.com/orders/v1";
+const ORDER_TOKEN_TTL_SECONDS = 30 * 60;
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 function getCorsHeaders(request) {
@@ -142,6 +144,102 @@ async function shapewaysGet(url, accessToken) {
   }
 
   return payload;
+}
+
+async function shapewaysPost(url, accessToken, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const payload = await parseJsonResponse(response);
+
+  if (!response.ok) {
+    throw createUpstreamError("Shapeways request failed", response, payload);
+  }
+
+  return payload;
+}
+
+function base64UrlEncodeBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlEncodeText(text) {
+  return base64UrlEncodeBytes(new TextEncoder().encode(text));
+}
+
+function base64UrlDecodeText(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  return new TextDecoder().decode(Uint8Array.from(binary, char => char.charCodeAt(0)));
+}
+
+async function hmacSignature(value, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return base64UrlEncodeBytes(new Uint8Array(signature));
+}
+
+function orderSigningSecret(env) {
+  return env.AGDP_ORDER_SIGNING_SECRET || env.SHAPEWAYS_CLIENT_SECRET || "";
+}
+
+async function createOrderToken(claims, env) {
+  const secret = orderSigningSecret(env);
+  if (!secret) throw new Error("Missing order signing secret");
+  const payload = base64UrlEncodeText(JSON.stringify(claims));
+  const signature = await hmacSignature(payload, secret);
+  return `${payload}.${signature}`;
+}
+
+async function verifyOrderToken(token, env) {
+  const secret = orderSigningSecret(env);
+  if (!secret || typeof token !== "string") return null;
+  const [payload, suppliedSignature, extra] = token.split(".");
+  if (!payload || !suppliedSignature || extra) return null;
+  const expectedSignature = await hmacSignature(payload, secret);
+  if (expectedSignature.length !== suppliedSignature.length) return null;
+  let mismatch = 0;
+  for (let i = 0; i < expectedSignature.length; i++) {
+    mismatch |= expectedSignature.charCodeAt(i) ^ suppliedSignature.charCodeAt(i);
+  }
+  if (mismatch !== 0) return null;
+  try {
+    const claims = JSON.parse(base64UrlDecodeText(payload));
+    if (!claims.exp || Date.now() >= Number(claims.exp)) return null;
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
+function requiredText(value, field, maxLength = 160) {
+  const text = String(value || "").trim();
+  if (!text) {
+    const error = new Error(`${field} is required`);
+    error.status = 400;
+    throw error;
+  }
+  return text.slice(0, maxLength);
+}
+
+function optionalText(value, maxLength = 160) {
+  return String(value || "").trim().slice(0, maxLength);
 }
 
 async function uploadModelToShapeways(file, metadata, env) {
@@ -453,13 +551,85 @@ async function getPolishedSilverQuote(modelId, env) {
     };
   }
 
+  const expiresAt = Date.now() + ORDER_TOKEN_TTL_SECONDS * 1000;
+  const orderToken = await createOrderToken({
+    modelId: String(modelId),
+    materialId: String(polishedSilver.id),
+    price: salePrice,
+    currency: quoteCurrency(modelPayload, modelMaterial),
+    exp: expiresAt
+  }, env);
+
   return {
     status: "ready",
+    modelId: String(modelId),
     material: {
+      id: String(polishedSilver.id),
       title: "Polished Silver"
     },
     price: salePrice,
-    currency: quoteCurrency(modelPayload, modelMaterial)
+    currency: quoteCurrency(modelPayload, modelMaterial),
+    orderToken,
+    expiresAt: new Date(expiresAt).toISOString()
+  };
+}
+
+
+async function placeProductionOrder(body, env) {
+  if (String(env.AGDP_ORDER_ENABLED || "").toLowerCase() !== "true") {
+    const error = new Error("Ordering is not enabled");
+    error.status = 503;
+    throw error;
+  }
+
+  if (body?.confirmed !== true) {
+    const error = new Error("Explicit order confirmation is required");
+    error.status = 400;
+    throw error;
+  }
+
+  const claims = await verifyOrderToken(body?.orderToken, env);
+  if (!claims) {
+    const error = new Error("The quote expired or is invalid. Request a new price.");
+    error.status = 400;
+    throw error;
+  }
+
+  const shipping = body?.shipping || {};
+  const orderPayload = {
+    items: [{
+      modelId: requiredText(claims.modelId, "modelId", 80),
+      materialId: requiredText(claims.materialId, "materialId", 80),
+      quantity: 1
+    }],
+    firstName: requiredText(shipping.firstName, "firstName", 80),
+    lastName: requiredText(shipping.lastName, "lastName", 80),
+    country: requiredText(shipping.country, "country", 2).toUpperCase(),
+    state: requiredText(shipping.state, "state", 100),
+    city: requiredText(shipping.city, "city", 100),
+    address1: requiredText(shipping.address1, "address1", 160),
+    address2: optionalText(shipping.address2, 160),
+    zipCode: requiredText(shipping.zipCode, "zipCode", 30),
+    phoneNumber: requiredText(shipping.phoneNumber, "phoneNumber", 40),
+    paymentMethod: "credit_card",
+    shippingOption: "Cheapest"
+  };
+
+  const token = await requestShapewaysToken(env);
+  const result = await shapewaysPost(SHAPEWAYS_ORDERS_URL, token.access_token, orderPayload);
+  const orderId = result?.orderId ?? result?.order?.orderId ?? null;
+  if (!orderId) {
+    const error = new Error("Production service did not return an order identifier");
+    error.status = 502;
+    error.details = result;
+    throw error;
+  }
+
+  return {
+    orderId: String(orderId),
+    productionOrderIds: result?.productionOrderIds || [],
+    price: Number(claims.price),
+    currency: claims.currency || "USD"
   };
 }
 
@@ -488,7 +658,7 @@ export default {
         {
           ok: true,
           service: "agdp-shapeways-api",
-          version: "0.5.0",
+          version: "0.6.0",
           timestamp: new Date().toISOString()
         },
         200,
@@ -683,6 +853,40 @@ export default {
           error.status && error.status < 500 ? error.status : 502,
           request
         );
+      }
+    }
+
+
+    if (request.method === "POST" && url.pathname === "/order") {
+      try {
+        const contentType = request.headers.get("Content-Type") || "";
+        if (!contentType.includes("application/json")) {
+          return jsonResponse({ ok: false, error: { code: "UNSUPPORTED_MEDIA_TYPE", message: "Expected application/json" } }, 415, request);
+        }
+        const body = await request.json();
+        const order = await placeProductionOrder(body, env);
+        return jsonResponse({
+          ok: true,
+          service: "agdp-production",
+          ordered: true,
+          order
+        }, 201, request);
+      } catch (error) {
+        console.error("Production order error", {
+          message: error.message,
+          status: error.status || 500,
+          details: error.details || null
+        });
+        return jsonResponse({
+          ok: false,
+          service: "agdp-production",
+          ordered: false,
+          error: {
+            code: "ORDER_FAILED",
+            message: error.message,
+            upstreamStatus: error.status || null
+          }
+        }, error.status && error.status < 500 ? error.status : 502, request);
       }
     }
 
