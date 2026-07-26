@@ -9,7 +9,6 @@
 <meta name="theme-color" content="#fbf9fa"/>
 <link rel="canonical" href="https://www.agrossdomesticproduct.com/"/>
 
-<!-- Social metadata. Upload the corresponding 1200 × 630 px image as /og-home.jpg. -->
 <meta property="og:locale" content="en_US"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="A GROSS DOMESTIC PRODUCT."/>
@@ -27,12 +26,13 @@
 <meta name="twitter:image" content="https://www.agrossdomesticproduct.com/og-home.jpg"/>
 <meta name="twitter:image:alt" content="A GROSS DOMESTIC PRODUCT. structural object in sterling silver"/>
 
-<!-- Reduce connection setup time for the 3D engine dependencies. -->
 <link rel="preconnect" href="https://unpkg.com" crossorigin/>
 <link rel="dns-prefetch" href="//unpkg.com"/>
 
-<!-- Import map for the Atelier's 3D engine. It does not download the modules
-     until configurator.js is loaded near the Atelier section. -->
+<!-- Import map for the Configurator's 3D engine (manifold-3d, three.js).
+     Declared in <head> because import maps must exist before any module
+     script executes, even though the widget itself is injected further
+     down the page by configurator.js. -->
 <script type="importmap">
 {
   "imports": {
@@ -42,6 +42,7 @@
   }
 }
 </script>
+
 
 <script type="application/ld+json">
 {
@@ -60,9 +61,7 @@
       "@id": "https://www.agrossdomesticproduct.com/#website",
       "url": "https://www.agrossdomesticproduct.com/",
       "name": "A GROSS DOMESTIC PRODUCT.",
-      "publisher": {
-        "@id": "https://www.agrossdomesticproduct.com/#organization"
-      },
+      "publisher": {"@id": "https://www.agrossdomesticproduct.com/#organization"},
       "inLanguage": "en"
     },
     {
@@ -71,12 +70,8 @@
       "url": "https://www.agrossdomesticproduct.com/",
       "name": "A GROSS DOMESTIC PRODUCT.® — Structural Objects in Sterling Silver",
       "description": "Sterling silver .925 objects produced through a structural configuration engine. Each object is generated once, to order.",
-      "isPartOf": {
-        "@id": "https://www.agrossdomesticproduct.com/#website"
-      },
-      "about": {
-        "@id": "https://www.agrossdomesticproduct.com/#organization"
-      },
+      "isPartOf": {"@id": "https://www.agrossdomesticproduct.com/#website"},
+      "about": {"@id": "https://www.agrossdomesticproduct.com/#organization"},
       "inLanguage": "en"
     }
   ]
@@ -84,112 +79,65 @@
 </script>
 
 <link rel="stylesheet" href="agdp-site.css"/>
-<style>
-  /* Semantic editorial content added to strengthen title/H1 coherence and
-     topical depth without altering the visual hierarchy of the hero. */
-  .agdp-editorial {
-    padding: clamp(3rem, 7vw, 7rem) clamp(1.25rem, 4vw, 4rem);
-    background: #fbf9fa;
-    color: #000004;
-  }
-  .agdp-editorial-inner {
-    width: min(1120px, 100%);
-    margin: 0 auto;
-    display: grid;
-    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
-    gap: clamp(2rem, 6vw, 7rem);
-    align-items: start;
-  }
-  .agdp-editorial-label {
-    margin: 0 0 .8rem;
-    font-size: .72rem;
-    font-weight: 700;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-  }
-  .agdp-editorial h2 {
-    margin: 0;
-    max-width: 12ch;
-    font-size: clamp(2rem, 4.5vw, 4.8rem);
-    line-height: .94;
-    letter-spacing: -.045em;
-  }
-  .agdp-editorial-copy {
-    max-width: 67ch;
-  }
-  .agdp-editorial-copy p {
-    margin: 0 0 1.2rem;
-    font-size: clamp(1rem, 1.35vw, 1.2rem);
-    line-height: 1.55;
-  }
-  .agdp-editorial-copy p:last-child { margin-bottom: 0; }
-  @media (max-width: 760px) {
-    .agdp-editorial-inner { grid-template-columns: 1fr; }
-    .agdp-editorial h2 { max-width: 14ch; }
-  }
-</style>
 </head>
 <body>
 
 <!-- ============ AGDP SITE HEADER (external) ============ -->
 <div id="agdp-header-mount"></div>
 
-<main id="main-content">
-  <!-- ============ HERO ============ -->
-  <header class="hero" id="top">
-    <div class="hero-bg" aria-hidden="true"></div>
-    <div class="hero-inner">
-      <h1 class="hero-title"><strong>Objects generated.</strong><br/><strong><em>Never repeated.</em></strong></h1>
-      <div class="hero-rule" aria-hidden="true"></div>
-      <p class="hero-sub">No object precedes its <strong>configuration</strong>. Existence begins at the point of <em>execution</em>.</p>
-      <a class="hero-cta" href="#configurator" title="Enter the A GROSS DOMESTIC PRODUCT. Atelier" aria-label="Enter the Atelier and generate a structural object">
-        <span>Generate</span><span class="arrow" aria-hidden="true">↓</span>
-      </a>
-    </div>
-  </header>
-
-  <div class="hero-strip" aria-label="Production principles">
-    <div class="col"><strong>Configuration</strong> precedes production.<br/>No object exists before its <em>order</em>.</div>
-    <div class="col"><strong>Computational precision.</strong><br/>Metallurgical <em>execution</em>.</div>
-    <div class="col">Produced <strong>to order.</strong><br/>Shipped upon <em>completion</em>.</div>
-    <div class="col"><strong>Finite operations.</strong><br/>Infinite <em>outcomes</em>.</div>
+<!-- ============ HERO ============ -->
+<header class="hero" id="top">
+  <div class="hero-bg"></div>
+  <div class="hero-inner">
+    <h1 class="hero-title"><strong>Objects generated.</strong><br/><strong><em>Never repeated.</em></strong></h1>
+    <div class="hero-rule"></div>
+    <p class="hero-sub">No object precedes its <strong>configuration</strong>. Existence begins at the point of <em>execution</em>.</p>
+    <a class="hero-cta" href="#configurator" title="Enter the A GROSS DOMESTIC PRODUCT. Atelier" aria-label="Enter the Atelier and generate a structural object">
+      <span>Generate</span><span class="arrow">↓</span>
+    </a>
   </div>
-  <div class="color-strip" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+</header>
 
-  <!-- ============ EDITORIAL / SEMANTIC CONTEXT ============ -->
-  <section class="agdp-editorial" aria-labelledby="structural-objects-title">
-    <div class="agdp-editorial-inner">
+<div class="hero-strip">
+  <div class="col"><strong>Configuration</strong> precedes production.<br/>No object exists before its <em>order</em>.</div>
+  <div class="col"><strong>Computational precision.</strong><br/>Metallurgical <em>execution</em>.</div>
+  <div class="col">Produced <strong>to order.</strong><br/>Shipped upon <em>completion</em>.</div>
+  <div class="col"><strong>Finite operations.</strong><br/>Infinite <em>outcomes</em>.</div>
+</div>
+<div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
+
+<!-- ============ CONFIGURATOR ============ -->
+<section class="configurator-section" id="configurator">
+  <div class="configurator-inner">
+    <div class="configurator-head">
+      <div class="configurator-title-block">
+        <div class="configurator-eyebrow">Atelier</div>
+        <h2>Enter the Atelier.</h2>
+      </div>
+      <p>Select a <strong>typology</strong>. Develop a <strong>piece</strong>. Export a print-ready file. Sterling silver .925, produced to order. <em>No seed yields an identical object.</em></p>
+    </div>
+    <div id="agdp-configurator-mount">
+      <!-- AGDP Atelier widget is injected here by configurator.js -->
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ EDITORIAL CONTEXT ============ -->
+<section class="agdp-editorial" aria-labelledby="agdp-structural-title">
+  <div class="configurator-inner">
+    <div class="configurator-head">
+      <div class="configurator-title-block">
+        <div class="configurator-eyebrow">Structural Objects</div>
+        <h2 id="agdp-structural-title">Generated once. Produced to order.</h2>
+      </div>
       <div>
-        <p class="agdp-editorial-label">A GROSS DOMESTIC PRODUCT.</p>
-        <h2 id="structural-objects-title">Structural objects for the body.</h2>
-      </div>
-      <div class="agdp-editorial-copy">
-        <p>A GROSS DOMESTIC PRODUCT. develops contemporary objects in solid sterling silver .925 through a structural configuration system. The process does not begin with an inventory of finished jewelry. It begins with a typology, a finite field of operations and a decision made in real time. Each generated object is resolved as a singular arrangement of mass, interval, surface and connection.</p>
-        <p>The object is produced only after its configuration is complete. Computational precision defines the geometry; additive manufacturing translates it into metal; finishing restores the material presence of sterling silver. Every piece is therefore made to order rather than selected from stock. No generated structure is intentionally repeated, because repetition would cancel the condition that gives the object its identity: its emergence at the moment of execution.</p>
-        <p>This is not decoration understood as addition. It is structure brought into contact with the body. Rings, pendants, bracelets, earrings, cufflinks and other typologies operate as small architectures: objects that occupy space, register weight and expose the logic of their own construction.</p>
+        <p>A GROSS DOMESTIC PRODUCT. develops structural objects in solid sterling silver .925 through computational configuration. Each generated piece begins with a typology and a finite field of operations, then resolves as a singular arrangement of mass, interval, surface and connection.</p>
+        <p>Computational precision defines the geometry; additive manufacturing translates it into metal; finishing restores the material presence of sterling silver. Rings, pendants, bracelets, earrings and cufflinks are produced only after configuration. No generated structure is intentionally repeated.</p>
       </div>
     </div>
-  </section>
-
-  <!-- ============ CONFIGURATOR ============ -->
-  <section class="configurator-section" id="configurator" aria-labelledby="atelier-title">
-    <div class="configurator-inner">
-      <div class="configurator-head">
-        <div class="configurator-title-block">
-          <div class="configurator-eyebrow">Atelier</div>
-          <h2 id="atelier-title">Enter the Atelier.</h2>
-        </div>
-        <p>Select a <strong>typology</strong>. Develop a <strong>piece</strong>. Export a print-ready file. Sterling silver .925, produced to order. <em>No seed yields an identical object.</em> Every generated result remains linked to the structural decisions that produced it; no configuration is treated as a decorative variation of a pre-existing model.</p>
-      </div>
-      <div id="agdp-configurator-mount" aria-live="polite">
-        <!-- AGDP Atelier widget is injected here by configurator.js. -->
-      </div>
-      <noscript>
-        <p>The Atelier requires JavaScript to generate and preview structural objects.</p>
-      </noscript>
-    </div>
-  </section>
-</main>
+  </div>
+</section>
 
 <!-- ============ AGDP SITE FOOTER (external) ============ -->
 <div id="agdp-footer-mount"></div>
