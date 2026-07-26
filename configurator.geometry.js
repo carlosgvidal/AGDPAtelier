@@ -23,8 +23,9 @@ const SHAPEWAYS_SILVER_925 = Object.freeze({
 window.SHAPEWAYS_SILVER_925 = SHAPEWAYS_SILVER_925;
 
 
-const CARTIER_LOVE_REFERENCE_LIMITS = Object.freeze({
+const COMMERCIAL_DIMENSION_REFERENCE_LIMITS = Object.freeze({
   sourceRole: 'commercial-dimensional-reference',
+  provenance: 'published luxury-jewelry dimensional benchmarks',
   units: 'mm',
   ring: Object.freeze({
     innerCircumferenceMm: Object.freeze({ min: 44, max: 77 }),
@@ -42,9 +43,16 @@ const CARTIER_LOVE_REFERENCE_LIMITS = Object.freeze({
   hoopEarring: Object.freeze({
     outerDiameterMm: Object.freeze({ min: 12.8, max: 35.0 }),
     axialWidthMm: Object.freeze({ min: 2.6, max: 5.7 })
+  }),
+  cufflinks: Object.freeze({
+    faceDiameterMm: Object.freeze({ nominal: 12.0 })
+  }),
+  brooch: Object.freeze({
+    faceWidthMm: Object.freeze({ nominal: 26.0 }),
+    faceHeightMm: Object.freeze({ nominal: 20.0 })
   })
 });
-window.CARTIER_LOVE_REFERENCE_LIMITS = CARTIER_LOVE_REFERENCE_LIMITS;
+window.COMMERCIAL_DIMENSION_REFERENCE_LIMITS = COMMERCIAL_DIMENSION_REFERENCE_LIMITS;
 
 // Existing geometry uses these aliases extensively. Both now resolve to the
 // centralized manufacturing profile rather than independent numeric literals.
@@ -1549,7 +1557,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
           v[0]=newX; v[1]=newY;
         }
       }
-      // applyHeadErgonomics: the old bodyManifold is pure-JS-deformed
+      // Compression rebuild: the old bodyManifold is pure-JS-deformed
       // above (no WASM calls), then rebuilt from scratch below -- the
       // old one must be explicitly freed or it leaks every time this
       // catch below still sees a valid bodyManifold if this throws.
@@ -2011,7 +2019,7 @@ async function makePendantManifold(wasm, p) {
      ring. The central void is functional as a sculptural field rather than
      a finger aperture, and every interior member is embedded into the band. */
   const {Manifold}=wasm;
-  const targetEnvelope=clamp(p.mainSize||19,CARTIER_LOVE_REFERENCE_LIMITS.pendant.circularBodyOuterDiameterMm.min,CARTIER_LOVE_REFERENCE_LIMITS.pendant.circularBodyOuterDiameterMm.max);
+  const targetEnvelope=clamp(p.mainSize||19,COMMERCIAL_DIMENSION_REFERENCE_LIMITS.pendant.circularBodyOuterDiameterMm.min,COMMERCIAL_DIMENSION_REFERENCE_LIMITS.pendant.circularBodyOuterDiameterMm.max);
   const targetDepth=clamp(p.bandWidth||4.8,3.6,7.2);
   const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|pendant-annular-v180');
   const I=(p.loadGraph&&p.loadGraph.intensities)||{bridge:.35,void:.25,node:.35,suspension:.3,continuity:.75,organism:.5};
@@ -2131,7 +2139,7 @@ async function makeCufflinksManifold(wasm, p) {
      volumetric overlap. No negative scaling is used, so triangle winding is
      preserved for both members of the pair. */
   const {Manifold}=wasm;
-  const targetEnvelope=clamp(p.mainSize||20,15,25);
+  const targetEnvelope=COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.faceDiameterMm.nominal;
   const targetDepth=clamp(p.bandWidth||4.8,3.2,7.0);
   const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|cufflink-annular-v197');
   const I=(p.loadGraph&&p.loadGraph.intensities)||{bridge:.35,void:.25,node:.35,suspension:.3,continuity:.75,organism:.5};
@@ -2171,15 +2179,18 @@ async function makeCufflinksManifold(wasm, p) {
     type:'pendantAnnularCore',innerD:innerR*2,width:th,closed:true,opening:0
   });
   // Deformation removed per explicit request: the crown keeps its
-  // natural, undeformed proportions (sx=sy=1).
-  const sx=1, sy=1;
-  const crown=built.manifold.scale([sx,sy,1]);
+  // natural, undeformed proportions (sx=sy=1). Rebuild from mesh rather
+  // than retaining both a source and a transformed WASM object.
+  const builtMesh=manifoldToMesh(built.manifold);
+  try{ built.manifold.delete(); }catch(e){}
+  const crown=meshToManifold(wasm,builtMesh.V,builtMesh.F);
 
   const crownMesh=manifoldToMesh(crown);
   const crownAudit=validate(crownMesh.V,crownMesh.F,{
     type:'cufflink-annular-crown',minFeature,printProfile:p.printProfile||'silverPolished'
   });
   if(!crownAudit.manifoldOK||crownAudit.components!==1||!crownAudit.finite){
+    try{ crown.delete(); }catch(e){}
     throw new Error('AGDP cufflink annular crown is not a closed manifold');
   }
 
@@ -2318,6 +2329,7 @@ async function makeCufflinksManifold(wasm, p) {
     type:'cufflink-unit',minFeature,printProfile:p.printProfile||'silverPolished'
   });
   if(!unitAudit.manifoldOK||unitAudit.components!==1||!unitAudit.finite){
+    try{ unit.delete(); }catch(e){}
     throw new Error('AGDP cufflink unit is not a single closed manifold');
   }
 
@@ -2331,9 +2343,16 @@ async function makeCufflinksManifold(wasm, p) {
      what produced the WASM binding crashes seen here — rebuilding from
      V/F sidesteps the question entirely, since each half's manifold is
      transformed exactly once. */
-  const leftUnit=meshToManifold(wasm,unitMesh.V,unitMesh.F).translate([-pairSpacing/2,0,0]);
-  const rightUnit=meshToManifold(wasm,unitMesh.V,unitMesh.F).translate([pairSpacing/2,0,0]);
+  const leftSource=meshToManifold(wasm,unitMesh.V,unitMesh.F);
+  const rightSource=meshToManifold(wasm,unitMesh.V,unitMesh.F);
+  const leftUnit=leftSource.translate([-pairSpacing/2,0,0]);
+  const rightUnit=rightSource.translate([pairSpacing/2,0,0]);
+  try{ leftSource.delete(); }catch(e){}
+  try{ rightSource.delete(); }catch(e){}
   const manifold=Manifold.union(leftUnit,rightUnit);
+  try{ leftUnit.delete(); }catch(e){}
+  try{ rightUnit.delete(); }catch(e){}
+  try{ unit.delete(); }catch(e){}
 
   const pairMesh=manifoldToMesh(manifold);
   const pairAudit=validate(pairMesh.V,pairMesh.F,{
@@ -2341,6 +2360,7 @@ async function makeCufflinksManifold(wasm, p) {
     allowConstructiveOverlap:true,allowedSolids:2
   });
   if(!pairAudit.manifoldOK||pairAudit.components!==2||!pairAudit.finite){
+    try{ manifold.delete(); }catch(e){}
     throw new Error('AGDP cufflink pair is not two closed consistently oriented solids');
   }
 
@@ -2478,8 +2498,8 @@ async function makeBroochClipManifold(wasm,p){
   // typologies requested for this pipeline: pendant body or cufflink crown.
   // No slab, isolated sphere, amorphous cluster or generic three-mode face
   // is permitted in the brooch path.
-  const faceW=clamp((p.clipFaceWidthMm||32)*(0.90+rng()*.22),27,38);
-  const faceH=clamp((p.clipFaceHeightMm||30)*(0.88+rng()*.26),25,37);
+  const faceW=COMMERCIAL_DIMENSION_REFERENCE_LIMITS.brooch.faceWidthMm.nominal;
+  const faceH=COMMERCIAL_DIMENSION_REFERENCE_LIMITS.brooch.faceHeightMm.nominal;
   const flapT=clamp(p.clipThicknessMm||2.0,1.8,2.3);
   const faceTh=Math.max(3.6,flapT*1.9);
   const baseBuild=await buildBroochBaseFromPendantOrCufflink(wasm,p,faceW,faceH,faceTh,rng);
@@ -2784,8 +2804,8 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
 function makeHoopEarringManifold(wasm, p){
   // Commercial configurator policy, expressed in millimetres. This is a
   // product range rather than a claim of one universal international size.
-  const HOOP_BODY_MIN_OD_MM = CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.outerDiameterMm.min;
-  const HOOP_BODY_MAX_OD_MM = CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.outerDiameterMm.max;
+  const HOOP_BODY_MIN_OD_MM = COMMERCIAL_DIMENSION_REFERENCE_LIMITS.hoopEarring.outerDiameterMm.min;
+  const HOOP_BODY_MAX_OD_MM = COMMERCIAL_DIMENSION_REFERENCE_LIMITS.hoopEarring.outerDiameterMm.max;
   const HOOP_BODY_DEFAULT_OD_MM = 24;
   const HOOK_TIP_R_MM = 0.45;        // 0.90 mm insertion diameter
   const HOOK_SHAFT_R_MM = 0.58;
@@ -2797,7 +2817,7 @@ function makeHoopEarringManifold(wasm, p){
   const HOOK_INSERTION_MM = 12.0;
   const HOOK_TAIL_FLARE_MM = 0.9;
   const BODY_SPAN_MM = clamp(Number.isFinite(p.mainSize)?p.mainSize:HOOP_BODY_DEFAULT_OD_MM, HOOP_BODY_MIN_OD_MM, HOOP_BODY_MAX_OD_MM);
-  const BODY_DEPTH_MM = clamp(Number.isFinite(p.bandWidth)?p.bandWidth:3.6, CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.axialWidthMm.min, CARTIER_LOVE_REFERENCE_LIMITS.hoopEarring.axialWidthMm.max);
+  const BODY_DEPTH_MM = clamp(Number.isFinite(p.bandWidth)?p.bandWidth:3.6, COMMERCIAL_DIMENSION_REFERENCE_LIMITS.hoopEarring.axialWidthMm.min, COMMERCIAL_DIMENSION_REFERENCE_LIMITS.hoopEarring.axialWidthMm.max);
 
   return (async () => {
     const I=(p.loadGraph&&p.loadGraph.intensities)||{bridge:.35,void:.25,node:.35,suspension:.3,continuity:.75,organism:.5};
@@ -2943,18 +2963,18 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
   if (p.type==='ring') {
     p.mainSize=clamp(Number.isFinite(p.mainSize)?p.mainSize:18,
-      CARTIER_LOVE_REFERENCE_LIMITS.ring.innerDiameterMm.min,
-      CARTIER_LOVE_REFERENCE_LIMITS.ring.innerDiameterMm.max);
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.ring.innerDiameterMm.min,
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.ring.innerDiameterMm.max);
     p.bandWidth=clamp(Number.isFinite(p.bandWidth)?p.bandWidth:3.6,
-      CARTIER_LOVE_REFERENCE_LIMITS.ring.bandWidthMm.min,
-      CARTIER_LOVE_REFERENCE_LIMITS.ring.bandWidthMm.max);
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.ring.bandWidthMm.min,
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.ring.bandWidthMm.max);
   } else if (p.type==='bangle') {
     p.mainSize=clamp(Number.isFinite(p.mainSize)?p.mainSize:60,
-      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.circularEquivalentDiameterMm.min,
-      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.circularEquivalentDiameterMm.max);
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.bracelet.circularEquivalentDiameterMm.min,
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.bracelet.circularEquivalentDiameterMm.max);
     p.bandWidth=clamp(Number.isFinite(p.bandWidth)?p.bandWidth:4.8,
-      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.bandWidthMm.min,
-      CARTIER_LOVE_REFERENCE_LIMITS.bracelet.bandWidthMm.max);
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.bracelet.bandWidthMm.min,
+      COMMERCIAL_DIMENSION_REFERENCE_LIMITS.bracelet.bandWidthMm.max);
   }
   let manifold;
   if (p.type==='pendant') {
@@ -3052,28 +3072,49 @@ function manifoldToMeshHelper(manifoldObj){
 }
 
 let _wasmReady = null;
+let _wasmEpoch = 0;
+let _generationQueue = Promise.resolve();
+
 function ensureWasm(){
   if(!_wasmReady){
-    _wasmReady = Module().then(wasm => { wasm.setup(); return wasm; });
+    const epoch = _wasmEpoch;
+    _wasmReady = Module()
+      .then(wasm => {
+        wasm.setup();
+        if(epoch !== _wasmEpoch) throw new Error('AGDP WASM initialization superseded by reset');
+        return wasm;
+      })
+      .catch(error => {
+        if(epoch === _wasmEpoch) _wasmReady = null;
+        throw error;
+      });
   }
   return _wasmReady;
 }
-// Dropping this reference is what actually reclaims the accumulated WASM
-// linear memory: every leaked (or simply not-yet-disposed) Manifold
-// object lives inside the WASM module instance's own heap, not in normal
-// JS-tracked memory. Once nothing references the old module (this is the
-// only place that held it), the browser's own garbage collector frees
-// the entire heap in one shot -- far more effective than continuing to
-// track down individual .delete() calls. The next ensureWasm() call
-// after this creates a genuinely fresh module with a clean heap. Used by
-// ui.js's soft-reset instead of a full window.location.reload(), so the
-// safety net resets the engine without leaving the page (nav, hero, the
-// visitor's place on the site) at all.
+
+// Invalidates the cached engine. There is deliberately no eager global
+// preload promise: retaining that promise kept the resolved WASM module alive
+// after a reset and also allocated its linear memory before the widget was used.
 window.AGDP_resetWasmModule = function(){
+  _wasmEpoch += 1;
   _wasmReady = null;
+  window.AGDP_MANIFOLD_PRELOAD = null;
 };
-window.makeMeshManifold = async function(inputParams){
-  const wasm = await ensureWasm();
-  return makeMeshManifoldEntry(wasm, inputParams);
+
+// Serialize builds. Concurrent CSG jobs multiply peak WASM linear-memory use
+// and can make the widget fail during rapid parameter changes.
+window.makeMeshManifold = function(inputParams){
+  const run = async () => {
+    const wasm = await ensureWasm();
+    return makeMeshManifoldEntry(wasm, inputParams);
+  };
+  const task = _generationQueue.then(run, run);
+  _generationQueue = task.catch(() => undefined);
+  return task;
 };
-window.AGDP_MANIFOLD_PRELOAD = ensureWasm();
+
+// Optional explicit preload hook; not invoked automatically.
+window.AGDP_preloadManifold = function(){
+  return ensureWasm();
+};
+window.AGDP_MANIFOLD_PRELOAD = null;
