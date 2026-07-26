@@ -2216,13 +2216,7 @@ async function makeCufflinksManifold(wasm, p) {
   const capFill=Manifold.cylinder(capHeight,1,1,160,true)
     .scale([capHalfX,capHalfY,1]).translate([0,0,capCenterZ]);
 
-  // The outer footprint of the cufflink crown now carries seeded front-side
-  // relief instead of ending in a visually neutral, flat perimeter. The
-  // operation remains fully embedded in the +Z crown skin.
-  const frontOperatedCrown=addFrontCrownOperations(
-    wasm,crown,p,crownHalfX,crownHalfY,Math.max(th*.08,crownAudit.bounds.max[2]*.55),th,'cufflink'
-  );
-  const structuralParts=[frontOperatedCrown,capFill];
+  const structuralParts=[crown,capFill];
 
   function box(cx,cy,cz,dx,dy,dz){
     return Manifold.cube([dx,dy,dz],true).translate([cx,cy,cz]);
@@ -2390,47 +2384,12 @@ async function makeCufflinksManifold(wasm, p) {
   p.cufflinkCapFootprintMm=[capHalfX*2,capHalfY*2];
   p.cufflinkCapClosure='fullDeformedFootprint';
   p.cufflinkDnaSurface='+ZFrontOnly';
-  p.cufflinkOuterCrownOperations='seededEmbeddedPerimeterAndBoss';
   return {manifold};
 }
 
 function flattenedNodeAt(wasm,center,rx,ry,rz,segments){
   const { Manifold }=wasm;
   return Manifold.sphere(1,segments||18).scale([rx,ry,rz]).translate(center);
-}
-
-// Front-only crown treatment used by brooch crowns and cufflink crown bases.
-// Every accent is embedded into the existing solid instead of merely touching
-// it, so the boolean union stays manifold. The operation is deliberately kept
-// on +Z (the visible/external side); the rear mechanism surface remains flat.
-function addFrontCrownOperations(wasm, base, p, halfX, halfY, frontZ, depthRef, tag){
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|'+tag+'|front-crown-ops-v1');
-  const minFeature=Math.max(.8,p.minFeature||.8);
-  const relief=clamp(Number.isFinite(p.surfaceRelief)?p.surfaceRelief:.35,0,1);
-  const nodeI=featureIntensity(p,'node');
-  const domeI=featureIntensity(p,'dome');
-  const count=4+Math.round(2*nodeI);
-  const parts=[base];
-  const radialInset=Math.max(minFeature*.65,Math.min(halfX,halfY)*.10);
-  const rxPath=Math.max(minFeature*1.4,halfX-radialInset);
-  const ryPath=Math.max(minFeature*1.4,halfY-radialInset);
-  const opRx=Math.max(minFeature*.95,Math.min(halfX,halfY)*(.10+.035*relief));
-  const opRy=opRx*(.72+.16*rng());
-  const opRz=Math.max(minFeature*.65,depthRef*(.16+.10*relief));
-  const embed=opRz*.62;
-  for(let i=0;i<count;i++){
-    const a=(i/count)*Math.PI*2+(p.variation?.phaseA||0)+rng()*.18;
-    const cx=Math.cos(a)*rxPath;
-    const cy=Math.sin(a)*ryPath;
-    parts.push(flattenedNodeAt(wasm,[cx,cy,frontZ+opRz-embed],opRx*(.88+.20*rng()),opRy*(.88+.22*rng()),opRz,24));
-  }
-  // A shallow central boss prevents the brooch crown from reading as a flat
-  // lid while preserving a broad printable base and keeping all relief out
-  // of the rear finding/mechanism side.
-  const bossR=Math.max(minFeature*1.25,Math.min(halfX,halfY)*(.24+.12*domeI));
-  const bossZ=Math.max(minFeature*.75,depthRef*(.18+.12*domeI));
-  parts.push(flattenedNodeAt(wasm,[0,0,frontZ+bossZ*.42],bossR,bossR*(.86+.10*rng()),bossZ,28));
-  return unionAll(wasm,parts);
 }
 
 // Shared by clip-like typologies (universal clip and related mechanisms, any
@@ -2522,17 +2481,10 @@ async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceT
     const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
     const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
     const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
-    const capHalfX=crownHalfX+footprintOverlap;
-    const capHalfY=crownHalfY+footprintOverlap;
     const capFill=Manifold.cylinder(capHeight,1,1,160,true)
-      .scale([capHalfX,capHalfY,1])
+      .scale([crownHalfX+footprintOverlap,crownHalfY+footprintOverlap,1])
       .translate([0,0,capCenterZ]);
     base=unionAll(wasm,[base,capFill]);
-    // The visible brooch crown cap receives operations only on its external
-    // (+Z) face. The rear remains planar for the embedded backer and flap.
-    base=addFrontCrownOperations(
-      wasm,base,p,capHalfX,capHalfY,Math.max(bandWidth*.08,crownAudit.bounds.max[2]*.55),bandWidth,'brooch-cufflink-crown'
-    );
   }
 
   const baseMesh=manifoldToMesh(base);
@@ -2687,8 +2639,7 @@ async function makeBroochClipManifold(wasm,p){
   p.broochAssemblyRequired=false;
   p.broochBaseSource=baseBuild.source;
   p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
-  p.broochFrontCrownOperations=baseBuild.source==='cufflink'?'seededEmbeddedPerimeterAndBoss':'nativePendantSurface';
-  p.broochGeneratorVersion='brooch-v5-front-operated-crown-cap-cantilever-flap';
+  p.broochGeneratorVersion='brooch-v4-pendant-or-cufflink-base-cantilever-flap';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
