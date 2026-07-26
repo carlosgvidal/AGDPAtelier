@@ -2540,8 +2540,56 @@ async function makeBroochClipManifold(wasm,p){
   const backerH=Math.min(faceH*.34,Math.max(flapW+3.2,9.0));
   const backerDepth=backerT+embedDepth;
   const backerZ=faceBackZ+(embedDepth-backerT)/2;
-  const backer=Manifold.cube([backerW,backerH,backerDepth],true)
+  let backer=Manifold.cube([backerW,backerH,backerDepth],true)
     .translate([0,0,backerZ]);
+
+  /* FRONT-FACE TREATMENT FOR THE BROOCH BACKER
+     The backer closes the annular opening and is therefore visible from the
+     exterior as the brooch's central cap. Previously this exposed face was a
+     bare planar cube surface. Build a shallow secondary face from the same
+     AGDP parameter set and fuse only its front relief into the backer. The
+     mechanism, rear face, clearances and every other typology remain
+     unchanged. */
+  const backerFrontZ=faceBackZ+embedDepth;
+  const capMargin=Math.max(AGDP_MIN_WALL_MM*.85,minFeature*.72);
+  const capW=Math.max(AGDP_STRUCTURAL_WALL_MM*2,backerW-capMargin*2);
+  const capH=Math.max(AGDP_STRUCTURAL_WALL_MM*2,backerH-capMargin*2);
+  const capOuterR=Math.max(AGDP_STRUCTURAL_WALL_MM*1.4,Math.min(capW,capH)*.5);
+  const capReliefDepth=clamp(faceTh*.28,.95,1.45);
+  const capOverlap=Math.max(minFeature*.38,AGDP_MIN_WALL_MM*.42);
+  const capParams=Object.assign({},p,{
+    type:'broochBackerFrontFace',
+    mainSize:capOuterR*2,
+    bandWidth:capReliefDepth,
+    opening:0,
+    crown:false,
+    spikes:0,
+    mutation:{active:false,severity:0,mode:null}
+  });
+  let capRelief=(await makeFaceManifold(
+    wasm,capParams,capOuterR,capReliefDepth,Math.max(capReliefDepth*1.15,1.2)
+  )).manifold;
+  const capReliefMesh=manifoldToMesh(capRelief);
+  const capReliefBounds=bounds(capReliefMesh.V);
+  const capScaleX=capW/Math.max(1e-6,capReliefBounds.dim[0]);
+  const capScaleY=capH/Math.max(1e-6,capReliefBounds.dim[1]);
+  const capScaleZ=capReliefDepth/Math.max(1e-6,capReliefBounds.dim[2]);
+  capRelief=capRelief.scale([capScaleX,capScaleY,capScaleZ]);
+  const scaledCapMesh=manifoldToMesh(capRelief);
+  const scaledCapBounds=bounds(scaledCapMesh.V);
+  const capTargetMinZ=backerFrontZ-capOverlap;
+  capRelief=capRelief.translate([0,0,capTargetMinZ-scaledCapBounds.min[2]]);
+
+  // Clip the generated treatment to a shallow volume immediately above the
+  // backer's front face. This guarantees that decoration affects that face
+  // only and cannot propagate into the rear mechanism or spring throat.
+  const capClipDepth=capReliefDepth+capOverlap;
+  const capClip=Manifold.cube([capW,capH,capClipDepth],true)
+    .translate([0,0,backerFrontZ+(capReliefDepth-capOverlap)*.5]);
+  const clippedCapRelief=Manifold.intersection(capRelief,capClip);
+  try{ capRelief.delete(); }catch(e){}
+  try{ capClip.delete(); }catch(e){}
+  backer=unionAll(wasm,[backer,clippedCapRelief]);
 
   // Reject a face/backer pair that does not share real volume. This prevents
   // removeFloatingComponents() from silently discarding the mechanism later.
@@ -2639,7 +2687,7 @@ async function makeBroochClipManifold(wasm,p){
   p.broochAssemblyRequired=false;
   p.broochBaseSource=baseBuild.source;
   p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
-  p.broochGeneratorVersion='brooch-v4-pendant-or-cufflink-base-cantilever-flap';
+  p.broochGeneratorVersion='brooch-v5-decorated-front-cap-pendant-or-cufflink-base-cantilever-flap';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
