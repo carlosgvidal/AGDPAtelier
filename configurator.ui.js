@@ -110,11 +110,11 @@
     es:{
       typeRing:'Anillo', typePendant:'Colgante', typeBangle:'Brazalete rígido', typeCuffBracelet:'Brazalete abierto',
       typeBrooch:'Broche', typeHoopEarring:'Aretes', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
-generateBtn:'Generar pieza', orderBtn:'Enviar a producción',
+generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
       statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'Ajustando la configuración — genera otra variante.', statusReinitializing:'Reiniciando el motor 3D…', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
-      orderConfirmed:'Modelo enviado a Shapeways',
+      orderConfirmed:'Modelo enviado a producción',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
       sizeHintPendant:'Tamaño de la placa. La apertura para cadena se ajusta abajo.',
@@ -134,11 +134,11 @@ generateBtn:'Generar pieza', orderBtn:'Enviar a producción',
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
       typeBrooch:'Brooch', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
-generateBtn:'Generate piece', orderBtn:'Send to production',
+generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
       statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Adjusting the configuration — generate another variant.', statusReinitializing:'Reinitializing the 3D engine…', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
-      orderConfirmed:'Model sent to Shapeways',
+      orderConfirmed:'Model sent to production',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
       sizeHintPendant:'Plate size. Chain opening is set below.',
@@ -493,8 +493,65 @@ generateBtn:'Generate piece', orderBtn:'Send to production',
     return new Blob([buffer],{type:'model/stl'});
   }
 
+  const AGDP_PRODUCTION_API='https://agdp-shapeways-api.carlosgvidal.workers.dev';
+
+  function wait(ms){
+    return new Promise(resolve=>setTimeout(resolve,ms));
+  }
+
+  function formatQuotePrice(price,currency){
+    try{
+      return new Intl.NumberFormat(currentLang==='es'?'es-MX':'en-US',{
+        style:'currency',
+        currency:currency||'USD',
+        minimumFractionDigits:2,
+        maximumFractionDigits:2
+      }).format(price);
+    }catch(e){
+      return (currency||'USD')+' '+Number(price).toFixed(2);
+    }
+  }
+
+  async function requestPolishedSilverQuote(modelId){
+    const response=await fetch(AGDP_PRODUCTION_API+'/quote',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({modelId})
+    });
+    const payload=await response.json().catch(()=>null);
+
+    if(!response.ok||!payload||payload.ok!==true){
+      const message=payload&&payload.error&&payload.error.message
+        ?payload.error.message
+        :'Quote request failed';
+      throw new Error(message);
+    }
+
+    return payload.quote;
+  }
+
+  async function waitForPolishedSilverQuote(modelId){
+    const maxAttempts=30;
+    for(let attempt=0;attempt<maxAttempts;attempt++){
+      const quote=await requestPolishedSilverQuote(modelId);
+
+      if(quote&&quote.status==='ready')return quote;
+      if(quote&&quote.status==='unavailable'){
+        throw new Error('Polished Silver is unavailable for this model');
+      }
+      if(quote&&quote.status==='material_not_found'){
+        throw new Error('Polished Silver is not available');
+      }
+
+      await wait(4000);
+    }
+
+    throw new Error('The model is still being analyzed');
+  }
+
   async function uploadCurrentSTL(){
     if(!window.AGDP_currentMesh||!window.AGDP_currentMesh.V||!window.AGDP_currentMesh.V.length)return;
+
     const originalText=orderBtn.textContent;
     orderBtn.disabled=true;
     orderBtn.textContent=currentLang==='es'?'Enviando modelo…':'Uploading model…';
@@ -509,27 +566,53 @@ generateBtn:'Generate piece', orderBtn:'Send to production',
     form.append('seed',currentSeed||window.AGDP_currentSeed||'');
 
     try{
-      const response=await fetch('https://agdp-shapeways-api.carlosgvidal.workers.dev/upload',{
+      const response=await fetch(AGDP_PRODUCTION_API+'/upload',{
         method:'POST',
         body:form
       });
       const payload=await response.json().catch(()=>null);
+
       if(!response.ok||!payload||payload.ok!==true){
-        const message=payload&&payload.error&&payload.error.message?payload.error.message:'Shapeways upload failed';
+        const message=payload&&payload.error&&payload.error.message
+          ?payload.error.message
+          :'Model upload failed';
         throw new Error(message);
       }
-      window.AGDP_currentShapewaysModelId=payload.modelId||null;
-      window.AGDP_currentShapewaysUpload=payload;
-      orderBtn.textContent=t('orderConfirmed');
-      statusBadge.textContent=payload.modelId
-        ?(currentLang==='es'?'Modelo '+payload.modelId+' enviado a Shapeways':'Model '+payload.modelId+' sent to Shapeways')
-        :t('orderConfirmed');
+
+      const modelId=payload.modelId||null;
+      if(!modelId)throw new Error('The production service did not return a model identifier');
+
+      window.AGDP_currentProductionModelId=modelId;
+      window.AGDP_currentProductionUpload=payload;
+
+      orderBtn.textContent=currentLang==='es'
+        ?'Calculando precio…'
+        :'Calculating price…';
+      statusBadge.textContent=currentLang==='es'
+        ?'Analizando la pieza en plata pulida…'
+        :'Analyzing the piece in Polished Silver…';
+      statusBadge.className='agdp-status-badge';
+
+      const quote=await waitForPolishedSilverQuote(modelId);
+      window.AGDP_currentProductionQuote=quote;
+
+      const priceText=formatQuotePrice(quote.price,quote.currency);
+      const materialTitle=quote.material&&quote.material.title
+        ?quote.material.title
+        :(currentLang==='es'?'Plata pulida':'Polished Silver');
+
+      orderBtn.textContent=priceText;
+      statusBadge.textContent=currentLang==='es'
+        ?'Plata pulida · Precio final · '+priceText
+        :'Polished Silver · Final price · '+priceText;
       statusBadge.className='agdp-status-badge ready';
     }catch(error){
-      console.error('AGDP: Shapeways upload failed',error);
+      console.error('AGDP: production upload/quote failed',error);
       orderBtn.disabled=false;
       orderBtn.textContent=originalText;
-      statusBadge.textContent=currentLang==='es'?'No fue posible enviar el modelo. Intenta de nuevo.':'The model could not be uploaded. Try again.';
+      statusBadge.textContent=currentLang==='es'
+        ?'No fue posible obtener la cotización. Intenta de nuevo.'
+        :'The quote could not be obtained. Try again.';
       statusBadge.className='agdp-status-badge';
     }
   }
