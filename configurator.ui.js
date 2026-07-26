@@ -110,11 +110,11 @@
     es:{
       typeRing:'Anillo', typePendant:'Colgante', typeBangle:'Brazalete rígido', typeCuffBracelet:'Brazalete abierto',
       typeBrooch:'Broche', typeHoopEarring:'Aretes', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
-generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
+generateBtn:'Generar pieza', orderBtn:'Enviar a producción',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
       statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'Ajustando la configuración — genera otra variante.', statusReinitializing:'Reiniciando el motor 3D…', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
-      orderConfirmed:'Archivo STL descargado',
+      orderConfirmed:'Modelo enviado a Shapeways',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
       sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
       sizeHintPendant:'Tamaño de la placa. La apertura para cadena se ajusta abajo.',
@@ -134,11 +134,11 @@ generateBtn:'Generar pieza', orderBtn:'Descargar STL para impresión',
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
       typeBrooch:'Brooch', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
-generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
+generateBtn:'Generate piece', orderBtn:'Send to production',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
       statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Adjusting the configuration — generate another variant.', statusReinitializing:'Reinitializing the 3D engine…', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
-      orderConfirmed:'STL file downloaded',
+      orderConfirmed:'Model sent to Shapeways',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
       sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
       sizeHintPendant:'Plate size. Chain opening is set below.',
@@ -465,7 +465,7 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
   }
   generateBtn.addEventListener('click',runGenerate);
 
-  function exportSTLBinary(V,F,filename){
+  function buildSTLBinaryBlob(V,F){
     const triCount=F.length;
     const bufferSize=84+triCount*50;
     const buffer=new ArrayBuffer(bufferSize);
@@ -490,20 +490,51 @@ generateBtn:'Generate piece', orderBtn:'Download print-ready STL',
       dv.setUint16(offset+48,0,true);
       offset+=50;
     }
-    const blob=new Blob([buffer],{type:'model/stl'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download=filename.endsWith('.stl')?filename:filename+'.stl';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    return new Blob([buffer],{type:'model/stl'});
   }
 
-  orderBtn.addEventListener('click',()=>{
-    if(!window.AGDP_currentMesh||!window.AGDP_currentMesh.V||!window.AGDP_currentMesh.V.length){ return; }
-    exportSTLBinary(window.AGDP_currentMesh.V, window.AGDP_currentMesh.F, window.AGDP_currentPieceName||'AGDP_pieza');
-    orderBtn.textContent=t('orderConfirmed');
+  async function uploadCurrentSTL(){
+    if(!window.AGDP_currentMesh||!window.AGDP_currentMesh.V||!window.AGDP_currentMesh.V.length)return;
+    const originalText=orderBtn.textContent;
     orderBtn.disabled=true;
-  });
+    orderBtn.textContent=currentLang==='es'?'Enviando modelo…':'Uploading model…';
+
+    const fileBase=(window.AGDP_currentPieceName||'AGDP_pieza').replace(/\.stl$/i,'');
+    const fileName=fileBase+'.stl';
+    const blob=buildSTLBinaryBlob(window.AGDP_currentMesh.V,window.AGDP_currentMesh.F);
+    const form=new FormData();
+    form.append('file',blob,fileName);
+    form.append('fileName',fileName);
+    form.append('type',selectedType||'piece');
+    form.append('seed',currentSeed||window.AGDP_currentSeed||'');
+
+    try{
+      const response=await fetch('https://agdp-shapeways-api.carlosgvidal.workers.dev/upload',{
+        method:'POST',
+        body:form
+      });
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok||!payload||payload.ok!==true){
+        const message=payload&&payload.error&&payload.error.message?payload.error.message:'Shapeways upload failed';
+        throw new Error(message);
+      }
+      window.AGDP_currentShapewaysModelId=payload.modelId||null;
+      window.AGDP_currentShapewaysUpload=payload;
+      orderBtn.textContent=t('orderConfirmed');
+      statusBadge.textContent=payload.modelId
+        ?(currentLang==='es'?'Modelo '+payload.modelId+' enviado a Shapeways':'Model '+payload.modelId+' sent to Shapeways')
+        :t('orderConfirmed');
+      statusBadge.className='agdp-status-badge ready';
+    }catch(error){
+      console.error('AGDP: Shapeways upload failed',error);
+      orderBtn.disabled=false;
+      orderBtn.textContent=originalText;
+      statusBadge.textContent=currentLang==='es'?'No fue posible enviar el modelo. Intenta de nuevo.':'The model could not be uploaded. Try again.';
+      statusBadge.className='agdp-status-badge';
+    }
+  }
+
+  orderBtn.addEventListener('click',uploadCurrentSTL);
 
   if(legacyCanvas) legacyCanvas.style.display='none';
   applyStaticTexts();
