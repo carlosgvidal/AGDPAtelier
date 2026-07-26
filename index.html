@@ -6,10 +6,6 @@
 <title>A GROSS DOMESTIC PRODUCT.® — Structural Objects in Sterling Silver</title>
 <meta name="description" content="A GROSS DOMESTIC PRODUCT. Sterling silver .925 objects produced through a structural configuration engine. Each object is generated once, to order."/>
 
-<!-- Import map for the Configurator's 3D engine (manifold-3d, three.js).
-     Declared in <head> because import maps must exist before any module
-     script executes, even though the widget itself is injected further
-     down the page by configurator.js. -->
 <script type="importmap">
 {
   "imports": {
@@ -24,16 +20,15 @@
 </head>
 <body>
 
-<!-- ============ AGDP SITE HEADER (external) ============ -->
 <div id="agdp-header-mount"></div>
 
-<!-- ============ HERO ============ -->
 <header class="hero" id="top">
   <div class="hero-bg"></div>
   <div class="hero-inner">
     <h1 class="hero-title"><strong>Objects generated.</strong><br/><strong><em>Never repeated.</em></strong></h1>
     <div class="hero-rule"></div>
-    <p class="hero-sub">No object precedes its <strong>configuration</strong>. Existence begins at the point of <em>execution</em>.</p>
+    <p class="hero-sub">No object precedes its <strong>configuration</strong>.<br/>
+    Existence begins at the point of <em>execution</em>.</p>
     <a class="hero-cta" href="#configurator">
       <span>Generate</span><span class="arrow">↓</span>
     </a>
@@ -48,7 +43,6 @@
 </div>
 <div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
 
-<!-- ============ CONFIGURATOR ============ -->
 <section class="configurator-section" id="configurator">
   <div class="configurator-inner">
     <div class="configurator-head">
@@ -56,15 +50,14 @@
         <div class="configurator-eyebrow">Atelier</div>
         <h2>Enter the Atelier.</h2>
       </div>
-      <p>Select a <strong>typology</strong>. Develop a <strong>piece</strong>. Export a print-ready file. Sterling silver .925, produced to order. <em>No seed yields an identical object.</em></p>
+      <p>Select a <strong>typology</strong>. Develop a <strong>piece</strong>. Export a print-ready file.<br/>
+      Sterling silver .925, produced to order. <em>No seed yields an identical object.</em></p>
     </div>
     <div id="agdp-configurator-mount">
-      <!-- AGDP Atelier widget is injected here by configurator.js -->
-    </div>
+      </div>
   </div>
 </section>
 
-<!-- ============ AGDP SITE FOOTER (external) ============ -->
 <div id="agdp-footer-mount"></div>
 
 <script>
@@ -73,13 +66,17 @@
     const mount = document.getElementById(mountId);
     if (!mount) return null;
 
-    const response = await fetch(url, { cache: 'no-cache' });
-    if (!response.ok) {
-      throw new Error(`Unable to load ${url}: ${response.status} ${response.statusText}`);
+    try {
+      const response = await fetch(url, { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`Unable to load ${url}: ${response.status} ${response.statusText}`);
+      }
+      mount.innerHTML = await response.text();
+      return mount;
+    } catch (err) {
+      console.warn(`[AGDP] Non-critical component layout warning: ${err.message}`);
+      return null;
     }
-
-    mount.innerHTML = await response.text();
-    return mount;
   };
 
   const initNavigation = (headerMount) => {
@@ -121,7 +118,7 @@
     loadFragment('agdp-footer-mount', 'agdp-footer.html')
   ])
     .then(([headerMount]) => {
-      initNavigation(headerMount);
+      if (headerMount) initNavigation(headerMount);
     })
     .catch((error) => {
       console.error('[AGDP] External site component loading failed.', error);
@@ -129,7 +126,6 @@
 })();
 </script>
 
-<!-- ============ AGDP ATELIER CONFIGURATOR (scoped mount) ============ -->
-<script src="configurator.js" defer></script>
+<script type="module" src="configurator.js"></script>
 </body>
 </html>
