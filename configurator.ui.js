@@ -11,33 +11,42 @@
     return {us, diameterMm: d, label_es:`US ${us} · EU ${euCirc} · ⌀ ${d.toFixed(1)}mm`, label_en:`US ${us} · EU ${euCirc} · ⌀ ${d.toFixed(1)}mm`};
   });
   const WRIST_SIZES = [
-    {key:'15', circMm:150, label_es:'15 cm', label_en:'15 cm'},
-    {key:'16', circMm:160, label_es:'16 cm', label_en:'16 cm'},
-    {key:'17', circMm:170, label_es:'17 cm', label_en:'17 cm'},
-    {key:'18', circMm:180, label_es:'18 cm', label_en:'18 cm'},
-    {key:'19', circMm:190, label_es:'19 cm', label_en:'19 cm'},
-    {key:'20', circMm:200, label_es:'20 cm', label_en:'20 cm'},
-    {key:'21', circMm:210, label_es:'21 cm', label_en:'21 cm'},
-    {key:'22', circMm:220, label_es:'22 cm', label_en:'22 cm'},
-  ].map(w=>Object.assign(w,{diameterMm:w.circMm/Math.PI}));
+    {key:'xs', circMm:145, label_es:'XS · muñeca ~14.5cm', label_en:'XS · wrist ~14.5cm'},
+    {key:'s',  circMm:160, label_es:'S · muñeca ~16cm',   label_en:'S · wrist ~16cm'},
+    {key:'m',  circMm:175, label_es:'M · muñeca ~17.5cm', label_en:'M · wrist ~17.5cm'},
+    {key:'l',  circMm:190, label_es:'L · muñeca ~19cm',   label_en:'L · wrist ~19cm'},
+    {key:'xl', circMm:205, label_es:'XL · muñeca ~20.5cm',label_en:'XL · wrist ~20.5cm'},
+  ].map(w=>Object.assign(w,{diameterMm: w.circMm/Math.PI + 8}));
   const BROOCH_SIZES = [
     {
-      key:'reference', faceWidthMm:26, faceHeightMm:20, clipLengthMm:30,
-      clipWidthMm:6.0, clipThicknessMm:2.0, clipGapMm:2.6,
-      label_es:'Referencia · frente 26 × 20 mm',
-      label_en:'Reference · 26 × 20 mm face'
+      key:'s', faceWidthMm:28, faceHeightMm:26, clipLengthMm:34,
+      clipWidthMm:6.8, clipThicknessMm:2.0, clipGapMm:2.6,
+      label_es:'S · frente 28 × 26 mm',
+      label_en:'S · 28 × 26 mm face'
+    },
+    {
+      key:'m', faceWidthMm:32, faceHeightMm:30, clipLengthMm:36,
+      clipWidthMm:7.2, clipThicknessMm:2.0, clipGapMm:2.8,
+      label_es:'M · frente 32 × 30 mm',
+      label_en:'M · 32 × 30 mm face'
+    },
+    {
+      key:'l', faceWidthMm:36, faceHeightMm:34, clipLengthMm:38,
+      clipWidthMm:7.6, clipThicknessMm:2.1, clipGapMm:3.0,
+      label_es:'L · frente 36 × 34 mm',
+      label_en:'L · 36 × 34 mm face'
     },
   ];
   const HOOP_EARRING_SIZES = [
-    {key:'xs', outerDiamMm:12.8, label_es:'XS · 12.8 mm', label_en:'XS · 12.8 mm'},
     {key:'s', outerDiamMm:20, label_es:'S · 20 mm', label_en:'S · 20 mm'},
-    {key:'m', outerDiamMm:27.5, label_es:'M · 27.5 mm', label_en:'M · 27.5 mm'},
-    {key:'l', outerDiamMm:35, label_es:'L · 35 mm', label_en:'L · 35 mm'},
+    {key:'m', outerDiamMm:24, label_es:'M · 24 mm', label_en:'M · 24 mm'},
+    {key:'l', outerDiamMm:30, label_es:'L · 30 mm', label_en:'L · 30 mm'},
+    {key:'xl', outerDiamMm:35, label_es:'XL · 35 mm', label_en:'XL · 35 mm'},
   ];
   const PENDANT_SIZES = [
-    {key:'sm', mainSize:10.8, label_es:'Pequeño · 10.8 mm', label_en:'Small · 10.8 mm'},
-    {key:'md', mainSize:17.0, label_es:'Mediano · 17 mm', label_en:'Medium · 17 mm'},
-    {key:'lg', mainSize:23.5, label_es:'Grande · 23.5 mm', label_en:'Large · 23.5 mm'},
+    {key:'sm', mainSize:23.5, label_es:'Pequeño · 23.5 mm', label_en:'Small · 23.5 mm'},
+    {key:'md', mainSize:31.5, label_es:'Mediano · 31.5 mm', label_en:'Medium · 31.5 mm'},
+    {key:'lg', mainSize:40, label_es:'Grande · 40 mm', label_en:'Large · 40 mm'},
   ];
   const CHAIN_FIT = [
     {key:'thin', innerMm:1.6, label_es:'Cadena fina (≤2mm)', label_en:'Thin chain (≤2mm)'},
@@ -119,7 +128,7 @@ generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
       statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'Ajustando la configuración — genera otra variante.', statusReinitializing:'Reiniciando el motor 3D…', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
       orderConfirmed:'Modelo enviado a producción',
       sizeHintRing:'La talla determina el diámetro interior real del anillo.',
-      sizeHintWrist:'La talla corresponde a la circunferencia nominal seleccionada.',
+      sizeHintWrist:'Incluye holgura de confort estándar sobre la circunferencia de muñeca.',
       sizeHintPendant:'Tamaño de la placa. La apertura para cadena se ajusta abajo.',
       sizeHintBrooch:'La talla determina la escala del frente. El clip posterior es sólido, continuo y no articulado.',
       sizeHintHoopEarring:'La talla determina el diámetro exterior del cuerpo decorado. El gancho francés mantiene dimensiones fijas de seguridad.',
@@ -143,7 +152,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Adjusting the configuration — generate another variant.', statusReinitializing:'Reinitializing the 3D engine…', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
       orderConfirmed:'Model sent to production',
       sizeHintRing:'Size determines the actual inner diameter of the ring.',
-      sizeHintWrist:'Size corresponds to the selected nominal circumference.',
+      sizeHintWrist:'Includes standard comfort ease over wrist circumference.',
       sizeHintPendant:'Plate size. Chain opening is set below.',
       sizeHintBrooch:'Size determines the face scale. The rear clip is solid, continuous and non-articulated.',
       sizeHintHoopEarring:'Size determines the decorated body’s outer diameter. The French hook keeps fixed safety dimensions.',
@@ -244,7 +253,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     const dim = result.audit.bounds.dim;
     const rows = [];
     const overallStr = dim.map(d=>d.toFixed(1)).join(' × ')+' mm';
-    // Type-specific builders (brooch and hoopEarring)
+    // Type-specific builders (brooch, money clip, hoopEarring)
     // write their own derived dimensions onto the engine's INTERNAL
     // compiled params object, exposed here as result.compiledParams --
     // NOT onto the `params` object this file itself built and passed in,
@@ -290,7 +299,10 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     try{ sessionStorage.setItem('agdp_gen_count', String(agdpGenerationCount()+1)); }catch(e){}
   }
   // Resets the WASM engine only -- not the page. See prior version's
-  // Reset policy is uniform for every active typology.
+  // comment history for the full rationale; unchanged here except that
+  // the heavy-type (choker/headpiece) lower threshold no longer applies,
+  // since neither type exists anymore -- every type now uses the same
+  // standard refresh threshold.
   async function agdpMaybeResetEngineIfNeeded(){
     const threshold = AGDP_REFRESH_AFTER_N_GENERATIONS;
     if(agdpGenerationCount()<threshold) return;

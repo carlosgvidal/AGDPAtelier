@@ -242,16 +242,16 @@ function wrap(a){while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;retu
 const AGDP_PROPORTION_SYSTEM=Object.freeze({
   moduleMm:Object.freeze({min:3.6,canonical:5.4,max:7.0}),
   widthRangesMm:Object.freeze({
-    ring:Object.freeze([2.6,6.5]),
+    ring:Object.freeze([3.6,6.5]),
     bangle:Object.freeze([3.6,7.0]),
     cuffBracelet:Object.freeze([3.6,7.0]),
     earCuff:Object.freeze([3.6,6.5])
   }),
   envelopeRangesMm:Object.freeze({
-    pendant:Object.freeze([10.8,23.5]),
-    cufflinks:Object.freeze([12,12]),
-    brooch:Object.freeze([20,26]),
-    hoopEarring:Object.freeze([12.8,35])
+    pendant:Object.freeze([23.5,40]),
+    cufflinks:Object.freeze([15,25]),
+    brooch:Object.freeze([28,36]),
+    hoopEarring:Object.freeze([15,25])
   }),
   projectionRangesMm:Object.freeze({
     ring:Object.freeze([2.2,4.8]),

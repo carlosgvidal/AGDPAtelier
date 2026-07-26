@@ -25,8 +25,10 @@
    etc.) is unchanged, so the four script files — which look up those IDs
    with document.getElementById — work exactly as they did standalone.
 
-   Active typologies are defined by the buttons mounted below and are kept
-   synchronized with the UI, proportion engine and geometry module.
+   v0.206 note: the unstable comb typology was removed. It is replaced by
+   brooch: a single-piece, non-articulated solid spring clip whose visible
+   face shares the AGDP morphology used by pendants and cufflinks.
+   hoopEarring remains unchanged.
    ========================================================================== */
 (function(){
   'use strict';
@@ -115,7 +117,8 @@
   /* ---------------------------------------------------------------------
      2. Panel markup — extracted verbatim from AGDP_Atelier_v0_201.html's
      <body>, injected into the mount element instead of document.body.
-     The fastening for the brooch is integral and has no separate mechanism selector.
+     v0.206: type grid updated: brooch replaces the removed comb typology.
+     The fastening is integral and has no separate mechanism selector.
      --------------------------------------------------------------------- */
   mount.innerHTML = `
 <div class="agdp-public" id="agdpPublic">
