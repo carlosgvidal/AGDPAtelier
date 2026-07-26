@@ -594,9 +594,15 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       statusBadge.className='agdp-status-badge';
 
       const quote=await waitForPolishedSilverQuote(modelId);
+
+      const finalPrice=Number(quote&&quote.price);
+      if(!Number.isFinite(finalPrice)||finalPrice<=0){
+        throw new Error('Invalid production price');
+      }
+
       window.AGDP_currentProductionQuote=quote;
 
-      const priceText=formatQuotePrice(quote.price,quote.currency);
+      const priceText=formatQuotePrice(finalPrice,quote.currency);
       const materialTitle=quote.material&&quote.material.title
         ?quote.material.title
         :(currentLang==='es'?'Plata pulida':'Polished Silver');
@@ -606,6 +612,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
         ?'Plata pulida · Precio final · '+priceText
         :'Polished Silver · Final price · '+priceText;
       statusBadge.className='agdp-status-badge ready';
+      orderBtn.disabled=true;
     }catch(error){
       console.error('AGDP: production upload/quote failed',error);
       orderBtn.disabled=false;
