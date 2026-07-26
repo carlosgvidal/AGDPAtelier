@@ -1,0 +1,11 @@
+User-agent: *
+
+Allow: /
+
+# Sitemap
+Sitemap: https://www.agrossdomesticproduct.com/sitemap.xml
+
+# Optional: prevent indexing of common system folders if they exist
+Disallow: /cgi-bin/
+Disallow: /tmp/
+Disallow: /.git/
