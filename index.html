@@ -256,47 +256,7 @@
 })();
 </script>
 
-<!-- Load the heavy 3D Atelier only when the section approaches the viewport.
-     A fallback timer preserves access for browsers without IntersectionObserver. -->
-<script>
-(() => {
-  let configuratorRequested = false;
-
-  const loadConfigurator = () => {
-    if (configuratorRequested) return;
-    configuratorRequested = true;
-
-    const script = document.createElement('script');
-    script.src = 'configurator.js';
-    script.async = true;
-    script.dataset.agdpModule = 'configurator';
-    script.onerror = () => {
-      configuratorRequested = false;
-      console.error('[AGDP] Atelier configurator failed to load.');
-    };
-    document.body.appendChild(script);
-  };
-
-  const section = document.getElementById('configurator');
-  if (!section) return;
-
-  if ('IntersectionObserver' in window) {
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.disconnect();
-      loadConfigurator();
-    }, {
-      rootMargin: '700px 0px',
-      threshold: 0
-    });
-
-    observer.observe(section);
-  } else {
-    window.addEventListener('load', () => {
-      window.setTimeout(loadConfigurator, 1200);
-    }, { once: true });
-  }
-})();
-</script>
+<!-- ============ AGDP ATELIER CONFIGURATOR (scoped mount) ============ -->
+<script src="configurator.js" defer></script>
 </body>
 </html>
