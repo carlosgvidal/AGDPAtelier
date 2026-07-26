@@ -3387,20 +3387,24 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     // manufacturing floor).
     choker:0.95,
     headpiece:0.80,
-    bangle:1.7,
-    cuffBracelet:1.8,
+    // Production shells stay above the 0.8 mm polished minimum; 1.2 mm
+    // provides a structural reserve for wearable bands and polishing loss.
+    bangle:1.2,
+    cuffBracelet:1.2,
     // ADDED: earCuff had no entry here, so applyConservativeSilverHollowing
     // exited immediately without hollowing (wall=undefined -> !wall is
     // true). Combined with a hard weight ceiling of 28g and zero
     // hollowing path, earCuff was structurally guaranteed to fail the
     // weight audit on almost any non-trivial decoration.
-    earCuff:0.85,
+    earCuff:1.0,
+    pendant:1.0,
+    cufflinks:1.0,
   }),
   escapeHoleDiameterMm:2.4,
   escapeHoleCount:2,
   thresholdsGrams:Object.freeze({
     ring:Object.freeze({hollowAt:Infinity,rejectAbove:38}),
-    pendant:Object.freeze({hollowAt:Infinity,rejectAbove:110}),
+    pendant:Object.freeze({hollowAt:18,rejectAbove:65}),
     bangle:Object.freeze({hollowAt:125,rejectAbove:190}),
     cuffBracelet:Object.freeze({hollowAt:115,rejectAbove:180}),
     // Raised per explicit direction: 1kg+ solid pieces were absurd, but
@@ -3411,7 +3415,7 @@ const AGDP_SILVER_HOLLOWING=Object.freeze({
     chokerSculptural:Object.freeze({hollowAt:90,rejectAbove:150}),
     chokerCervical:Object.freeze({hollowAt:145,rejectAbove:220}),
     headpiece:Object.freeze({hollowAt:90,rejectAbove:150}),
-    cufflinks:Object.freeze({hollowAt:Infinity,rejectAbove:80}),
+    cufflinks:Object.freeze({hollowAt:28,rejectAbove:60}),
     // FIXED: 28g was unreachable for an earCuff with normal structural
     // baseWall (AGDP_STRUCTURAL_WALL_MM=1.3mm) plus any decoration (ribs,
     // posts, rivets, nodes, transversal cuts). With earCuff now enabled
@@ -3445,7 +3449,7 @@ function manifoldBounds(manifold){
   return {mesh,b:bounds(mesh.V)};
 }
 function applyConservativeSilverHollowing(wasm,manifold,p){
-  if(p.type==='brooch'){
+  if(p.type==='brooch'||p.type==='ring'||p.type==='hoopEarring'){
     p.silverHollowingApplied=false;
     p.silverWeightProfile=silverWeightProfileKey(p);
     return manifold;
@@ -3465,7 +3469,7 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   const b=before.b,dim=b.dim;
   // A scaled internal duplicate is only allowed when every axis contains a
   // generous cavity: at least two walls plus a further 2.4 mm working core.
-  if(dim.some(d=>d<wall*2+2.4))return manifold;
+  if(dim.some(d=>d<wall*2+4.0))return manifold;
   const center=[(b.min[0]+b.max[0])/2,(b.min[1]+b.max[1])/2,(b.min[2]+b.max[2])/2];
   // The upper clamp caps how close the inner cavity's scale can get to 1
   // (a safety margin against near-total hollowing). At .94 this works
@@ -3871,6 +3875,13 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     audit.warning='FALLA: masa de plata superior al límite ergonómico y económico';
   }
   audit.discardedComponents = connected.discarded||[];
+  if(p.silverHollowingApplied && audit.discardedComponents.length){
+    audit.ok=false;
+    audit.warning='FALLA: el ahuecamiento separó geometría; se rechaza para conservar íntegra la malla';
+    audit.hollowingIntegrityOK=false;
+  }else{
+    audit.hollowingIntegrityOK=true;
+  }
   // Exposes the fully-compiled internal params object (p), not just the
   // caller's pre-compile() input -- type-specific builders (brooch, moneyClip,
   // hoopEarring) write derived dimensions directly onto this object

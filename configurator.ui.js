@@ -1,14 +1,17 @@
 (function(){
   'use strict';
 
-  function ringSizeToDiameter(usSize){
-    const circumference = 36.5 + 2.55*usSize;
-    return circumference/Math.PI;
-  }
+  // ISO 8653 defines ring size by internal circumference in millimetres.
+  // The North-American conversion is C(mm) = 36.5 + 2.55 × US size.
+  function ringSizeToCircumference(usSize){ return 36.5 + 2.55*usSize; }
+  function ringSizeToDiameter(usSize){ return ringSizeToCircumference(usSize)/Math.PI; }
   const RING_SIZES = [4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,10.5,11,11.5,12,12.5,13].map(us=>{
-    const d = ringSizeToDiameter(us);
-    const euCirc = Math.round(36.5+2.55*us);
-    return {us, diameterMm: d, label_es:`US ${us} · EU ${euCirc} · ⌀ ${d.toFixed(1)}mm`, label_en:`US ${us} · EU ${euCirc} · ⌀ ${d.toFixed(1)}mm`};
+    const circumferenceMm = ringSizeToCircumference(us);
+    const diameterMm = circumferenceMm/Math.PI;
+    const isoSize = Math.round(circumferenceMm);
+    return {us, isoSize, circumferenceMm, diameterMm,
+      label_es:`US ${us} · ISO ${isoSize} · Ø ${diameterMm.toFixed(2)} mm`,
+      label_en:`US ${us} · ISO ${isoSize} · Ø ${diameterMm.toFixed(2)} mm`};
   });
   const WRIST_SIZES = [
     {key:'xs', circMm:145, label_es:'XS · muñeca ~14.5cm', label_en:'XS · wrist ~14.5cm'},
@@ -243,7 +246,9 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     if(!generateBtn.disabled)runGenerate();
   });
 
-  function shrinkCompensatedDiameter(nominalMm){ return (nominalMm+0.25)*1.025; }
+  // Shapeways states that ring internal diameter normally remains within ±0.05–0.10 mm.
+  // Do not apply the ~3% overall exterior reduction to the functional ring opening.
+  function productionRingInnerDiameter(nominalMm){ return nominalMm; }
   function pendantWeightCategory(grams){
     if(grams<5)return 'light';
     if(grams<=10)return 'medium';
@@ -358,7 +363,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       const opt=cfg.options[selectedSizeIndex]||cfg.options[0];
       if(cfg.kind==='ring'){
         result.params.mainSizeNominal=opt.diameterMm;
-        result.params.mainSize=shrinkCompensatedDiameter(opt.diameterMm);
+        result.params.mainSize=productionRingInnerDiameter(opt.diameterMm);
       }else if(cfg.kind==='wrist'){
         result.params.mainSize=opt.diameterMm;
       }else if(cfg.kind==='brooch'){

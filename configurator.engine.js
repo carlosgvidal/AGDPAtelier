@@ -678,9 +678,9 @@ window.AGDP_PACKAGING_POLICY=Object.freeze({
 window.SeededVariation = SeededVariation;
 
 const SHAPEWAYS_SILVER_SPECS=Object.freeze({
-  silverNatural:Object.freeze({label:'Plata 925 natural',wall:.6,supportedWire:.8,unsupportedWire:1.0,embossed:.3,engraved:.3,clearance:.3,shrinkComp:1.0}),
-  silverPolished:Object.freeze({label:'Plata 925 pulida',wall:.8,supportedWire:.8,unsupportedWire:1.0,embossed:.3,engraved:.3,clearance:.3,shrinkComp:2.5}),
-  silverFine:Object.freeze({label:'Plata 925 pulido fino',wall:.8,supportedWire:.8,unsupportedWire:1.0,embossed:.4,engraved:.35,clearance:.3,shrinkComp:2.5})
+  silverNatural:Object.freeze({label:'Plata 925 natural',wall:.6,supportedWire:.8,unsupportedWire:1.0,embossed:.3,engraved:.3,clearance:.3,escapeSingle:4.0,escapeMultiple:2.0,maxBounds:[89,89,100],minBounds:[2.4,2.4,.6],shrinkExterior:3.0,ringDiameterTolerance:.10}),
+  silverPolished:Object.freeze({label:'Plata 925 pulida',wall:.8,supportedWire:.8,unsupportedWire:1.0,embossed:.3,engraved:.3,clearance:.3,escapeSingle:4.0,escapeMultiple:2.0,maxBounds:[89,89,100],minBounds:[2.4,2.4,.6],shrinkExterior:3.0,ringDiameterTolerance:.10}),
+  silverFine:Object.freeze({label:'Plata 925 pulido fino',wall:.8,supportedWire:.8,unsupportedWire:1.0,embossed:.4,engraved:.35,clearance:.3,escapeSingle:4.0,escapeMultiple:2.0,maxBounds:[89,89,100],minBounds:[2.4,2.4,.6],shrinkExterior:3.0,ringDiameterTolerance:.10})
 });
 function silverSpec(profile){return SHAPEWAYS_SILVER_SPECS[profile]||SHAPEWAYS_SILVER_SPECS.silverPolished;}
 
@@ -733,12 +733,22 @@ function validate(V,F,extra){
   const volumeMm3=meshVolumeMm3(V,F),silverG=silverWeightGrams(volumeMm3);
   const fab=fabricationAudit(extra);
   const manifoldOK=topo.manifoldOK;
-  const ok=geometricOK&&constructiveOK&&manifoldOK;
+  const sortedDim=b.dim.slice().sort((a,b)=>a-b);
+  const sortedMax=(fab.spec.maxBounds||[Infinity,Infinity,Infinity]).slice().sort((a,b)=>a-b);
+  const sortedMin=(fab.spec.minBounds||[0,0,0]).slice().sort((a,b)=>a-b);
+  const boundingBoxOK=sortedDim.every((d,i)=>d<=sortedMax[i]+1e-6)&&sortedDim.every((d,i)=>d>=sortedMin[i]-1e-6);
+  const partsInFileOK=conn.components<=2;
+  fab.boundingBoxOK=boundingBoxOK;
+  fab.partsInFileOK=partsInFileOK;
+  fab.actualBoundsMm=b.dim.slice();
+  const ok=geometricOK&&constructiveOK&&manifoldOK&&boundingBoxOK&&partsInFileOK;
   let warning='OK';
   if(!geometricOK)warning='FALLA: geometría no finita o invasión corporal';
   else if(!constructiveOK)warning='FALLA: componentes separados; no hay una sola piel constructiva';
   else if(!manifoldOK)warning='FALLA: bordes abiertos o no-manifold';
-  return {ok,finite,inv,triangles:F.length,verts:V.length,bounds:b,type:extra.type,components:conn.components,constructiveOK,warning,volumeMm3,silverG,fab,topology:topo,manifoldOK};
+  else if(!boundingBoxOK)warning='FALLA: caja envolvente fuera de 89 × 89 × 100 mm o por debajo del mínimo de plata';
+  else if(!partsInFileOK)warning='FALLA: Shapeways admite como máximo dos partes idénticas en un archivo de plata';
+  return {ok,finite,inv,triangles:F.length,verts:V.length,bounds:b,type:extra.type,components:conn.components,constructiveOK,warning,volumeMm3,silverG,fab,topology:topo,manifoldOK,boundingBoxOK,partsInFileOK};
 }
 function setRenderMesh(nextMesh){
   if(window.AGDP_setRenderMesh) window.AGDP_setRenderMesh(nextMesh);
