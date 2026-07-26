@@ -1,0 +1,7 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agdp-shapeways-api",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-25",
+  "keep_vars": true
+}
