@@ -2,7 +2,29 @@ import Module from 'manifold-3d';
 
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 function wrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
-const AGDP_MIN_WALL_MM = 0.8;
+const SHAPEWAYS_SILVER_925 = Object.freeze({
+  process: 'lost-wax-casting',
+  units: 'mm',
+  boundingBoxMm: Object.freeze({ min: Object.freeze([2.4, 2.4, 0.6]), max: Object.freeze([89, 89, 100]) }),
+  wallsMm: Object.freeze({
+    natural: Object.freeze({ supported: 0.6, unsupported: 0.6 }),
+    polished: Object.freeze({ supported: 0.8, unsupported: 0.8 })
+  }),
+  wiresMm: Object.freeze({ supported: 0.8, unsupported: 1.0 }),
+  detailsMm: Object.freeze({
+    natural: Object.freeze({ embossedWidth: 0.3, embossedHeight: 0.3, engravedWidth: 0.3, engravedDepth: 0.3 }),
+    polished: Object.freeze({ embossedWidth: 0.3, embossedHeight: 0.3, engravedWidth: 0.3, engravedDepth: 0.3 }),
+    fineDetailPolished: Object.freeze({ embossedWidth: 0.4, embossedHeight: 0.4, engravedWidth: 0.35, engravedDepth: 0.35 })
+  }),
+  clearanceMm: Object.freeze({ separateParts: 0.3 }),
+  escapeHolesMm: Object.freeze({ singleDiameter: 4.0, multipleDiameter: 2.0, preferredCount: 2 }),
+  partsPerFile: Object.freeze({ maximumIdentical: 2, multipleUniqueAllowed: false, interlockingAllowed: false, enclosedPartsAllowed: false })
+});
+window.SHAPEWAYS_SILVER_925 = SHAPEWAYS_SILVER_925;
+
+// Existing geometry uses these aliases extensively. Both now resolve to the
+// centralized manufacturing profile rather than independent numeric literals.
+const AGDP_MIN_WALL_MM = SHAPEWAYS_SILVER_925.wallsMm.polished.supported;
 const AGDP_STRUCTURAL_WALL_MM = 1.3;
 
 function meshToManifold(wasm, V, F) {
@@ -53,219 +75,6 @@ function safeDifference(wasm, a, b) {
   try{ a.delete(); }catch(e){}
   try{ b.delete(); }catch(e){}
   return result;
-}
-
-/* =========================================================================
-   HOOKED-SEGMENT SPLIT (choker / headpiece)
-   Shapeways' silver lost-wax casting has a maximum bounding box of
-   89x89x100mm (confirmed against their published spec, 2026-07). A choker
-   or headpiece at any dimension realistic for actual wear (verified
-   against comparable rigid wire chokers on the market: 114-165mm
-   diameter) categorically exceeds this in every orientation -- confirmed
-   empirically via full 3D rotation search, not assumed. Splitting into
-   3 wedge-cut segments, each fitted with a simple wire hook-and-eye
-   clasp at the two joints, is the customer-assemblable alternative:
-   no soldering, no workshop step, no tools -- the wearer closes it the
-   same way they would any hook-and-eye choker clasp. Verified: 2 segments
-   does not fit even with optimized orientation (106mm+ minimum); 3
-   segments fits every time with per-segment orientation.
-   ========================================================================= */
-function wedgeCutterMesh(t0, t1, radius, height){
-  const cx0=radius*Math.cos(t0), cy0=radius*Math.sin(t0);
-  const cx1=radius*Math.cos(t1), cy1=radius*Math.sin(t1);
-  const hz=height/2;
-  const V=[[0,0,-hz],[cx0,cy0,-hz],[cx1,cy1,-hz],[0,0,hz],[cx0,cy0,hz],[cx1,cy1,hz]];
-  const F=[[0,1,2],[3,5,4],[0,2,5],[0,5,3],[0,3,4],[0,4,1],[1,4,5],[1,5,2]];
-  return {V,F};
-}
-// REDESIGNED per updated request: a genuine sliding dovetail rail joint
-// instead of a press-fit post/socket. A trapezoidal rail -- narrow where
-// it meets the segment's surface, wider at its outer tip -- slides
-// lengthwise (along Z, the sliding axis) into a matching trapezoidal
-// groove cut into the adjacent segment. Once slid into place, the
-// dovetail's own shape mechanically blocks radial separation (the wide
-// tip cannot pass back out through the narrower groove opening), while
-// still allowing assembly via a simple lengthwise slide -- a real,
-// load-bearing mechanical joint, not a decorative press-fit.
-function dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, zLen, zCenterOffset){
-  const hz = zLen/2;
-  const z0 = zCenterOffset - hz, z1 = zCenterOffset + hz;
-  function corner(halfW, height, zOff, sign){
-    return [
-      anchor[0] + tangentDir[0]*halfW*sign + radialDir[0]*height,
-      anchor[1] + tangentDir[1]*halfW*sign + radialDir[1]*height,
-      anchor[2] + zOff
-    ];
-  }
-  // 8 vertices: 4 corners (base-left, base-right, tip-left, tip-right) at
-  // each of the two Z ends.
-  const V = [
-    corner(baseHalfW, 0, z0, -1), corner(baseHalfW, 0, z0, 1),
-    corner(tipHalfW, railHeight, z0, 1), corner(tipHalfW, railHeight, z0, -1),
-    corner(baseHalfW, 0, z1, -1), corner(baseHalfW, 0, z1, 1),
-    corner(tipHalfW, railHeight, z1, 1), corner(tipHalfW, railHeight, z1, -1)
-  ];
-  // Quad faces (as triangle pairs): near cap, far cap, and the 4 sides.
-  const F = [
-    [0,1,2],[0,2,3],       // near cap (z0)
-    [4,6,5],[4,7,6],       // far cap (z1)
-    [0,4,5],[0,5,1],       // base side
-    [1,5,6],[1,6,2],       // tangent+ side
-    [2,6,7],[2,7,3],       // tip side
-    [3,7,4],[3,4,0]        // tangent- side
-  ];
-  return {V,F};
-}
-// REDESIGNED per direct feedback (with a wood tongue-and-groove joint as
-// reference): a single continuous rail spanning nearly the full height
-// of the cut face, instead of two small localized rail pairs. The
-// previous two-point design held the segments together at only two
-// small contact patches; a full-height rail gives dramatically more
-// contact area and rigidity, matching how a real sliding wood joint is
-// built -- solid along its whole length, not just pinned at a couple of
-// points.
-function buildDovetailRailFull(wasm, anchor, wall, zMin, zMax){
-  const rr = Math.hypot(anchor[0],anchor[1])||1;
-  const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
-  const tangentDir = [-radialDir[1], radialDir[0], 0];
-  const baseHalfW = wall*0.9, tipHalfW = wall*1.5, railHeight = wall*1.9;
-  // Small margin at each end of the cut face so the rail's own end caps
-  // stay comfortably embedded in real material rather than reaching
-  // exactly to the surface edge.
-  const margin = Math.max(1.0, wall*0.5);
-  const railLen = Math.max(4, (zMax-zMin) - 2*margin);
-  const zCenter = (zMin+zMax)/2 - anchor[2];
-  const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen, zCenter);
-  return meshToManifold(wasm, mesh.V, mesh.F);
-}
-function cutDovetailGrooveFull(wasm, segmentManifold, anchor, wall, zMin, zMax){
-  const rr = Math.hypot(anchor[0],anchor[1])||1;
-  const radialDir = [anchor[0]/rr, anchor[1]/rr, 0];
-  const tangentDir = [-radialDir[1], radialDir[0], 0];
-  // Groove is slightly larger than the rail on every dimension for a
-  // real sliding clearance fit (not a tight press-fit): +0.25mm on the
-  // width dimensions, +0.3mm extra depth so the rail's tip does not
-  // bottom out, and +1mm extra length so the rail can fully enter
-  // without jamming at the very end of its travel.
-  const baseHalfW = wall*0.9+0.25, tipHalfW = wall*1.5+0.25, railHeight = wall*1.9+0.3;
-  const margin = Math.max(1.0, wall*0.5);
-  const railLen = Math.max(4, (zMax-zMin) - 2*margin);
-  const zCenter = (zMin+zMax)/2 - anchor[2];
-  const mesh = dovetailPrismMesh(anchor, radialDir, tangentDir, baseHalfW, tipHalfW, railHeight, railLen+1.0, zCenter);
-  const cutter = meshToManifold(wasm, mesh.V, mesh.F);
-  return safeDifference(wasm, segmentManifold, cutter);
-}
-// Anchors the connector on the segment's OWN real cut-face geometry
-// (mid-radius, mid-height of the vertices actually lying on the cut
-// plane) rather than an assumed/computed position -- correct regardless
-// of how the seed's own decorations shape that particular cut. Now also
-// returns the face's real Z range so the rail/groove can span nearly its
-// full height.
-function findCutFaceAnchor(V, targetAngle, tol){
-  tol = tol||0.02;
-  const candidates = V.filter(v=>Math.abs(Math.atan2(v[1],v[0])-targetAngle)<tol);
-  if(candidates.length===0) return null;
-  let sumR=0, minZ=Infinity, maxZ=-Infinity;
-  candidates.forEach(v=>{ const r=Math.hypot(v[0],v[1]); sumR+=r; if(v[2]<minZ)minZ=v[2]; if(v[2]>maxZ)maxZ=v[2]; });
-  const r = sumR/candidates.length, z=(minZ+maxZ)/2;
-  const point = [r*Math.cos(targetAngle), r*Math.sin(targetAngle), z];
-  return { point, minZ, maxZ };
-}
-// Cuts a completed choker/headpiece manifold into 3 wedge segments and
-// attaches a dovetail-rail-pair (odd joints) / matching-groove-pair
-// (even joints) at each of the 2 internal cuts, alternating so every
-// joint is exactly one rail-bearing face meeting one groove-bearing
-// face. Returns an array of 3 manifolds, each independently a valid,
-// printable, single closed solid.
-function splitIntoHookedSegments(wasm, manifold, wall){
-  const { Manifold } = wasm;
-  const mesh = manifoldToMesh(manifold);
-  const angles = mesh.V.map(v=>Math.atan2(v[1],v[0]));
-  const minA = Math.min(...angles), maxA = Math.max(...angles);
-  const span = (maxA-minA)/3;
-  // Tiny, deliberately "ugly" (non-round) perturbation on the 2 internal
-  // cut angles only, confirmed necessary via direct STL mesh analysis:
-  // when a cutting plane's angle coincides almost exactly with an
-  // existing vertex's own angle in the decorated surface, the boolean
-  // intersection produces a cluster of near-zero-area triangles all
-  // converging on that one point (found: 30 triangles sharing a single
-  // near-coincident vertex, all effectively degenerate). This offsets
-  // the cut just enough to avoid that exact coincidence without
-  // meaningfully changing where the piece is divided.
-  const cutEps = 0.0001743;
-  const cutAngles = [minA, minA+span+cutEps, minA+2*span-cutEps, maxA];
-  // A small angular inset at the 2 INTERNAL cuts only (not the piece's own
-  // natural ends) creates a real ~0.4mm physical gap between adjacent
-  // segments, comfortably above Shapeways' stated 0.3mm minimum clearance
-  // between separate parts in one file, and removes any ambiguity about
-  // whether touching-but-not-overlapping solids might get treated as one
-  // connected component downstream.
-  const approxRadius = Math.max(30, mesh.V.reduce((s,v)=>s+Math.hypot(v[0],v[1]),0)/mesh.V.length);
-  const gapEps = 0.4/approxRadius;
-  const R = 300, H = 300;
-  const segments = [];
-  const segBounds = [
-    [cutAngles[0], cutAngles[1]-gapEps],
-    [cutAngles[1]+gapEps, cutAngles[2]-gapEps],
-    [cutAngles[2]+gapEps, cutAngles[3]]
-  ];
-  for(let s=0;s<3;s++){
-    const wc = wedgeCutterMesh(segBounds[s][0], segBounds[s][1], R, H);
-    const wedge = meshToManifold(wasm, wc.V, wc.F);
-    segments.push(Manifold.intersection(manifold, wedge));
-    try{ wedge.delete(); }catch(e){}
-  }
-  try{ manifold.delete(); }catch(e){}
-  {
-    const m0 = manifoldToMesh(segments[0]);
-    const anchor = findCutFaceAnchor(m0.V, cutAngles[1]-gapEps, gapEps*3+0.02);
-    if(anchor){
-      const old = segments[0];
-      const railGeo = buildDovetailRailFull(wasm, anchor.point, wall, anchor.minZ, anchor.maxZ);
-      segments[0] = Manifold.union(old, railGeo);
-      try{ old.delete(); }catch(e){}
-      try{ railGeo.delete(); }catch(e){}
-    }
-    const m1 = manifoldToMesh(segments[1]);
-    const anchorB = findCutFaceAnchor(m1.V, cutAngles[1]+gapEps, gapEps*3+0.02);
-    if(anchorB){
-      segments[1] = cutDovetailGrooveFull(wasm, segments[1], anchorB.point, wall, anchorB.minZ, anchorB.maxZ);
-    }
-  }
-  {
-    const m1 = manifoldToMesh(segments[1]);
-    const anchor = findCutFaceAnchor(m1.V, cutAngles[2]-gapEps, gapEps*3+0.02);
-    if(anchor){
-      const old = segments[1];
-      const railGeo = buildDovetailRailFull(wasm, anchor.point, wall, anchor.minZ, anchor.maxZ);
-      segments[1] = Manifold.union(old, railGeo);
-      try{ old.delete(); }catch(e){}
-      try{ railGeo.delete(); }catch(e){}
-    }
-    const m2 = manifoldToMesh(segments[2]);
-    const anchorB = findCutFaceAnchor(m2.V, cutAngles[2]+gapEps, gapEps*3+0.02);
-    if(anchorB){
-      segments[2] = cutDovetailGrooveFull(wasm, segments[2], anchorB.point, wall, anchorB.minZ, anchorB.maxZ);
-    }
-  }
-  return segments;
-}
-// Combines the 3 already-separate, already-validated segment manifolds
-// into one V/F pair for export, via direct mesh concatenation rather than
-// a further boolean union -- guarantees they remain 3 distinct
-// components in the output regardless of how closely their cut faces
-// sit next to one another (a CSG union of touching-but-non-overlapping
-// solids is not a risk worth taking here when a plain array concatenation
-// does the same job with zero ambiguity).
-function concatenateSegmentMeshes(segmentManifolds){
-  let V = [], F = [], offset = 0;
-  for(const seg of segmentManifolds){
-    const m = manifoldToMesh(seg);
-    V = V.concat(m.V);
-    F = F.concat(m.F.map(f=>[f[0]+offset, f[1]+offset, f[2]+offset]));
-    offset += m.V.length;
-  }
-  return { V, F };
 }
 
 // Builds a customer-facing pair from one validated unit mesh. The two
@@ -794,7 +603,6 @@ function insertedRingManifold(wasm, origin, ex, ey, ez, ri, ro, thickness, segN)
 // this kind of artifact -- a cluster of near-zero-area triangles all
 // converging on one near-coincident point, or an outright duplicated
 // triangle -- which shows up as non-manifold edges and visible jagged
-// seams in a highly reflective material. Found in both ring and choker
 // output, i.e. in the shared construction pipeline, not one typology's
 // own code; this general pass catches the defect regardless of its
 // exact source rather than requiring every individual embed calculation
@@ -1185,7 +993,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   }
 
   const computedWall = AGDP_STRUCTURAL_WALL_MM*(0.95+p.architectural*0.85+p.sideRelief*3.4);
-  const baseWall = Math.max(AGDP_STRUCTURAL_WALL_MM, opts.type==='choker'?(p.chokerWallMm||computedWall):opts.type==='headpiece'?(p.headWallMm||computedWall):opts.type==='comb'?(p.combBodyWallMm||computedWall):computedWall);
+  const baseWall = Math.max(AGDP_STRUCTURAL_WALL_MM, opts.type==='comb'?(p.combBodyWallMm||computedWall):computedWall);
   const facetCount = p.forcedSides!==undefined ? (p.forcedSides>0?Math.round(p.forcedSides):0) : (p.faceting>0.14?Math.round(clamp(6+p.faceting*44,6,48)):0);
   const facetDepth = facetCount<=0?0:(p.forcedSides!==undefined ? Math.min(baseWall*0.68, 0.55+Math.max(0,6-facetCount)*0.11+p.faceting*0.5) : Math.min(baseWall*0.55, 0.28+p.faceting*1.05));
   const coverageOffset = (p.articulationOffset||0)*Math.PI/180;
@@ -1199,7 +1007,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     return 1-(d-coverageCore)/(coverageHalf-coverageCore);
   }
   // Structural rail/post emphasis is now a continuous quantity, not a
-  // topology switch: every ring/bangle/cuff/choker/headpiece is built from
   // the same single continuous surface, and higher lattice+cage intensity
   // simply adds more and thicker structural posts on top of it — never a
   // separate, unrelated rail-based construction. This is what actually
@@ -1239,7 +1046,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   const comfortDepth = comfortActive ? Math.min(baseWall*0.28, 0.30) : 0;
 
   const V=[], outer=[], inner=[];
-  const lateralOpsActive = opts.type==='ring'||opts.type==='bangle'||opts.type==='cuffBracelet'||opts.type==='earCuff'||opts.type==='choker'||opts.type==='headpiece'||opts.type==='pendantAnnularCore';
+  const lateralOpsActive = opts.type==='ring'||opts.type==='bangle'||opts.type==='cuffBracelet'||opts.type==='earCuff'||opts.type==='pendantAnnularCore';
   const lateralSeg = lateralOpsActive ? Math.max(10,Math.min(24,Math.round(zSeg/3))) : 1;
   const lateralTop = lateralOpsActive ? [] : null;
   const lateralBottom = lateralOpsActive ? [] : null;
@@ -1290,7 +1097,6 @@ async function buildBandGeometryManifold(wasm, p, opts) {
       // de barrer suavemente de radio interior a exterior -- una tapa
       // auto-intersectante, que es lo que producía triangulación
       // degenerada en cada boolean posterior (código compartido por
-      // ring-abierto, bangle, cuffBracelet, earCuff, choker, headpiece y
       // el núcleo anular del dije).
       // Arreglo: se acota la magnitud del desplazamiento axial con un
       // squash suave (tanh) a una fracción pequeña y fija del espesor
@@ -1447,10 +1253,8 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     }
   }
 
-  // Disabled for choker/headpiece specifically: confirmed via ablation
   // testing (forcing this off while varying every other decoration
   // independently) that it was the largest single contributor to severe
-  // non-manifold defects at choker's much larger scale, though isolated
   // testing of the pin decoration alone (even with multiple pins) on a
   // simple band stayed clean -- meaning this is an interaction with the
   // piece's full real complexity, not reproducible standalone. This is a
@@ -1458,7 +1262,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   // time pressure" approach taken for the hallmark engraving; a smaller
   // residual defect remains (worst case dropped from 6337 to 561 in
   // testing) and still needs dedicated root-cause investigation.
-  const pinCount = (cellularActive || opts.type==='choker' || opts.type==='headpiece') ? 0 : Math.round(p.screws||0);
+  const pinCount = cellularActive ? 0 : Math.round(p.screws||0);
   if (pinCount>0) {
     const pinR = Math.max(AGDP_MIN_WALL_MM*0.35, baseWall*0.16);
     for (let k=0;k<pinCount;k++) {
@@ -1721,12 +1525,9 @@ async function buildBandGeometryManifold(wasm, p, opts) {
           v[0]=newX; v[1]=newY;
         }
       }
-      // Same leak pattern found and fixed in applyChokerErgonomics/
       // applyHeadErgonomics: the old bodyManifold is pure-JS-deformed
       // above (no WASM calls), then rebuilt from scratch below -- the
       // old one must be explicitly freed or it leaks every time this
-      // mutation mode is picked, for ANY typology (not just choker/
-      // headpiece). Only disposed after a successful rebuild, so the
       // catch below still sees a valid bodyManifold if this throws.
       const oldBody = bodyManifold;
       bodyManifold=meshToManifold(wasm, mesh.V, mesh.F);
@@ -2529,284 +2330,6 @@ async function makeCufflinksManifold(wasm, p) {
   return {manifold};
 }
 
-function addOpenBandVolumetricField(wasm,manifold,p,kind){
-  const parts=[manifold];
-  const fw=p.featureWeights||{};
-  const dome=featureIntensity(p,'dome'),vessel=featureIntensity(p,'vessel');
-  const lattice=featureIntensity(p,'lattice'),wrapped=featureIntensity(p,'wrapped');
-  const cage=featureIntensity(p,'cage'),inter=featureIntensity(p,'interweave');
-  const continuity=featureIntensity(p,'continuity');
-  // The volumetric field is generated in the same undeformed coordinate
-  // system as the open band. The complete union is warped afterward, so
-  // anchors, roots, veins and wrapped paths remain embedded in one mesh.
-  const innerR=Math.max(8,(p.mainSize||100)/2);
-  const bandW=Math.max(8,p.bandWidth||40);
-  const wall=kind==='headpiece'?Math.max(2.6,p.headWallMm||3.2):Math.max(3.8,p.chokerWallMm||4.8);
-  const skinFloorR = StructuralKit.skinFloor(innerR, wall, 0);
-  const rng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|'+kind+'-volumetric-field');
-  const frontSpan=kind==='headpiece' ? (.62+.34*wrapped) : (.48+.38*vessel);
-  const count=3+Math.round((dome+vessel+cage)*2.2);
-  const anchors=[];
-  const anchorU=[];
-  // One shared formula for any point along the arc, sampled either at an
-  // anchor's own position or densely in between for the connecting vein —
-  // so the vein can actually follow the curvature instead of drawing a
-  // straight chord across it.
-  function pointAtU(u){
-    const t=(-frontSpan/2+frontSpan*u)*Math.PI;
-    const front=(1+Math.cos(t))*.5;
-    const surfaceR=innerR+wall*(.50+.18*continuity)+bandW*(.015+.02*vessel)*front;
-    const radial=Math.max(skinFloorR, surfaceR);
-    const zBase=bandW*((u-.5)*(.16+.10*inter));
-    const lift=bandW*(.02+.05*dome)*Math.pow(front,1.25);
-    return { t, surfaceR, radial, zBase, lift };
-  }
-  for(let i=0;i<count;i++){
-    const u=count===1?.5:i/(count-1);
-    const {t, surfaceR, radial, zBase, lift} = pointAtU(u);
-    const rr=bandW*(.058+.055*dome+.048*vessel)*(0.92+0.18*rng());
-    // Embedded enough to guarantee overlap, but not so deep that the node
-    // reads as flat — real outward presence, not a sunken disc.
-    const embedded = Math.max(skinFloorR, StructuralKit.embedInward(radial, rr, 0.65));
-    const p0=[embedded*Math.cos(t),embedded*Math.sin(t),zBase+lift];
-    anchors.push(p0);
-    anchorU.push(u);
-    parts.push(flattenedNodeAt(wasm,p0,rr*(1.05+.45*vessel),rr*(.78+.22*wrapped),rr*(.92+.48*dome),8));
-    // Root connector: a short, thick bridge from a point directly on the
-    // band's own real surface (same angle, same z) to the anchor's
-    // center — this is what actually guarantees the anchor reads as
-    // rising out of the mesh's edge rather than floating near it,
-    // regardless of how the embed math alone works out.
-    const rootSurfacePoint=[surfaceR*Math.cos(t),surfaceR*Math.sin(t),zBase];
-    parts.push(cylinderBetween(wasm, rootSurfacePoint, p0, rr*0.62, 8));
-  }
-  {
-    const veinIntensity=clamp(Math.max(lattice,cage),0,1);
-    const veinR=Math.max(AGDP_MIN_WALL_MM*0.62, wall*(.09+.16*veinIntensity));
-    const samplesPerSpan=6;
-    for(let i=0;i<anchors.length-1;i++){
-      const u0=anchorU[i], u1=anchorU[i+1];
-      const pts=[anchors[i]];
-      for(let s=1;s<samplesPerSpan;s++){
-        const u=u0+(u1-u0)*(s/samplesPerSpan);
-        const {t, radial, zBase, lift} = pointAtU(u);
-        // Same embed ratio as the anchors themselves, interpolated, so the
-        // vein rides along the surface the whole way instead of cutting
-        // a straight line between the two embedded centers.
-        const localRR=bandW*(.058+.055*dome+.048*vessel);
-        const embedded=Math.max(skinFloorR, StructuralKit.embedInward(radial, localRR, 0.65));
-        pts.push([embedded*Math.cos(t),embedded*Math.sin(t),zBase+lift]);
-      }
-      pts.push(anchors[i+1]);
-      const veinMesh=tubeAlongPathMesh(pts, veinR, 10, false);
-      parts.push(meshToManifold(wasm, veinMesh.V, veinMesh.F));
-    }
-  }
-  if(wrapped>.18){
-    const paths=1+Math.round(wrapped*2);
-    for(let k=0;k<paths;k++){
-      const pts=[];
-      const seg=24;
-      for(let i=0;i<seg;i++){
-        const u=i/(seg-1),t=(-frontSpan/2+frontSpan*u)*Math.PI;
-        const radial=Math.max(skinFloorR, innerR+wall*.72+bandW*(.05+.04*vessel)*Math.sin(Math.PI*u));
-        const z=bandW*(.16*Math.sin(Math.PI*2*u+(p.variation?.phaseB||0)+k*1.4)+.12*(k-(paths-1)/2));
-        pts.push([radial*Math.cos(t),radial*Math.sin(t),z]);
-      }
-      const tube=tubeAlongPathMesh(pts,Math.max(AGDP_MIN_WALL_MM*.72,wall*(.13+.08*wrapped)),10,false);
-      parts.push(meshToManifold(wasm,tube.V,tube.F));
-    }
-  }
-  return unionAll(wasm,parts);
-}
-
-function applyChokerErgonomics(wasm, manifold, p){
-  const mesh=manifoldToMesh(manifold);
-  if(!mesh.V.length)return manifold;
-  // The rest of this function is pure JS vertex-array math -- no WASM
-  // calls until the final meshToManifold rebuild. The input `manifold`
-  // is never touched again after the read above, so it can be disposed
-  // here; leaving it undisposed leaked the full decorated choker/
-  // headpiece mesh on every single generation attempt (confirmed via
-  // Node.js harness as a major contributor to the memory pressure
-  // reported live).
-  try{ manifold.delete(); }catch(e){}
-
-  // Shared cervical fit field for the whole neck family. The interior fit
-  // follows a low torque seat: broad, comparatively flat in front, rising
-  // through the sides and higher at the nape. Exterior volume is allowed to
-  // expand independently so formal variation never deforms the body surface.
-  const ratio=clamp(p.chokerDepthRatio||0.82,0.78,0.86);
-  const frontHeight=Math.max(1,p.bandWidth||34);
-  const rearRatio=clamp(p.chokerRearHeightRatio||0.58,0.38,0.82);
-  const frontDrop=Math.max(0,p.chokerFrontDropMm||8);
-  const rearLift=Math.max(0,p.chokerRearLiftMm||4);
-  const projection=clamp(p.chokerFrontProjection||0,0,0.13);
-
-  const radii=mesh.V.map(v=>Math.hypot(v[0],v[1])).sort((a,b)=>a-b);
-  const centerR=radii[Math.floor(radii.length*.5)]||1;
-  const halfHeight=Math.max(1,frontHeight*.5);
-  const deg=Math.PI/180;
-
-  function smooth01(x){x=clamp(x,0,1);return x*x*(3-2*x);}
-
-  for(const v of mesh.V){
-    const originalR=Math.hypot(v[0],v[1])||1e-6;
-    const t=Math.atan2(v[1],v[0]);
-    const absT=Math.abs(wrap(t));
-
-    // Regional weights: a stable frontal platform, progressive lateral
-    // transition and a distinct posterolateral/nape zone.
-    const frontPlateau=1-smooth01((absT-48*deg)/(34*deg));
-    const rear=smooth01((absT-104*deg)/(60*deg));
-    const side=clamp(1-frontPlateau-rear,0,1);
-
-    // Modified cervical plan rather than a simple ellipse. The front is
-    // slightly broadened and flattened; posterior curvature tightens.
-    const frontBroadening=1+0.030*frontPlateau;
-    const rearTightening=1-0.018*rear;
-    let x=v[0]*frontBroadening*rearTightening;
-    let y=v[1]*ratio*(1-0.012*rear);
-
-    let r=Math.hypot(x,y)||1e-6;
-    const ux=x/r, uy=y/r;
-    let dr=originalR-centerR;
-
-    // Height distribution follows the common ergonomic surface. The front
-    // remains full-height; the rear progressively reduces according to the
-    // selected profile without changing the shared cervical seat.
-    const heightScale=rearRatio+(1-rearRatio)*(frontPlateau+side*.58);
-    let zLocal=v[2]*heightScale;
-
-    // Rotate the section in the radial/Z plane: outward at the throat,
-    // neutral at the sides, inward at the nape. This prevents the upper edge
-    // from pressing the throat and lets the lower edge settle at the base of
-    // the neck.
-    const sectionTilt=(8*frontPlateau-10*rear)*deg;
-    const cs=Math.cos(sectionTilt), sn=Math.sin(sectionTilt);
-    const drRot=dr*cs-zLocal*sn;
-    const zRot=dr*sn+zLocal*cs;
-    dr=drRot;
-    zLocal=zRot;
-
-    // LOVE-derived sagittal seat: low frontal platform, progressive lateral
-    // rise and a higher nape. Side rise makes the change visibly anatomical
-    // instead of a nearly planar cosine displacement.
-    const sideRise=2.8*Math.pow(side,1.25);
-    const centerShift=-frontDrop*frontPlateau+sideRise+rearLift*rear;
-
-    // Regional clearance is applied to the whole section, while sculptural
-    // projection affects only the exterior half. The inner surface therefore
-    // remains stable across seeds and across torque/cervical/sculptural modes.
-    const clearance=1.8*frontPlateau+0.6*side+1.4*rear;
-    const outerMask=smooth01((dr+halfHeight*.08)/(halfHeight*.58));
-    const exteriorProjection=centerR*projection*frontPlateau*outerMask;
-    r=Math.max(1,centerR+dr+clearance+exteriorProjection);
-
-    v[0]=ux*r;
-    v[1]=uy*r;
-    v[2]=zLocal+centerShift;
-  }
-  return meshToManifold(wasm,mesh.V,mesh.F);
-}
-
-
-function applyHeadErgonomics(wasm, manifold, p){
-  const mesh=manifoldToMesh(manifold);
-  if(!mesh.V.length)return manifold;
-  try{ manifold.delete(); }catch(e){}
-
-  const ratio=clamp(p.headDepthRatio||1.18,1.05,1.38);
-  const frontHeight=Math.max(1,p.bandWidth||48);
-  const sideRatio=clamp(p.headSideHeightRatio||0.46,0.22,0.72);
-  const rearRatio=clamp(p.headRearHeightRatio||0.24,0.12,0.55);
-  const crownRise=Math.max(0,p.headCrownRiseMm||12);
-  const templeDrop=Math.max(0,p.headTempleDropMm||8);
-  const projection=clamp(p.headFrontProjection||0,0,0.10);
-
-  const radii=mesh.V.map(v=>Math.hypot(v[0],v[1])).sort((a,b)=>a-b);
-  const centerR=radii[Math.floor(radii.length*.5)]||1;
-  const halfHeight=Math.max(1,frontHeight*.5);
-  const deg=Math.PI/180;
-
-  function smooth01(x){x=clamp(x,0,1);return x*x*(3-2*x);}
-
-  for(const v of mesh.V){
-    const originalR=Math.hypot(v[0],v[1])||1e-6;
-    const t=Math.atan2(v[1],v[0]);
-    const absT=Math.abs(wrap(t));
-
-    // Four anatomical regions along the placement arc: frontal support,
-    // frontotemporal transition, parietal support and terminal release.
-    const front=1-smooth01((absT-34*deg)/(34*deg));
-    const terminal=smooth01((absT-116*deg)/(48*deg));
-    const lateral=clamp(1-front-terminal,0,1);
-    const temple=Math.sin(Math.PI*clamp((absT-38*deg)/(96*deg),0,1));
-
-    // Triaxial cranial plan. The frontal segment is slightly flatter and
-    // broader, while the posterolateral segment tightens instead of being a
-    // uniformly scaled ellipse.
-    const frontalBroadening=1+0.022*front;
-    const temporalRelease=1+0.012*temple;
-    const posteriorTightening=1-0.018*terminal;
-    let x=v[0]*frontalBroadening*temporalRelease*posteriorTightening;
-    let y=v[1]*ratio*(1-0.010*front-0.014*terminal);
-
-    let r=Math.hypot(x,y)||1e-6;
-    let ux=x/r, uy=y/r;
-    let dr=originalR-centerR;
-
-    // Independent height distribution: full frontal height, gradual lateral
-    // reduction and a lighter terminal section.
-    const heightScale=clamp(
-      rearRatio+(1-rearRatio)*front+sideRatio*lateral*(1-terminal*.45),
-      0.14,1
-    );
-    let zLocal=v[2]*heightScale;
-
-    // The section follows the local cranial normal. It leans slightly back at
-    // the front and progressively outward toward the temporal endpoints.
-    const sectionTilt=(-6*front+8*lateral+12*terminal)*deg;
-    const cs=Math.cos(sectionTilt), sn=Math.sin(sectionTilt);
-    const drRot=dr*cs-zLocal*sn;
-    const zRot=dr*sn+zLocal*cs;
-    dr=drRot;
-    zLocal=zRot;
-
-    // Inclined placement plane and regional seat: elevated frontal placement,
-    // continuous parietal rise, controlled temporal descent and lifted ends.
-    const placementTilt=15*deg;
-    const sagittalShift=Math.sin(placementTilt)*(x-centerR*.12)*.18;
-    const parietalRise=crownRise*Math.pow(lateral,1.35)*(0.58+0.42*front);
-    const temporalSink=templeDrop*Math.pow(temple,1.45)*(0.34+0.66*terminal);
-    const terminalLift=3.2*Math.pow(terminal,1.7);
-    const centerShift=sagittalShift+parietalRise-temporalSink+terminalLift;
-
-    // Regional clearance protects the frontotemporal area. Formal projection
-    // is restricted to the exterior half, leaving the inner contact surface
-    // stable regardless of seed-driven morphology.
-    const clearance=3.2*front+4.4*temple+2.8*lateral+5.2*terminal;
-    const outerMask=smooth01((dr+halfHeight*.06)/(halfHeight*.56));
-    const exteriorProjection=centerR*projection*Math.pow(front,1.55)*outerMask;
-
-    // The final segment flares laterally and turns outward, preventing the
-    // rigid ends from converging against the temples or the area above the ear.
-    const flareAngle=9*deg*Math.pow(terminal,1.55);
-    const sideSign=t>=0?1:-1;
-    const ca=Math.cos(sideSign*flareAngle), sa=Math.sin(sideSign*flareAngle);
-    const fx=ux*ca-uy*sa;
-    const fy=ux*sa+uy*ca;
-    ux=fx; uy=fy;
-
-    r=Math.max(1,centerR+dr+clearance+exteriorProjection);
-    v[0]=ux*r;
-    v[1]=uy*r;
-    v[2]=zLocal+centerShift;
-  }
-  return meshToManifold(wasm,mesh.V,mesh.F);
-}
-
-
 function ellipticalSegmentBetween(wasm,p0,p1,rx,ry,segments){
   const { Manifold }=wasm;
   const dx=p1[0]-p0[0],dy=p1[1]-p0[1],dz=p1[2]-p0[2];
@@ -3377,69 +2900,28 @@ async function makeMoneyClipManifold(wasm,p){
 }
 
 const AGDP_SILVER_HOLLOWING=Object.freeze({
-  source:'Shapeways Silver design guidelines · consulted 2026-07-19',
-  polishedMinimumWallMm:0.8,
+  manufacturingProfile: SHAPEWAYS_SILVER_925,
   conservativeShellWallMm:Object.freeze({
-    // Reduced from 1.6/1.5 to 0.95/0.80 -- verified via Node.js harness
-    // this is what's needed to actually reach target weight for these
-    // large-format types; 0.80 sits exactly at Shapeways' polished-silver
-    // minimum wall (no further reduction possible without violating the
-    // manufacturing floor).
-    choker:0.95,
-    headpiece:0.80,
     bangle:1.7,
     cuffBracelet:1.8,
-    // ADDED: earCuff had no entry here, so applyConservativeSilverHollowing
-    // exited immediately without hollowing (wall=undefined -> !wall is
-    // true). Combined with a hard weight ceiling of 28g and zero
-    // hollowing path, earCuff was structurally guaranteed to fail the
-    // weight audit on almost any non-trivial decoration.
-    earCuff:0.85,
+    earCuff:0.85
   }),
   escapeHoleDiameterMm:2.4,
-  escapeHoleCount:2,
+  escapeHoleCount:SHAPEWAYS_SILVER_925.escapeHolesMm.preferredCount,
   thresholdsGrams:Object.freeze({
     ring:Object.freeze({hollowAt:Infinity,rejectAbove:38}),
     pendant:Object.freeze({hollowAt:Infinity,rejectAbove:110}),
     bangle:Object.freeze({hollowAt:125,rejectAbove:190}),
     cuffBracelet:Object.freeze({hollowAt:115,rejectAbove:180}),
-    // Raised per explicit direction: 1kg+ solid pieces were absurd, but
-    // the original 90-220g range was too tight for pieces this physically
-    // large even when properly hollowed. 150-220g is now the accepted
-    // range, proportional to each profile's relative scale/style.
-    chokerTorque:Object.freeze({hollowAt:110,rejectAbove:180}),
-    chokerSculptural:Object.freeze({hollowAt:90,rejectAbove:150}),
-    chokerCervical:Object.freeze({hollowAt:145,rejectAbove:220}),
-    headpiece:Object.freeze({hollowAt:90,rejectAbove:150}),
     cufflinks:Object.freeze({hollowAt:Infinity,rejectAbove:80}),
-    // FIXED: 28g was unreachable for an earCuff with normal structural
-    // baseWall (AGDP_STRUCTURAL_WALL_MM=1.3mm) plus any decoration (ribs,
-    // posts, rivets, nodes, transversal cuts). With earCuff now enabled
-    // for hollowing (see conservativeShellWallMm above), hollowAt kicks
-    // in before the hard limit, giving the piece the same weight escape
-    // valve as bangle/cuffBracelet. Values are a starting point calibrated
-    // to the same relative scale as bangle/cuffBracelet; recalibrate with
-    // the Node.js harness across a few real seeds if needed.
     earCuff:Object.freeze({hollowAt:22,rejectAbove:42}),
-    // The brooch is a single solid spring clip; hoopEarring is small by
-    // construction. Neither uses the scaled-copy hollowing operation.
-    brooch:Object.freeze({
-      // One-piece solid clip. No scaled hollowing: the spring path and its
-      // attachment roots must remain continuous. Weight is capped instead.
-      hollowAt:Infinity,
-      rejectAbove:75
-    }),
+    brooch:Object.freeze({hollowAt:Infinity,rejectAbove:75}),
     hoopEarring:Object.freeze({hollowAt:Infinity,rejectAbove:26})
   })
 });
 window.AGDP_SILVER_HOLLOWING=AGDP_SILVER_HOLLOWING;
 
-function silverWeightProfileKey(p){
-  if(p.type!=='choker')return p.type;
-  if(p.chokerProfile==='torque')return 'chokerTorque';
-  if(p.chokerProfile==='cervical')return 'chokerCervical';
-  return 'chokerSculptural';
-}
+function silverWeightProfileKey(p){ return p.type; }
 function manifoldBounds(manifold){
   const mesh=manifoldToMeshHelper(manifold);
   return {mesh,b:bounds(mesh.V)};
@@ -3470,15 +2952,13 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // The upper clamp caps how close the inner cavity's scale can get to 1
   // (a safety margin against near-total hollowing). At .94 this works
   // as a margin for compact pieces (bangle/cuffBracelet), but for large
-  // pieces (choker/headpiece, 100+mm across) the wall-based formula
   // (d-2*wall)/d is ITSELF already above .94 for any reasonable wall,
   // so .94 silently became the active constraint rather than a safety
   // margin -- capping achievable reduction to ~20% regardless of wall,
-  // which is why chokers could never reach their target weight even
   // with correct dimensions (diagnosed via Node.js harness). Raising
   // the ceiling for these two types lets the real wall-based formula
   // govern instead of the safety cap.
-  const scaleCeiling=p.type==='choker'?.985:p.type==='headpiece'?.994:.94;
+  const scaleCeiling=.94;
   const scale=dim.map(d=>clamp((d-2*wall)/d,.15,scaleCeiling));
   let inner=manifold.translate(center.map(v=>-v)).scale(scale).translate(center);
   let hollowed;
@@ -3495,8 +2975,6 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // defects. Selecting by SMALLEST radial distance from the central axis
   // (hypot(x,y)) instead guarantees the candidates are inner-wall points,
   // which are always plain by construction -- verified in a Node.js
-  // harness across choker/headpiece test batches (0% -> 87.5% pass rate
-  // for choker after this fix combined with the scale ceiling above).
   const candidates=before.mesh.V.slice().sort((a,bv)=>Math.hypot(a[0],a[1])-Math.hypot(bv[0],bv[1]));
   const innerMost=candidates.slice(0,Math.max(24,Math.floor(candidates.length*.12)));
   function pick(side){
@@ -3527,39 +3005,26 @@ function applyConservativeSilverHollowing(wasm,manifold,p){
   // Do not accept a boolean operation that saves too little material or
   // produces an implausibly aggressive reduction. Both indicate that the
   // internal copy did not behave as a reliable shell for this morphology.
-  // Ceiling raised slightly for headpiece (.93 vs .90): its weight target
   // is tight relative to its physical size even at the manufacturing
   // wall-thickness floor (0.8mm) -- see note in AGDP_SILVER_HOLLOWING
   // below about this being a product/threshold question, not purely an
   // engineering one.
   const reduction=1-finalWeight/Math.max(initialWeight,1e-6);
-  const reductionCeiling=p.type==='headpiece'?.93:.90;
+  const reductionCeiling=.90;
   if(!Number.isFinite(finalWeight)||reduction<.18||reduction>reductionCeiling)return manifold;
   const topo=topologyAudit(after.mesh.V,after.mesh.F);
   if(!topo.manifoldOK)return manifold;
 
   p.silverHollowingApplied=true;
-  p.silverShellWallMm=wall;
+  p.silverRequestedShellWallMm=wall;
+  p.silverShellMethod='scaledInternalDuplicate';
+  p.silverShellThicknessVerified=false;
   p.silverEscapeHoleDiameterMm=AGDP_SILVER_HOLLOWING.escapeHoleDiameterMm;
   p.silverEscapeHoleCount=2;
   p.silverWeightAfterHollowingG=finalWeight;
   p.silverWeightReductionRatio=reduction;
   return hollowed;
 }
-
-// KNOWN REMAINING ISSUE (found via Node.js harness testing, not yet
-// fixed): at the aggressive reduction levels now needed to hit choker/
-// headpiece weight targets, a small number of decorative elements (nodes/
-// veins from addOpenBandVolumetricField) occasionally end up disconnected
-// from the main shell where the internal cavity's boundary passes close
-// to their attachment point, and get silently dropped by
-// removeFloatingComponents downstream. Individually these fragments are
-// small (~0.1-0.4% of total triangles each), and typically only a few
-// occur per piece, but it means a small amount of intended surface detail
-// can be missing from a hollowed piece without any error being raised.
-// This trades one known issue (weight) for a smaller one (occasional
-// minor detail loss) rather than fixing both -- worth a dedicated look
-// if it turns out to be visually noticeable in practice.
 
 // =============================================================================
 // BROOCH — one-piece solid spring clip
@@ -3774,53 +3239,11 @@ async function makeMeshManifoldEntry(wasm, inputParams){
       type, innerD:p.mainSize, width:p.bandWidth,
       closed: topology.closed, opening: topology.closed?0:topology.opening
     }));
-    if(p.type==='choker'){
-      manifold=addOpenBandVolumetricField(wasm,manifold,p,'choker');
-      manifold=applyChokerErgonomics(wasm,manifold,p);
-    }else if(p.type==='headpiece'){
-      manifold=addOpenBandVolumetricField(wasm,manifold,p,'headpiece');
-      manifold=applyHeadErgonomics(wasm,manifold,p);
-    }
   }
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
 
-  // Choker and headpiece are split into 3 hook-and-eye-jointed segments
-  // (see splitIntoHookedSegments above) because at any wearable scale a
-  // single continuous piece exceeds Shapeways' 89x89x100mm silver-casting
-  // bounding box in every orientation. BUT that split is expensive (3
-  // wedge intersections + hook/eye CSG per attempt, confirmed via Node.js
-  // harness at ~300-360MB peak per generation) -- and the retry loop in
-  // ui.js can attempt up to 16 seeds per click. Running the full split on
-  // every attempt, including ones that will be rejected moments later for
-  // weight, is what produced the severe memory pressure reported live
-  // (site forced into refresh, chokers/headpieces effectively impossible
-  // to generate). The fix: check weight on the cheap UNSEGMENTED mesh
-  // first, and only pay the segmentation cost once a candidate has
-  // already cleared the one check most likely to reject it.
-  const isSegmentedType = (p.type==='choker' || p.type==='headpiece');
   let V, F;
-  if(isSegmentedType){
-    const preMesh = manifoldToMeshHelper(manifold);
-    const preWeightLimits = AGDP_SILVER_HOLLOWING.thresholdsGrams[silverWeightProfileKey(p)]||{rejectAbove:Infinity};
-    const preWeight = silverWeightGrams(meshVolumeMm3(preMesh.V, preMesh.F));
-    if (preWeight > preWeightLimits.rejectAbove) {
-      try{ manifold.delete(); }catch(e){}
-      return {
-        V: preMesh.V, F: preMesh.F,
-        audit: { ok:false, warning:'FALLA: masa de plata superior al límite ergonómico y económico',
-          silverG:preWeight, weightLimitG:preWeightLimits.rejectAbove, weightOK:false,
-          components:1, manifoldOK:true, finite:true, discardedComponents:[] },
-        bandW: p.bandWidth||0, innerR:(p.mainSize||0)/2
-      };
-    }
-    const wall = 2.2;
-    const segmentManifolds = splitIntoHookedSegments(wasm, manifold, wall);
-    ({V, F} = concatenateSegmentMeshes(segmentManifolds));
-    segmentManifolds.forEach(seg => { try{ seg.delete(); }catch(e){} });
-    p.segmentedIntoParts = 3;
-    p.segmentConnectorType = 'slidingDovetailRail';
-    p.segmentConnectorRailMm = 'full-height';
-  } else if(p.type==='hoopEarring') {
+  if(p.type==='hoopEarring') {
     // Validate the generated unit before duplication. A hoop earring must be
     // one closed connected solid; exporting a disconnected unit twice merely
     // turns one construction defect into several STL components.
@@ -3845,7 +3268,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     manifold = null;
   }
 
-  const expectedComponents = (p.type==='cufflinks'||p.type==='hoopEarring') ? 2 : (isSegmentedType ? 3 : 1);
+  const expectedComponents = (p.type==='cufflinks'||p.type==='hoopEarring') ? 2 : 1;
   const connected = removeFloatingComponents(V, F, expectedComponents);
   V = connected.V; F = connected.F;
   if(connected.discarded && connected.discarded.length){
@@ -3862,7 +3285,9 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   audit.weightLimitG=weightLimits.rejectAbove;
   audit.weightOK=audit.silverG<=weightLimits.rejectAbove;
   audit.hollowingApplied=!!p.silverHollowingApplied;
-  audit.shellWallMm=p.silverShellWallMm||null;
+  audit.requestedShellWallMm=p.silverRequestedShellWallMm||null;
+  audit.shellMethod=p.silverShellMethod||null;
+  audit.shellThicknessVerified=!!p.silverShellThicknessVerified;
   audit.escapeHoleDiameterMm=p.silverEscapeHoleDiameterMm||null;
   audit.escapeHoleCount=p.silverEscapeHoleCount||0;
   audit.weightBeforeHollowingG=p.silverWeightBeforeHollowingG||audit.silverG;
