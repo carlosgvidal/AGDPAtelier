@@ -1,5 +1,5 @@
 /* ==========================================================================
-   AGDP ATELIER v0.207 — scoped mount for the home page
+   AGDP ATELIER v0.201 — scoped mount for the home page
    ==========================================================================
    This file takes the standalone Atelier widget (AGDP_Atelier_v0_201.html,
    originally a full-page app) and mounts it inside #agdp-configurator-mount
@@ -25,10 +25,8 @@
    etc.) is unchanged, so the four script files — which look up those IDs
    with document.getElementById — work exactly as they did standalone.
 
-   v0.206 note: the unstable comb typology was removed. It is replaced by
-   brooch: a single-piece, non-articulated solid spring clip whose visible
-   face shares the AGDP morphology used by pendants and cufflinks.
-   hoopEarring remains unchanged.
+   Active typologies are defined by the buttons mounted below and are kept
+   synchronized with the UI, proportion engine and geometry module.
    ========================================================================== */
 (function(){
   'use strict';
@@ -117,8 +115,7 @@
   /* ---------------------------------------------------------------------
      2. Panel markup — extracted verbatim from AGDP_Atelier_v0_201.html's
      <body>, injected into the mount element instead of document.body.
-     v0.206: type grid updated: brooch replaces the removed comb typology.
-     The fastening is integral and has no separate mechanism selector.
+     The fastening for the brooch is integral and has no separate mechanism selector.
      --------------------------------------------------------------------- */
   mount.innerHTML = `
 <div class="agdp-public" id="agdpPublic">
@@ -171,42 +168,15 @@
 </div>`;
 
   /* ---------------------------------------------------------------------
-     3. Resolve dependencies and load the widget scripts.
-     All URLs are resolved relative to this loader file, not the page URL.
+     3. Load the four extracted script files in the original file's order.
      --------------------------------------------------------------------- */
-  const loaderScript = document.currentScript;
-  const loaderBaseUrl = loaderScript && loaderScript.src
-    ? new URL('.', loaderScript.src)
-    : new URL('.', window.location.href);
-
-  function installImportMap(){
-    if(document.querySelector('script[data-agdp-importmap]')) return;
-    const map=document.createElement('script');
-    map.type='importmap';
-    map.setAttribute('data-agdp-importmap','1');
-    map.textContent=JSON.stringify({imports:{
-      'three':'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js',
-      'three/addons/':'https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/',
-      'manifold-3d':'https://cdn.jsdelivr.net/npm/manifold-3d@2.3.1/manifold.js'
-    }});
-    document.head.appendChild(map);
-  }
-
-  installImportMap();
-  window.AGDP_bootState='loading';
-
   function loadScript(src, type){
     return new Promise((resolve, reject)=>{
       const s = document.createElement('script');
       if(type) s.type = type;
-      s.src = new URL(src, loaderBaseUrl).href;
-      s.onload = ()=>resolve(src);
-      s.onerror = (event)=>{
-        const err=new Error('Failed to load '+src);
-        err.scriptSource=src;
-        err.event=event;
-        reject(err);
-      };
+      s.src = src;
+      s.onload = ()=>resolve();
+      s.onerror = ()=>reject(new Error('Failed to load '+src));
       document.body.appendChild(s);
     });
   }
@@ -214,19 +184,15 @@
   (async function boot(){
     try{
       await loadScript('configurator.engine.js');
+      await loadScript('configurator.ui.js');
       await loadScript('configurator.geometry.js', 'module');
       await loadScript('configurator.viewport.js', 'module');
-      await loadScript('configurator.ui.js');
-      window.AGDP_bootState='ready';
-      window.dispatchEvent(new CustomEvent('agdp:ready'));
     }catch(err){
-      window.AGDP_bootState='failed';
-      window.AGDP_bootError=err;
       console.error('AGDP Configurator failed to load', err);
       const badge = document.getElementById('agdpStatusBadge');
       const wrap = document.getElementById('agdpStatusWrap');
       if(wrap) wrap.style.display='flex';
-      if(badge){ badge.className='agdp-status-badge'; badge.textContent='The 3D configurator could not initialize. Reload the page.'; }
+      if(badge){ badge.className='agdp-status-badge'; badge.textContent='No se pudo cargar el configurador — revisa tu conexión e intenta de nuevo.'; }
     }
   })();
 })();

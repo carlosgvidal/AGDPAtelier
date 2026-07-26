@@ -1,44 +1,19 @@
 'use strict';
-const AGDP_APP_VERSION='0.208';
+const AGDP_APP_VERSION='0.205';
 window.AGDP_APP_VERSION=AGDP_APP_VERSION;
-window.AGDP_generationActive=window.AGDP_generationActive===true;
-window.AGDP_lastRuntimeError=null;
-function reportAgdpRuntimeFailure(kind,eventOrReason){
-  const event=kind==='error'?eventOrReason:null;
-  const reason=kind==='rejection'?eventOrReason:(event&&event.error);
-  const message=String(
-    (reason&&reason.message)||
-    (event&&event.message)||
-    reason||
-    'Unknown runtime error'
-  );
-  const detail={
-    kind,
-    message,
-    filename:event&&event.filename||'',
-    line:event&&event.lineno||0,
-    column:event&&event.colno||0,
-    error:reason||null,
-    bootState:window.AGDP_bootState||'unknown',
-    generationActive:window.AGDP_generationActive===true
-  };
-  window.AGDP_lastRuntimeError=detail;
-  console.error('AGDP Atelier '+AGDP_APP_VERSION+' · runtime failure',detail);
-
+window.addEventListener('error',function(e){
   const statusWrap=document.getElementById('agdpStatusWrap');
   const statusBadge=document.getElementById('agdpStatusBadge');
-  if(!statusWrap||!statusBadge)return;
-
-  statusWrap.style.display='flex';
-  statusBadge.className='agdp-status-badge';
-  if(window.AGDP_generationActive===true){
-    statusBadge.textContent='The configuration could not be generated. Try another variant.';
-  }else{
-    statusBadge.textContent='The 3D configurator could not initialize. Reload the page.';
+  if(statusWrap)statusWrap.style.display='flex';
+  if(statusBadge){
+    statusBadge.className='agdp-status-badge';
+    statusBadge.textContent='The engine is adjusting the configuration — generate another variant.';
   }
-}
-window.addEventListener('error',function(e){reportAgdpRuntimeFailure('error',e);});
-window.addEventListener('unhandledrejection',function(e){reportAgdpRuntimeFailure('rejection',e.reason);});
+  console.error('AGDP Atelier '+AGDP_APP_VERSION+' · error global',e);
+});
+window.addEventListener('unhandledrejection',function(e){
+  console.error('AGDP Atelier '+AGDP_APP_VERSION+' · promesa rechazada',e.reason);
+});
 const $=id=>document.getElementById(id);
 const canvas=$('view');
 
@@ -267,16 +242,16 @@ function wrap(a){while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;retu
 const AGDP_PROPORTION_SYSTEM=Object.freeze({
   moduleMm:Object.freeze({min:3.6,canonical:5.4,max:7.0}),
   widthRangesMm:Object.freeze({
-    ring:Object.freeze([3.6,6.5]),
+    ring:Object.freeze([2.6,6.5]),
     bangle:Object.freeze([3.6,7.0]),
     cuffBracelet:Object.freeze([3.6,7.0]),
     earCuff:Object.freeze([3.6,6.5])
   }),
   envelopeRangesMm:Object.freeze({
-    pendant:Object.freeze([23.5,40]),
-    cufflinks:Object.freeze([15,25]),
-    brooch:Object.freeze([28,36]),
-    hoopEarring:Object.freeze([15,25])
+    pendant:Object.freeze([10.8,23.5]),
+    cufflinks:Object.freeze([12,12]),
+    brooch:Object.freeze([20,26]),
+    hoopEarring:Object.freeze([12.8,35])
   }),
   projectionRangesMm:Object.freeze({
     ring:Object.freeze([2.2,4.8]),

@@ -2953,7 +2953,7 @@ function makeHoopEarringManifold(wasm, p){
 }
 
 async function makeMeshManifoldEntry(wasm, inputParams){
-  const removedTypes = new Set(['comb', 'moneyClip']);
+  const removedTypes = new Set(['choker', 'headpiece', 'comb', 'moneyClip']);
   if (removedTypes.has(inputParams?.type)) {
     throw new Error('AGDP typology removed from catalog: ' + inputParams.type);
   }
@@ -3072,49 +3072,17 @@ function manifoldToMeshHelper(manifoldObj){
 }
 
 let _wasmReady = null;
-let _wasmEpoch = 0;
-let _generationQueue = Promise.resolve();
-
 function ensureWasm(){
   if(!_wasmReady){
-    const epoch = _wasmEpoch;
-    _wasmReady = Module()
-      .then(wasm => {
-        wasm.setup();
-        if(epoch !== _wasmEpoch) throw new Error('AGDP WASM initialization superseded by reset');
-        return wasm;
-      })
-      .catch(error => {
-        if(epoch === _wasmEpoch) _wasmReady = null;
-        throw error;
-      });
+    _wasmReady = Module().then(wasm => { wasm.setup(); return wasm; });
   }
   return _wasmReady;
 }
-
-// Invalidates the cached engine. There is deliberately no eager global
-// preload promise: retaining that promise kept the resolved WASM module alive
-// after a reset and also allocated its linear memory before the widget was used.
 window.AGDP_resetWasmModule = function(){
-  _wasmEpoch += 1;
   _wasmReady = null;
-  window.AGDP_MANIFOLD_PRELOAD = null;
 };
-
-// Serialize builds. Concurrent CSG jobs multiply peak WASM linear-memory use
-// and can make the widget fail during rapid parameter changes.
-window.makeMeshManifold = function(inputParams){
-  const run = async () => {
-    const wasm = await ensureWasm();
-    return makeMeshManifoldEntry(wasm, inputParams);
-  };
-  const task = _generationQueue.then(run, run);
-  _generationQueue = task.catch(() => undefined);
-  return task;
+window.makeMeshManifold = async function(inputParams){
+  const wasm = await ensureWasm();
+  return makeMeshManifoldEntry(wasm, inputParams);
 };
-
-// Optional explicit preload hook; not invoked automatically.
-window.AGDP_preloadManifold = function(){
-  return ensureWasm();
-};
-window.AGDP_MANIFOLD_PRELOAD = null;
+window.AGDP_MANIFOLD_PRELOAD = ensureWasm();
