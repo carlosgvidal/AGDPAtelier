@@ -1,5 +1,5 @@
 'use strict';
-const AGDP_APP_VERSION='0.207';
+const AGDP_APP_VERSION='0.208';
 window.AGDP_APP_VERSION=AGDP_APP_VERSION;
 window.AGDP_generationActive=window.AGDP_generationActive===true;
 window.AGDP_lastRuntimeError=null;

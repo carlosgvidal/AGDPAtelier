@@ -333,9 +333,9 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
   }
   async function runGenerate(){
     if(!selectedType)return;
+    if(generateBtn.disabled&&generateBtn.dataset.busy==='1')return;
     window.AGDP_generationActive=true;
     resetProductionState();
-    if(generateBtn.disabled&&generateBtn.dataset.busy==='1')return;
     await agdpMaybeResetEngineIfNeeded();
     const serial=++generationSerial;
     generateBtn.dataset.busy='1';
@@ -754,7 +754,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
   if(legacyCanvas) legacyCanvas.style.display='none';
   applyStaticTexts();
 
-  (function agdpRestoreAfterRefresh(){
+  function agdpRestoreAfterRefresh(){
     let restoreType=null, restoreSeed=null;
     try{
       restoreType=sessionStorage.getItem('agdp_restore_type');
@@ -768,5 +768,8 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     btn.click();
     if(restoreSeed){ currentSeed=restoreSeed; window.AGDP_currentSeed=currentSeed; }
     if(!generateBtn.disabled) runGenerate();
-  })();
+  }
+
+  if(window.AGDP_bootState==='ready') agdpRestoreAfterRefresh();
+  else window.addEventListener('agdp:ready',agdpRestoreAfterRefresh,{once:true});
 })();

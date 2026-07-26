@@ -171,15 +171,35 @@
 </div>`;
 
   /* ---------------------------------------------------------------------
-     3. Load the four extracted script files in the original file's order.
+     3. Resolve dependencies and load the widget scripts.
+     All URLs are resolved relative to this loader file, not the page URL.
      --------------------------------------------------------------------- */
+  const loaderScript = document.currentScript;
+  const loaderBaseUrl = loaderScript && loaderScript.src
+    ? new URL('.', loaderScript.src)
+    : new URL('.', window.location.href);
+
+  function installImportMap(){
+    if(document.querySelector('script[data-agdp-importmap]')) return;
+    const map=document.createElement('script');
+    map.type='importmap';
+    map.setAttribute('data-agdp-importmap','1');
+    map.textContent=JSON.stringify({imports:{
+      'three':'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js',
+      'three/addons/':'https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/',
+      'manifold-3d':'https://cdn.jsdelivr.net/npm/manifold-3d@2.3.1/manifold.js'
+    }});
+    document.head.appendChild(map);
+  }
+
+  installImportMap();
   window.AGDP_bootState='loading';
 
   function loadScript(src, type){
     return new Promise((resolve, reject)=>{
       const s = document.createElement('script');
       if(type) s.type = type;
-      s.src = src;
+      s.src = new URL(src, loaderBaseUrl).href;
       s.onload = ()=>resolve(src);
       s.onerror = (event)=>{
         const err=new Error('Failed to load '+src);
@@ -194,9 +214,9 @@
   (async function boot(){
     try{
       await loadScript('configurator.engine.js');
-      await loadScript('configurator.ui.js');
       await loadScript('configurator.geometry.js', 'module');
       await loadScript('configurator.viewport.js', 'module');
+      await loadScript('configurator.ui.js');
       window.AGDP_bootState='ready';
       window.dispatchEvent(new CustomEvent('agdp:ready'));
     }catch(err){
