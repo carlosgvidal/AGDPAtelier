@@ -273,10 +273,10 @@ let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // Catalogue view corrected by rotating the piece 90 degrees around X.
+    // Catalogue view corrected by rotating the piece 90 degrees around Z.
     // The dynamic hero yaw is then added to this base orientation so the
     // highest-volume sector remains directed toward the camera.
-    objectEulerDeg:[90,0,-1.5],
+    objectEulerDeg:[0,0,88.5],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.95,
     autoHeroYaw:true,
@@ -295,18 +295,18 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     chainRise:4.25
   }),
   bangle:Object.freeze({
-    // Catalogue view rotated 90 degrees around X, matching the corrected
+    // Catalogue view rotated 90 degrees around Z, matching the corrected
     // ring orientation while retaining automatic hero-facing alignment.
-    objectEulerDeg:[90,0,0],
+    objectEulerDeg:[0,0,90],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.82,
     autoHeroYaw:true,
     verticalOffset:-0.035
   }),
   cuffBracelet:Object.freeze({
-    // Open cuff rotated 90 degrees around X. Its dominant sculptural sector
+    // Open cuff rotated 90 degrees around Z. Its dominant sculptural sector
     // is still oriented automatically toward the camera.
-    objectEulerDeg:[90,0,0],
+    objectEulerDeg:[0,0,90],
     cameraDirection:[0.04,0.18,0.983],
     framing:1.76,
     autoHeroYaw:true,
@@ -362,79 +362,119 @@ function _estimatePendantBailOpening(geometry){
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   const box=geometry.boundingBox;
-  const sphere=geometry.boundingSphere;
   const position=geometry.getAttribute('position');
-  if(!box||!sphere||!position||position.count<12){
+  if(!box||!position||position.count<24){
     return {x:0,y:box?box.max.y:0,z:0,confidence:0};
   }
 
-  const height=Math.max(1e-6,box.max.y-box.min.y);
-  const width=Math.max(1e-6,box.max.x-box.min.x);
-  const yLow=box.max.y-height*.30;
-  const slices=54;
-  const halfThickness=height*.012;
-  let best=null;
+  const totalHeight=Math.max(1e-6,box.max.y-box.min.y);
+  const totalWidth=Math.max(1e-6,box.max.x-box.min.x);
+  const slices=80;
+  const sliceHalf=totalHeight/(slices*1.65);
+  const profiles=[];
 
-  // In a frontal bail, a horizontal slice through the opening has metal on
-  // both sides of x=0 but a clear central gap. Search only the upper region
-  // so holes in the pendant body cannot win.
+  // Measure only horizontal silhouette widths. The bail is the narrow upper
+  // component; the pendant body is much wider. This separates the bail first,
+  // before any attempt to estimate its opening.
   for(let s=0;s<slices;s++){
-    const y=yLow+(box.max.y-yLow)*(s/(slices-1));
-    let left=-Infinity,right=Infinity;
-    let zSum=0,zCount=0,leftCount=0,rightCount=0;
-
+    const y=box.min.y+totalHeight*(s/(slices-1));
+    let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity,count=0;
     for(let i=0;i<position.count;i++){
       const py=position.getY(i);
-      if(Math.abs(py-y)>halfThickness)continue;
-      const x=position.getX(i);
-      const z=position.getZ(i);
-      if(x<0){
-        left=Math.max(left,x);
-        leftCount++;
-      }else{
-        right=Math.min(right,x);
-        rightCount++;
-      }
-      zSum+=z;
-      zCount++;
+      if(Math.abs(py-y)>sliceHalf)continue;
+      const x=position.getX(i),z=position.getZ(i);
+      minX=Math.min(minX,x); maxX=Math.max(maxX,x);
+      minZ=Math.min(minZ,z); maxZ=Math.max(maxZ,z);
+      count++;
     }
-
-    if(leftCount<2||rightCount<2||!Number.isFinite(left)||!Number.isFinite(right))continue;
-    const gap=right-left;
-    if(gap<=width*.035)continue;
-
-    const centre=(left+right)*.5;
-    const symmetry=1-Math.min(1,Math.abs(centre)/(width*.18));
-    const upperBias=.7+.3*((y-yLow)/(box.max.y-yLow));
-    const score=gap*symmetry*upperBias;
-
-    if(!best||score>best.score){
-      best={
-        x:centre,
-        y,
-        z:zCount?zSum/zCount:0,
-        gap,
-        score
-      };
-    }
+    profiles.push({
+      y,count,minX,maxX,minZ,maxZ,
+      width:(count>3&&Number.isFinite(minX)&&Number.isFinite(maxX))?maxX-minX:Infinity
+    });
   }
 
-  if(best){
+  // Search from the top downward for a coherent narrow run. It must be
+  // substantially narrower than the pendant body, which prevents body holes
+  // or decorative voids from being mistaken for the bail.
+  const narrowLimit=totalWidth*.46;
+  let runStart=-1,runEnd=-1,bestRun=null;
+  for(let i=profiles.length-1;i>=0;i--){
+    const p=profiles[i];
+    const narrow=p.count>=4&&Number.isFinite(p.width)&&p.width<narrowLimit;
+    if(narrow){
+      if(runEnd<0)runEnd=i;
+      runStart=i;
+    }else if(runEnd>=0){
+      const span=profiles[runEnd].y-profiles[runStart].y;
+      if(span>totalHeight*.035){
+        bestRun={start:runStart,end:runEnd,span};
+        break;
+      }
+      runStart=-1; runEnd=-1;
+    }
+  }
+  if(!bestRun&&runEnd>=0){
+    const span=profiles[runEnd].y-profiles[runStart].y;
+    if(span>totalHeight*.035)bestRun={start:runStart,end:runEnd,span};
+  }
+
+  if(!bestRun){
     return {
-      x:best.x,
-      y:best.y,
-      // The chain lies through the middle plane of the detected opening.
-      z:best.z,
-      confidence:1
+      x:0,
+      y:box.max.y-totalHeight*.10,
+      z:(box.min.z+box.max.z)*.5,
+      confidence:0
     };
   }
 
-  // Conservative fallback for unusual pendant silhouettes.
+  const bailYMin=profiles[bestRun.start].y-sliceHalf;
+  const bailYMax=profiles[bestRun.end].y+sliceHalf;
+  const bailVertices=[];
+  for(let i=0;i<position.count;i++){
+    const y=position.getY(i);
+    if(y>=bailYMin&&y<=bailYMax){
+      bailVertices.push({
+        x:position.getX(i),
+        y,
+        z:position.getZ(i)
+      });
+    }
+  }
+
+  if(bailVertices.length<12){
+    return {
+      x:0,
+      y:(bailYMin+bailYMax)*.5,
+      z:(box.min.z+box.max.z)*.5,
+      confidence:.25
+    };
+  }
+
+  let bailMinX=Infinity,bailMaxX=-Infinity,bailMinY=Infinity,bailMaxY=-Infinity;
+  let bailMinZ=Infinity,bailMaxZ=-Infinity;
+  for(const v of bailVertices){
+    bailMinX=Math.min(bailMinX,v.x); bailMaxX=Math.max(bailMaxX,v.x);
+    bailMinY=Math.min(bailMinY,v.y); bailMaxY=Math.max(bailMaxY,v.y);
+    bailMinZ=Math.min(bailMinZ,v.z); bailMaxZ=Math.max(bailMaxZ,v.z);
+  }
+
+  // Estimate the centre of the aperture from the local bail bounds only.
+  // For a toroidal/oval bail this is markedly more stable than any centre
+  // derived from the complete pendant bounding box.
+  const centreX=(bailMinX+bailMaxX)*.5;
+  const centreY=(bailMinY+bailMaxY)*.5;
+  const centreZ=(bailMinZ+bailMaxZ)*.5;
+
   return {
-    x:0,
-    y:box.max.y-height*.105,
-    z:(box.min.z+box.max.z)*.5,
-    confidence:0
+    x:centreX,
+    y:centreY,
+    z:centreZ,
+    confidence:1,
+    bailBounds:{
+      minX:bailMinX,maxX:bailMaxX,
+      minY:bailMinY,maxY:bailMaxY,
+      minZ:bailMinZ,maxZ:bailMaxZ
+    }
   };
 }
 
@@ -449,8 +489,14 @@ function _createPendantDisplayChain(geometry,presentation){
   const opening=_estimatePendantBailOpening(geometry);
   const rise=radius*(Number.isFinite(presentation.chainRise)?presentation.chainRise:4.25);
   const topSpan=radius*(Number.isFinite(presentation.chainTopSpan)?presentation.chainTopSpan:2.15);
-  const shoulderHalf=radius*.15;
-  const shoulderY=opening.y+radius*.24;
+  const localBailWidth=opening.bailBounds
+    ?Math.max(radius*.10,opening.bailBounds.maxX-opening.bailBounds.minX)
+    :radius*.30;
+  const localBailHeight=opening.bailBounds
+    ?Math.max(radius*.10,opening.bailBounds.maxY-opening.bailBounds.minY)
+    :radius*.24;
+  const shoulderHalf=Math.max(radius*.07,localBailWidth*.62);
+  const shoulderY=opening.y+localBailHeight*.72;
 
   const group=new THREE.Group();
   group.name='AGDP_Pendant_Display_Chain';
