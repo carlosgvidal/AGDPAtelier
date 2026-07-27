@@ -2228,8 +2228,9 @@ async function makeCufflinksManifold(wasm, p) {
   // than the former pseudo-toggle post so the complete rigid finding can pass
   // through a French-cuff buttonhole without requiring a moving component.
   // Diameters: 4.0 mm at the front root, tapering to 3.3 mm through the usable
-  // shank. The terminal remains longitudinal and compact rather than forming
-  // a transverse bar.
+  // shank. The fixed terminal is an elongated transverse capsule: long
+  // enough to retain the cuff reliably, but fully rounded so it can still be
+  // inserted through the buttonhole by angling the rigid finding.
   const postRootRadius=Math.max(2.00,minFeature*.82);
   const postShaftRadius=Math.max(1.65,minFeature*.72);
   const postLength=clamp(
@@ -2241,9 +2242,10 @@ async function makeCufflinksManifold(wasm, p) {
   const postTiltRad=3*Math.PI/180;
   const rootRadius=Math.max(2.35,postRootRadius*1.18,minFeature*1.35);
   const rootDepth=Math.max(2.8,minFeature*2.35);
-  const terminalRadiusX=Math.max(2.15,minFeature*.92);
-  const terminalRadiusY=Math.max(1.85,minFeature*.82);
-  const terminalHalfLength=Math.max(2.75,minFeature*1.35);
+  const terminalHalfLength=Math.max(6.00,minFeature*2.55);
+  const terminalHalfWidth=Math.max(2.15,minFeature*.92);
+  const terminalHalfThickness=Math.max(1.75,minFeature*.78);
+  const terminalAttachmentOffset=Math.min(1.00,terminalHalfLength*.22);
   function cufflinkPostPoint(s){
     const half=postLength*.5;
     const sagitta=postCurvatureRadius-Math.sqrt(Math.max(0,postCurvatureRadius*postCurvatureRadius-half*half));
@@ -2285,21 +2287,23 @@ async function makeCufflinksManifold(wasm, p) {
     const postMesh=variableEllipticalTubeMesh(postPathPts, postRadii, 28, false);
     target.push(meshToManifold(wasm, postMesh.V, postMesh.F));
 
-    // Longitudinal olive/drop terminal. It overlaps the final tube segment,
-    // producing one closed rigid solid while retaining a smooth insertion
-    // profile. Its maximum transverse envelope is approximately 4.3 x 3.7 mm.
+    // Elongated transverse capsule. The attachment is intentionally offset
+    // by 1 mm from its geometric centre, keeping more material on the outer
+    // retention side while bringing its centre of mass closer to the cuff.
+    // A small tangent-direction overlap embeds the post inside the capsule so
+    // the union remains one closed rigid solid without a narrow neck.
     const tip=postPathPts[postPathPts.length-1];
     const prev=postPathPts[postPathPts.length-2];
     const tx=tip[0]-prev[0],ty=tip[1]-prev[1],tz=tip[2]-prev[2];
     const tangentLength=Math.hypot(tx,ty,tz)||1;
-    const extension=terminalHalfLength*.58/tangentLength;
+    const ux=tx/tangentLength,uy=ty/tangentLength,uz=tz/tangentLength;
     const terminalCenter=[
-      tip[0]+tx*extension,
-      tip[1]+ty*extension,
-      tip[2]+tz*extension
+      tip[0]-terminalAttachmentOffset+ux*terminalHalfThickness*.42,
+      tip[1]+uy*terminalHalfThickness*.42,
+      tip[2]+uz*terminalHalfThickness*.42
     ];
-    const terminal=Manifold.sphere(1,40)
-      .scale([terminalRadiusX,terminalRadiusY,terminalHalfLength])
+    const terminal=Manifold.sphere(1,48)
+      .scale([terminalHalfLength,terminalHalfWidth,terminalHalfThickness])
       .translate(terminalCenter);
     target.push(terminal);
   }
@@ -2399,10 +2403,11 @@ async function makeCufflinksManifold(wasm, p) {
   p.cufflinkUnitComponents=unitAudit.components;
   p.cufflinkPairComponents=pairAudit.components;
   p.cufflinkPostLengthMm=postLength;
-  p.cufflinkBackingType='fixedCurvedStud';
+  p.cufflinkBackingType='fixedCurvedStudTransverseCapsule';
   p.cufflinkPostRootDiameterMm=postRootRadius*2;
   p.cufflinkPostShaftDiameterMm=postShaftRadius*2;
-  p.cufflinkTerminalEnvelopeMm=[terminalRadiusX*2,terminalRadiusY*2,terminalHalfLength*2];
+  p.cufflinkTerminalEnvelopeMm=[terminalHalfLength*2,terminalHalfWidth*2,terminalHalfThickness*2];
+  p.cufflinkTerminalAttachmentOffsetMm=terminalAttachmentOffset;
   p.cufflinkCapFootprintMm=[capHalfX*2,capHalfY*2];
   p.cufflinkCapClosure='fullDeformedFootprint';
   p.cufflinkDnaSurface='+ZFrontOnly';
