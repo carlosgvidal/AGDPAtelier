@@ -269,6 +269,7 @@ const _material = new THREE.MeshPhysicalMaterial({
   roughnessMap: buildBrushedRoughnessMap(),
 });
 let _mesh3d = null;
+let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
@@ -282,7 +283,16 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     verticalOffset:-0.035
   }),
   pendant:Object.freeze({
-    objectEulerDeg:[0,0,0], cameraDirection:[0.05,0.09,1.0], framing:1.17
+    // Vertical jewellery-catalogue composition. The pendant remains frontal,
+    // sits in the lower part of the canvas and is accompanied by a display-
+    // only sample chain that is never included in the exported mesh.
+    objectEulerDeg:[0,0,0],
+    cameraDirection:[0.015,0.055,0.998],
+    framing:3.15,
+    verticalOffset:1.42,
+    displayChain:true,
+    chainTopSpan:2.15,
+    chainRise:4.25
   }),
   bangle:Object.freeze({
     objectEulerDeg:[0,0,8], cameraDirection:[0.60,0.38,0.71], framing:1.18
@@ -323,6 +333,90 @@ function _presentationViewFor(nextMesh){
 }
 function _degToRad3(values){
   return values.map(v=>THREE.MathUtils.degToRad(v||0));
+}
+
+function _disposeObject3D(root){
+  if(!root)return;
+  root.traverse(obj=>{
+    if(obj.geometry&&obj.geometry.dispose)obj.geometry.dispose();
+    if(obj.material){
+      const materials=Array.isArray(obj.material)?obj.material:[obj.material];
+      materials.forEach(material=>material&&material.dispose&&material.dispose());
+    }
+  });
+}
+
+function _createPendantDisplayChain(geometry,presentation){
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  const box=geometry.boundingBox;
+  const sphere=geometry.boundingSphere;
+  if(!box||!sphere)return null;
+
+  const radius=Math.max(1,sphere.radius);
+  const topY=box.max.y;
+  const rise=radius*(Number.isFinite(presentation.chainRise)?presentation.chainRise:4.25);
+  const topSpan=radius*(Number.isFinite(presentation.chainTopSpan)?presentation.chainTopSpan:2.15);
+  const anchorGap=Math.max(radius*.075,Math.min(radius*.15,(box.max.x-box.min.x)*.10));
+  const startY=topY+radius*.025;
+  const backZ=-radius*.11;
+
+  const group=new THREE.Group();
+  group.name='AGDP_Pendant_Display_Chain';
+  group.userData.presentationOnly=true;
+
+  const chainMaterial=new THREE.MeshPhysicalMaterial({
+    color:0xe8e8e8,
+    metalness:1,
+    roughness:.21,
+    envMapIntensity:.82,
+    clearcoat:0
+  });
+
+  const linkGeometry=new THREE.TorusGeometry(radius*.038,radius*.0105,6,12);
+  const linkSpacing=radius*.105;
+
+  function addBranch(side){
+    const curve=new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(side*anchorGap,startY,backZ),
+      new THREE.Vector3(side*topSpan*.42,startY+rise*.48,backZ-radius*.035),
+      new THREE.Vector3(side*topSpan,startY+rise,backZ)
+    );
+    const length=curve.getLength();
+    const count=Math.max(18,Math.min(54,Math.round(length/linkSpacing)));
+    for(let i=0;i<count;i++){
+      const t=(i+.15)/(count-.7);
+      const point=curve.getPoint(clamp(t,0,1));
+      const tangent=curve.getTangent(clamp(t,0,1)).normalize();
+      const link=new THREE.Mesh(linkGeometry,chainMaterial);
+      link.position.copy(point);
+
+      // Elliptical, alternating links suggest a fine cable chain without
+      // adding hundreds of facets or competing visually with the pendant.
+      link.scale.set(.72,1.28,1);
+      link.rotation.z=Math.atan2(tangent.y,tangent.x)-Math.PI/2;
+      link.rotation.x=(i%2===0)?THREE.MathUtils.degToRad(58):THREE.MathUtils.degToRad(-18);
+      link.rotation.y=(i%2===0)?THREE.MathUtils.degToRad(8):THREE.MathUtils.degToRad(-8);
+      group.add(link);
+    }
+  }
+
+  addBranch(-1);
+  addBranch(1);
+
+  // A restrained connector behind the bail visually joins both chain runs
+  // while remaining clearly separate from the generated/exported jewellery.
+  const connectorCurve=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-anchorGap,startY,backZ),
+    new THREE.Vector3(0,startY-radius*.035,backZ-radius*.01),
+    new THREE.Vector3(anchorGap,startY,backZ)
+  ]);
+  const connector=new THREE.Mesh(
+    new THREE.TubeGeometry(connectorCurve,12,radius*.0105,6,false),
+    chainMaterial
+  );
+  group.add(connector);
+  return group;
 }
 
 function _ringHeroYaw(geometry){
@@ -406,6 +500,11 @@ _resize();
 
 window.AGDP_setRenderMesh = function(nextMesh){
   if(_mesh3d){ _scene.remove(_mesh3d); _mesh3d.geometry.dispose(); _mesh3d=null; }
+  if(_presentationAccessory){
+    _scene.remove(_presentationAccessory);
+    _disposeObject3D(_presentationAccessory);
+    _presentationAccessory=null;
+  }
   const prevTarget = _controls.target.clone();
   const prevPos = _camera.position.clone();
   _createControls();
@@ -441,6 +540,14 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const heroYaw=(type==='ring'&&presentation.autoHeroYaw)?_ringHeroYaw(geometry):0;
   _mesh3d.rotation.set(objectEuler[0],objectEuler[1]+heroYaw,objectEuler[2]);
   _scene.add(_mesh3d);
+
+  if(type==='pendant'&&presentation.displayChain){
+    _presentationAccessory=_createPendantDisplayChain(geometry,presentation);
+    if(_presentationAccessory){
+      _presentationAccessory.rotation.copy(_mesh3d.rotation);
+      _scene.add(_presentationAccessory);
+    }
+  }
 
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
