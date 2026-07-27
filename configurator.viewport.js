@@ -318,23 +318,21 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     objectEulerDeg:[0,0,-10], cameraDirection:[0.49,0.21,0.85], framing:1.18
   }),
   brooch:Object.freeze({
-    // Frontal catalogue presentation. A 90-degree rotation in the current
-    // presentation plane places the open end of the integrated rear clip
-    // downward while preserving a restrained view of its depth.
-    objectEulerDeg:[0,-5,90],
+    // Same presentation axis as before, rotated an additional 180 degrees
+    // so the clip orientation is inverted without changing camera or scale.
+    objectEulerDeg:[0,-5,270],
     cameraDirection:[0.10,0.10,0.99],
     framing:1.42,
     verticalOffset:-0.015
   }),
   hoopEarring:Object.freeze({
-    // Hoops are conventionally photographed hanging with a slight
-    // forward tilt so the ring's own circular silhouette and the
-    // decorated lower body are both legible at once -- close to the
-    // pendant's near-frontal logic (front faces +Z by construction, via
-    // the shared makeFaceManifold body) but with a bit more yaw since a
-    // hoop's own ring shape benefits from showing depth, unlike a flat
-    // pendant plate.
-    objectEulerDeg:[0,-6,0], cameraDirection:[0.22,0.16,0.97], framing:1.22
+    // Upright catalogue presentation inspired by classic hoop photography:
+    // frontal enough to read the complete oval, with a slight yaw to reveal
+    // thickness and fastening depth. The piece occupies more of the canvas.
+    objectEulerDeg:[0,-10,90],
+    cameraDirection:[0.12,0.10,0.988],
+    framing:1.38,
+    verticalOffset:-0.01
   }),
   default:Object.freeze({
     objectEulerDeg:[0,0,0], cameraDirection:[0.42,0.30,1], framing:1.20
