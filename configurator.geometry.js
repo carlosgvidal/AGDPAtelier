@@ -522,6 +522,67 @@ function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cor
 }
 
 
+function smoothRoundedRectTubeMeshYZ(origin, outerW, outerH, innerW, innerH, depth, straightSegments, cornerSegments, radialSegments) {
+  // Closed rounded-rectangle tube in the YZ plane. Unlike an extruded frame,
+  // every visible surface is part of one continuous swept skin, so polished
+  // materials do not expose diagonal splits across broad planar quads.
+  const ss=Math.max(4,Math.round(straightSegments||10));
+  const cs=Math.max(10,Math.round(cornerSegments||18));
+  const rs=Math.max(16,Math.round(radialSegments||24));
+  const wallZ=Math.max((outerW-innerW)*.5,AGDP_MIN_WALL_MM);
+  const wallY=Math.max((outerH-innerH)*.5,AGDP_MIN_WALL_MM);
+  const tubeR=Math.max(AGDP_MIN_WALL_MM*.52,Math.min(wallZ,wallY)*.5);
+  const rx=Math.max(depth*.5,AGDP_MIN_WALL_MM*.55);
+  const hz=Math.max(innerW*.5+tubeR,tubeR*1.8);
+  const hy=Math.max(innerH*.5+tubeR,tubeR*1.8);
+  const cr=Math.min(Math.max(tubeR*1.25,Math.min(hz,hy)*.16),hz-tubeR*.35,hy-tubeR*.35);
+  const path=[];
+  const addLine=(z0,y0,z1,y1,n)=>{
+    for(let i=0;i<n;i++){const t=i/n;path.push([z0+(z1-z0)*t,y0+(y1-y0)*t]);}
+  };
+  const addArc=(cz,cy,a0,a1,n)=>{
+    for(let i=0;i<n;i++){const a=a0+(a1-a0)*(i/n);path.push([cz+cr*Math.cos(a),cy+cr*Math.sin(a)]);}
+  };
+  // Counter-clockwise centerline, with explicit subdivisions along every
+  // straight span to keep triangle size and normal interpolation uniform.
+  addLine(hz-cr,-hy,hz-cr,hy,ss);
+  addArc(hz-cr,hy,0,Math.PI*.5,cs);
+  addLine(hz,hy-cr,-hz,hy-cr,ss);
+  addArc(-hz+cr,hy,Math.PI*.5,Math.PI,cs);
+  addLine(-hz+cr,hy,-hz+cr,-hy,ss);
+  addArc(-hz+cr,-hy,Math.PI,Math.PI*1.5,cs);
+  addLine(-hz,-hy+cr,hz,-hy+cr,ss);
+  addArc(hz-cr,-hy,Math.PI*1.5,Math.PI*2,cs);
+
+  const n=path.length,V=[],F=[];
+  for(let i=0;i<n;i++){
+    const prev=path[(i+n-1)%n], next=path[(i+1)%n];
+    let tz=next[0]-prev[0], ty=next[1]-prev[1];
+    const tl=Math.hypot(tz,ty)||1;tz/=tl;ty/=tl;
+    // For a CCW path, the right-hand normal points outside the frame.
+    const nz=ty, ny=-tz;
+    for(let k=0;k<rs;k++){
+      const a=2*Math.PI*k/rs;
+      const ca=Math.cos(a),sa=Math.sin(a);
+      V.push([
+        origin[0]+rx*ca,
+        origin[1]+path[i][1]+tubeR*sa*ny,
+        origin[2]+path[i][0]+tubeR*sa*nz
+      ]);
+    }
+  }
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    for(let k=0;k<rs;k++){
+      const l=(k+1)%rs;
+      const a=i*rs+k,b=j*rs+k,c=j*rs+l,d=i*rs+l;
+      F.push([a,b,c],[a,c,d]);
+    }
+  }
+  return {V,F};
+}
+
+
 function rectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, depth) {
   // Closed rectangular frame in the YZ plane. The chain passage runs along X,
   // matching the lateral orientation of a conventional pendant bail.
@@ -2175,8 +2236,8 @@ async function makePendantManifold(wasm, p) {
   const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
   // Use the refined closed frame mesh rather than a union of four cubes.
   // The denser rounded corners remove diagonal shading bands on polished metal.
-  const bailMesh=refinedRectilinearFrameMeshYZ(
-    crownCenter,frameOuterW,frameOuterH,frameInnerW,frameInnerH,frameDepth,20
+  const bailMesh=smoothRoundedRectTubeMeshYZ(
+    crownCenter,frameOuterW,frameOuterH,frameInnerW,frameInnerH,frameDepth,12,20,28
   );
   const bailManifold=meshToManifold(wasm,bailMesh.V,bailMesh.F);
   parts.push(bailManifold);
@@ -2621,37 +2682,34 @@ async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceT
   });
   let base=built.manifold;
 
-  if(source==='cufflink'){
-    const crownMesh=manifoldToMesh(base);
-    const crownAudit=validate(crownMesh.V,crownMesh.F,{
-      type:'brooch-cufflink-crown',minFeature,printProfile:p.printProfile||'silverPolished'
-    });
-    if(!crownAudit.manifoldOK||crownAudit.components!==1||!crownAudit.finite){
-      throw new Error('AGDP brooch cufflink-derived crown is not a closed manifold');
-    }
-    const capDepth=Math.max(2.2,bandWidth*.46,minFeature*2.4);
-    const rearFaceZ=-bandWidth*.5;
-    const posteriorFlattenZ=-Math.max(minFeature*.22,bandWidth*.08);
-    const capTopZ=posteriorFlattenZ;
-    const capBottomZ=rearFaceZ-capDepth*.58;
-    const capHeight=capTopZ-capBottomZ;
-    const capCenterZ=(capTopZ+capBottomZ)*.5;
-    const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
-    const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
-    const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
-    const capHalfX=crownHalfX+footprintOverlap;
-    const capHalfY=crownHalfY+footprintOverlap;
-    // Use a physically beveled, high-resolution elliptical transition rather
-    // than a flat-ended cylinder. The previous 90-degree rim concentrated
-    // interpolated normals and produced triangular highlights between the
-    // crown and the rear mechanism in polished materials.
-    const capBevel=Math.max(.20,Math.min(.42,minFeature*.34,capHeight*.18));
-    let capFill=beveledEllipticalCylinderManifold(
-      wasm,[0,0,capCenterZ],capHalfX,capHalfY,capHeight,capBevel,192
-    );
-    capFill=decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature);
-    base=unionAll(wasm,[base,capFill]);
+  // Every brooch base receives a full posterior cap, including bases derived
+  // from the pendant annulus. Without it, the rear clip remains visible
+  // through the central opening and the piece reads as mechanically exposed.
+  const crownMesh=manifoldToMesh(base);
+  const crownAudit=validate(crownMesh.V,crownMesh.F,{
+    type:'brooch-'+source+'-crown',minFeature,printProfile:p.printProfile||'silverPolished'
+  });
+  if(!crownAudit.manifoldOK||crownAudit.components!==1||!crownAudit.finite){
+    throw new Error('AGDP brooch '+source+'-derived crown is not a closed manifold');
   }
+  const capDepth=Math.max(2.2,bandWidth*.46,minFeature*2.4);
+  const rearFaceZ=-bandWidth*.5;
+  const posteriorFlattenZ=-Math.max(minFeature*.22,bandWidth*.08);
+  const capTopZ=posteriorFlattenZ;
+  const capBottomZ=rearFaceZ-capDepth*.58;
+  const capHeight=capTopZ-capBottomZ;
+  const capCenterZ=(capTopZ+capBottomZ)*.5;
+  const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
+  const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
+  const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
+  const capHalfX=crownHalfX+footprintOverlap;
+  const capHalfY=crownHalfY+footprintOverlap;
+  const capBevel=Math.max(.20,Math.min(.42,minFeature*.34,capHeight*.18));
+  let capFill=beveledEllipticalCylinderManifold(
+    wasm,[0,0,capCenterZ],capHalfX,capHalfY,capHeight,capBevel,192
+  );
+  capFill=decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature);
+  base=unionAll(wasm,[base,capFill]);
 
   const baseMesh=manifoldToMesh(base);
   const baseBounds=bounds(baseMesh.V);
@@ -2814,7 +2872,7 @@ async function makeBroochClipManifold(wasm,p){
   p.broochAssemblyRequired=false;
   p.broochBaseSource=baseBuild.source;
   p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
-  p.broochGeneratorVersion='brooch-v7-beveled-cap-fixed-bail-winding';
+  p.broochGeneratorVersion='brooch-v8-universal-cap-smooth-swept-bail';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
