@@ -89,7 +89,7 @@
 #${MOUNT_ID} .agdp-status-badge.thinking{color:var(--agdp-dark);display:flex;align-items:center;gap:9px;}
 #${MOUNT_ID} .agdp-status-badge.thinking::before{content:'';width:10px;height:10px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:0;animation:agdpThink .8s linear infinite;}
 @keyframes agdpThink{to{transform:rotate(360deg)}}
-#${MOUNT_ID} .agdp-status-badge.ready{color:#3a6b3a;}
+#${MOUNT_ID} .agdp-status-badge.ready{color:var(--agdp-dark);}
 #${MOUNT_ID} .agdp-dims-panel{margin-top:14px;background:var(--agdp-cream);border:1px solid rgba(79,58,39,.2);border-radius:0;padding:12px 16px;font-family:var(--font-sans);font-size:12.5px;line-height:1.6;color:var(--agdp-dark);}
 #${MOUNT_ID} .agdp-dims-panel .dims-title{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--agdp-taupe);font-weight:700;margin-bottom:4px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-row{display:flex;justify-content:space-between;gap:16px;}
