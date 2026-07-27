@@ -596,6 +596,78 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
   return {V,F};
 }
 
+
+
+// Closed rounded prism with a shallow physical bevel. The bevel prevents
+// renderers that average vertex normals from smearing a 90-degree edge across
+// large planar triangles, while preserving the functional outer envelope.
+function beveledRoundedRectPrismMesh(center,w,h,d,cornerR,bevel,cornerSegments){
+  const cs=Math.max(6,Math.round(cornerSegments||12));
+  const b=Math.max(0,Math.min(bevel||0,d*.24,w*.08,h*.08));
+  const baseR=Math.max(0,Math.min(cornerR||0,w*.5-b,h*.5-b));
+  function loop(lw,lh,r){
+    const pts=[];
+    if(r<=1e-7) return [[lw*.5,lh*.5],[-lw*.5,lh*.5],[-lw*.5,-lh*.5],[lw*.5,-lh*.5]];
+    const cx=lw*.5-r,cy=lh*.5-r;
+    const centers=[[cx,cy],[-cx,cy],[-cx,-cy],[cx,-cy]];
+    const starts=[0,Math.PI*.5,Math.PI,Math.PI*1.5];
+    for(let q=0;q<4;q++)for(let k=0;k<cs;k++){
+      const a=starts[q]+k/cs*Math.PI*.5;
+      pts.push([centers[q][0]+r*Math.cos(a),centers[q][1]+r*Math.sin(a)]);
+    }
+    return pts;
+  }
+  const endW=Math.max(AGDP_MIN_WALL_MM,w-2*b),endH=Math.max(AGDP_MIN_WALL_MM,h-2*b);
+  const endR=Math.max(0,baseR-b);
+  const rings=[
+    {z:-d*.5,pts:loop(endW,endH,endR)},
+    {z:-d*.5+b,pts:loop(w,h,baseR)},
+    {z:d*.5-b,pts:loop(w,h,baseR)},
+    {z:d*.5,pts:loop(endW,endH,endR)}
+  ];
+  const n=rings[0].pts.length,V=[],F=[],idx=[];
+  for(const ring of rings){
+    const row=[];
+    for(const pt of ring.pts){row.push(V.length);V.push([center[0]+pt[0],center[1]+pt[1],center[2]+ring.z]);}
+    idx.push(row);
+  }
+  const q=(a,b,c,d)=>F.push([a,b,c],[a,c,d]);
+  for(let r=0;r<idx.length-1;r++)for(let i=0;i<n;i++){const j=(i+1)%n;q(idx[r][i],idx[r][j],idx[r+1][j],idx[r+1][i]);}
+  const bot=V.length;V.push([center[0],center[1],center[2]-d*.5]);
+  const top=V.length;V.push([center[0],center[1],center[2]+d*.5]);
+  for(let i=0;i<n;i++){const j=(i+1)%n;F.push([bot,idx[0][j],idx[0][i]]);F.push([top,idx[3][i],idx[3][j]]);}
+  return {V,F};
+}
+
+function beveledRoundedRectPrismManifold(wasm,center,w,h,d,cornerR,bevel,cornerSegments){
+  const m=beveledRoundedRectPrismMesh(center,w,h,d,cornerR,bevel,cornerSegments);
+  return meshToManifold(wasm,m.V,m.F);
+}
+
+function beveledEllipticalCylinderMesh(center,rx,ry,d,bevel,segments){
+  const n=Math.max(48,Math.round(segments||128));
+  const b=Math.max(0,Math.min(bevel||0,d*.24,rx*.12,ry*.12));
+  const sx=Math.max(.05,(rx-b)/rx),sy=Math.max(.05,(ry-b)/ry);
+  const levels=[[-d*.5,sx,sy],[-d*.5+b,1,1],[d*.5-b,1,1],[d*.5,sx,sy]];
+  const V=[],F=[],rows=[];
+  for(const [z,kx,ky] of levels){
+    const row=[];
+    for(let i=0;i<n;i++){const a=2*Math.PI*i/n;row.push(V.length);V.push([center[0]+rx*kx*Math.cos(a),center[1]+ry*ky*Math.sin(a),center[2]+z]);}
+    rows.push(row);
+  }
+  const q=(a,b,c,d)=>F.push([a,b,c],[a,c,d]);
+  for(let r=0;r<3;r++)for(let i=0;i<n;i++){const j=(i+1)%n;q(rows[r][i],rows[r][j],rows[r+1][j],rows[r+1][i]);}
+  const bot=V.length;V.push([center[0],center[1],center[2]-d*.5]);
+  const top=V.length;V.push([center[0],center[1],center[2]+d*.5]);
+  for(let i=0;i<n;i++){const j=(i+1)%n;F.push([bot,rows[0][j],rows[0][i]]);F.push([top,rows[3][i],rows[3][j]]);}
+  return {V,F};
+}
+
+function beveledEllipticalCylinderManifold(wasm,center,rx,ry,d,bevel,segments){
+  const m=beveledEllipticalCylinderMesh(center,rx,ry,d,bevel,segments);
+  return meshToManifold(wasm,m.V,m.F);
+}
+
 function rectilinearFrameManifoldYZ(wasm, origin, outerW, outerH, innerW, innerH, depth) {
   const { Manifold } = wasm;
   const wallZ = Math.max((outerW-innerW)*.5, AGDP_MIN_WALL_MM);
@@ -2098,15 +2170,12 @@ async function makePendantManifold(wasm, p) {
   // member enters the annular opening.
   const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
   const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
-  const bailManifold=rectilinearFrameManifoldYZ(
-    wasm,
-    crownCenter,
-    frameOuterW,
-    frameOuterH,
-    frameInnerW,
-    frameInnerH,
-    frameDepth
+  // Use the refined closed frame mesh rather than a union of four cubes.
+  // The denser rounded corners remove diagonal shading bands on polished metal.
+  const bailMesh=refinedRectilinearFrameMeshYZ(
+    crownCenter,frameOuterW,frameOuterH,frameInnerW,frameInnerH,frameDepth,20
   );
+  const bailManifold=meshToManifold(wasm,bailMesh.V,bailMesh.F);
   parts.push(bailManifold);
 
   let manifold=unionAll(wasm,parts);
@@ -2213,8 +2282,10 @@ async function makeCufflinksManifold(wasm, p) {
   const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
   const capHalfX=crownHalfX+footprintOverlap;
   const capHalfY=crownHalfY+footprintOverlap;
-  const capFill=Manifold.cylinder(capHeight,1,1,160,true)
-    .scale([capHalfX,capHalfY,1]).translate([0,0,capCenterZ]);
+  const capBevel=Math.min(.34,capHeight*.16,minFeature*.32);
+  const capFill=beveledEllipticalCylinderManifold(
+    wasm,[0,0,capCenterZ],capHalfX,capHalfY,capHeight,capBevel,192
+  );
 
   const structuralParts=[crown,capFill];
 
@@ -2627,8 +2698,11 @@ async function makeBroochClipManifold(wasm,p){
   const backerH=Math.min(faceH*.34,Math.max(flapW+3.2,9.0));
   const backerDepth=backerT+embedDepth;
   const backerZ=faceBackZ+(embedDepth-backerT)/2;
-  let backer=Manifold.cube([backerW,backerH,backerDepth],true)
-    .translate([0,0,backerZ]);
+  const mechanismBevel=Math.min(.28,backerT*.14);
+  let backer=beveledRoundedRectPrismManifold(
+    wasm,[0,0,backerZ],backerW,backerH,backerDepth,
+    Math.min(1.15,backerH*.13),mechanismBevel,14
+  );
 
   // Reject a face/backer pair that does not share real volume. This prevents
   // removeFloatingComponents() from silently discarding the mechanism later.
@@ -2651,8 +2725,10 @@ async function makeBroochClipManifold(wasm,p){
   const rootFrontZ=backerRearZ+overlapIntoBacker;
   const rootZ=rootFrontZ-rootDepth/2;
   const rootX=-flapL/2+rootL/2;
-  const root=Manifold.cube([rootL,flapW,rootDepth],true)
-    .translate([rootX,0,rootZ]);
+  const root=beveledRoundedRectPrismManifold(
+    wasm,[rootX,0,rootZ],rootL,flapW,rootDepth,
+    Math.min(.75,flapW*.12),Math.min(.24,flapT*.12),12
+  );
 
   // The tongue overlaps the root longitudinally. A slight upward rake at the
   // free end provides pressure while preserving an open usable throat.
@@ -2662,17 +2738,21 @@ async function makeBroochClipManifold(wasm,p){
   const tongueCenterX=(tongueStartX+freeX)/2;
   const rise=Math.min(.50,gap*.18);
   const angleDeg=Math.atan2(rise,Math.max(1,tongueL))*180/Math.PI;
-  const tongue=Manifold.cube([tongueL,flapW,flapT],true)
-    .rotate([0,-angleDeg,0])
-    .translate([tongueCenterX,0,flapCenterZ+rise/2]);
+  const tongue=beveledRoundedRectPrismManifold(
+    wasm,[0,0,0],tongueL,flapW,flapT,
+    Math.min(.72,flapW*.12),Math.min(.22,flapT*.11),12
+  ).rotate([0,-angleDeg,0])
+   .translate([tongueCenterX,0,flapCenterZ+rise/2]);
 
   // A modest terminal pressure pad is fused to the same tongue. It does not
   // close against the face and does not imitate a separate catch.
   const padL=Math.max(2.8,flapT*1.55);
   const padW=Math.min(flapW+.8,8.6);
-  const pad=Manifold.cube([padL,padW,flapT],true)
-    .rotate([0,-angleDeg,0])
-    .translate([freeX-padL/2,0,flapCenterZ+rise]);
+  const pad=beveledRoundedRectPrismManifold(
+    wasm,[0,0,0],padL,padW,flapT,
+    Math.min(.78,padW*.13),Math.min(.22,flapT*.11),12
+  ).rotate([0,-angleDeg,0])
+   .translate([freeX-padL/2,0,flapCenterZ+rise]);
 
   const flapAssembly=unionAll(wasm,[root,tongue,pad]);
   const backerFlapOverlap=Manifold.intersection(backer,flapAssembly);
