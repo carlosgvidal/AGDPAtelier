@@ -510,7 +510,13 @@ function _createPendantDisplayChain(geometry,presentation){
   });
 
   const linkGeometry=new THREE.TorusGeometry(radius*.038,radius*.0105,6,12);
-  const linkSpacing=radius*.105;
+  // The torus is scaled to an elongated link. Use a centre-to-centre
+  // distance smaller than its projected length so neighbouring links overlap
+  // slightly and read as a physically connected cable chain.
+  const linkMajorRadius=radius*.038;
+  const linkTubeRadius=radius*.0105;
+  const projectedLinkLength=2*(linkMajorRadius+linkTubeRadius)*1.28;
+  const linkSpacing=projectedLinkLength*.72;
 
   // One uninterrupted V. Its nadir is the detected centre of the bail
   // opening, so the sample chain passes through the opening rather than
@@ -526,7 +532,7 @@ function _createPendantDisplayChain(geometry,presentation){
   ],false,'centripetal');
 
   const length=chainCurve.getLength();
-  const count=Math.max(36,Math.min(112,Math.round(length/linkSpacing)));
+  const count=Math.max(44,Math.min(160,Math.ceil(length/linkSpacing)+1));
   for(let i=0;i<count;i++){
     const t=count===1?0:i/(count-1);
     const point=chainCurve.getPoint(t);
@@ -679,6 +685,17 @@ window.AGDP_setRenderMesh = function(nextMesh){
       new THREE.Euler(objectEuler[0],objectEuler[1],objectEuler[2],'XYZ')
     );
     _mesh3d.quaternion.copy(presentationQuaternion).multiply(heroQuaternion);
+
+    if(type==='ring'){
+      // The catalogue pose is correct, but the ring is inverted within that
+      // pose. Rotate only the ring 180 degrees around its current local Z
+      // axis, leaving both bracelet presentations untouched.
+      const ringFlipQuaternion=new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0,0,1),
+        Math.PI
+      );
+      _mesh3d.quaternion.multiply(ringFlipQuaternion);
+    }
   }else{
     _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
   }
