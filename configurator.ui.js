@@ -90,6 +90,7 @@
   const statusWrap=document.getElementById('agdpStatusWrap');
   const dimsPanel=document.getElementById('agdpDimsPanel');
   const statusBadge=document.getElementById('agdpStatusBadge');
+  const atelierMount=document.getElementById('agdp-configurator-mount');
   const legacyCanvas=document.getElementById('view');
   let productionRequestSerial=0;
   let productionPhase='quote';
@@ -100,6 +101,7 @@
     window.AGDP_currentProductionModelId=null;
     window.AGDP_currentProductionUpload=null;
     window.AGDP_currentProductionQuote=null;
+    if(atelierMount)atelierMount.classList.remove('agdp-quote-ready');
     orderBtn.disabled=true;
     orderBtn.textContent=t('orderBtn');
   }
@@ -145,7 +147,7 @@ generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
     },
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
-      typeBrooch:'Brooch', typeHoopEarring:'Earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
+      typeBrooch:'Brooch', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
 generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
@@ -165,19 +167,21 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
       dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
-      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',brooch:'Brooch',hoopEarring:'Earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
+      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',brooch:'Brooch',hoopEarring:'Hoop earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
     }
   };
 
   function t(key){ return (I18N[currentLang]&&I18N[currentLang][key]) || I18N.es[key] || key; }
 
   function applyStaticTexts(){
-    document.querySelectorAll('[data-i18n]').forEach(el=>{ el.textContent = t(el.getAttribute('data-i18n')); });
+    document.querySelectorAll('[data-i18n]').forEach(el=>{ const label=el.querySelector&&el.querySelector('.agdp-type-label'); if(label)label.textContent=t(el.getAttribute('data-i18n')); else el.textContent=t(el.getAttribute('data-i18n')); });
     renderSizeOptions();
     if(productionPhase==='ready'&&window.AGDP_currentProductionQuote){
       const q=window.AGDP_currentProductionQuote;
       const p=formatQuotePrice(q.price,q.currency);
-      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza · '+p:'Order this piece · '+p;
+      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza':'Order this piece';
+      statusBadge.innerHTML='<span class="agdp-quote-meta">'+(currentLang==='es'?'Plata pulida · Precio final':'Polished Silver · Final price')+'</span><strong class="agdp-quote-price">'+p+'</strong>';
+      statusBadge.className='agdp-status-badge quote-ready';
     }
   }
 
@@ -562,8 +566,26 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     let overlay=document.getElementById('agdpOrderOverlay');
     if(overlay)return overlay;
 
-    // Order-dialog presentation is defined in agdp-site.css so it shares
-    // the typography, palette and responsive behavior of the main site.
+    const style=document.createElement('style');
+    style.textContent=`
+      .agdp-order-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+      .agdp-order-overlay.open{display:flex}
+      .agdp-order-dialog{width:min(680px,100%);max-height:92vh;overflow:auto;background:#fbf9fa;color:#000;padding:28px;box-sizing:border-box;font-family:Helvetica,Arial,sans-serif}
+      .agdp-order-dialog h2{font-size:21px;margin:0 0 8px;font-weight:500}
+      .agdp-order-dialog p{font-size:14px;line-height:1.45;margin:0 0 20px}
+      .agdp-order-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+      .agdp-order-field{display:flex;flex-direction:column;gap:5px}
+      .agdp-order-field.full{grid-column:1/-1}
+      .agdp-order-field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+      .agdp-order-field input{font:inherit;border:1px solid #777;background:#fff;padding:11px;box-sizing:border-box;width:100%}
+      .agdp-order-confirm{display:flex;gap:10px;align-items:flex-start;margin:20px 0;font-size:13px;line-height:1.4}
+      .agdp-order-actions{display:flex;gap:10px;justify-content:flex-end}
+      .agdp-order-actions button{font:inherit;padding:11px 18px;cursor:pointer}
+      .agdp-order-message{min-height:20px;margin-top:14px;font-size:13px}
+      @media(max-width:600px){.agdp-order-grid{grid-template-columns:1fr}.agdp-order-field.full{grid-column:auto}.agdp-order-dialog{padding:20px}}
+    `;
+    document.head.appendChild(style);
+
     overlay=document.createElement('div');
     overlay.id='agdpOrderOverlay';
     overlay.className='agdp-order-overlay';
@@ -705,11 +727,10 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       window.AGDP_currentProductionQuote=quote;
       productionPhase='ready';
       const priceText=formatQuotePrice(finalPrice,quote.currency);
-      statusBadge.textContent=currentLang==='es'
-        ?'Plata pulida · Precio final · '+priceText
-        :'Polished Silver · Final price · '+priceText;
-      statusBadge.className='agdp-status-badge ready';
-      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza · '+priceText:'Order this piece · '+priceText;
+      statusBadge.innerHTML='<span class="agdp-quote-meta">'+(currentLang==='es'?'Plata pulida · Precio final':'Polished Silver · Final price')+'</span><strong class="agdp-quote-price">'+priceText+'</strong>';
+      statusBadge.className='agdp-status-badge quote-ready';
+      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza':'Order this piece';
+      if(atelierMount)atelierMount.classList.add('agdp-quote-ready');
       orderBtn.disabled=false;
       generateBtn.disabled=false;
       newSeedBtn.disabled=false;
@@ -717,6 +738,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       if(requestSerial!==productionRequestSerial)return;
       console.error('AGDP: production upload/quote failed',error);
       productionPhase='quote';
+      if(atelierMount)atelierMount.classList.remove('agdp-quote-ready');
       orderBtn.disabled=false;
       orderBtn.textContent=originalText;
       statusBadge.textContent=currentLang==='es'
