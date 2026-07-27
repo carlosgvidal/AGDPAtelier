@@ -273,10 +273,10 @@ let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // Catalogue view corrected by rotating the piece 90 degrees around Y.
+    // Catalogue view corrected by rotating the piece 90 degrees around X.
     // The dynamic hero yaw is then added to this base orientation so the
     // highest-volume sector remains directed toward the camera.
-    objectEulerDeg:[0,90,-1.5],
+    objectEulerDeg:[90,0,-1.5],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.95,
     autoHeroYaw:true,
@@ -295,18 +295,18 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     chainRise:4.25
   }),
   bangle:Object.freeze({
-    // Catalogue view rotated 90 degrees around Y, matching the corrected
+    // Catalogue view rotated 90 degrees around X, matching the corrected
     // ring orientation while retaining automatic hero-facing alignment.
-    objectEulerDeg:[0,90,0],
+    objectEulerDeg:[90,0,0],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.82,
     autoHeroYaw:true,
     verticalOffset:-0.035
   }),
   cuffBracelet:Object.freeze({
-    // Open cuff rotated 90 degrees around Y. Its dominant sculptural sector
+    // Open cuff rotated 90 degrees around X. Its dominant sculptural sector
     // is still oriented automatically toward the camera.
-    objectEulerDeg:[0,90,0],
+    objectEulerDeg:[90,0,0],
     cameraDirection:[0.04,0.18,0.983],
     framing:1.76,
     autoHeroYaw:true,
@@ -358,6 +358,86 @@ function _disposeObject3D(root){
   });
 }
 
+function _estimatePendantBailOpening(geometry){
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  const box=geometry.boundingBox;
+  const sphere=geometry.boundingSphere;
+  const position=geometry.getAttribute('position');
+  if(!box||!sphere||!position||position.count<12){
+    return {x:0,y:box?box.max.y:0,z:0,confidence:0};
+  }
+
+  const height=Math.max(1e-6,box.max.y-box.min.y);
+  const width=Math.max(1e-6,box.max.x-box.min.x);
+  const yLow=box.max.y-height*.30;
+  const slices=54;
+  const halfThickness=height*.012;
+  let best=null;
+
+  // In a frontal bail, a horizontal slice through the opening has metal on
+  // both sides of x=0 but a clear central gap. Search only the upper region
+  // so holes in the pendant body cannot win.
+  for(let s=0;s<slices;s++){
+    const y=yLow+(box.max.y-yLow)*(s/(slices-1));
+    let left=-Infinity,right=Infinity;
+    let zSum=0,zCount=0,leftCount=0,rightCount=0;
+
+    for(let i=0;i<position.count;i++){
+      const py=position.getY(i);
+      if(Math.abs(py-y)>halfThickness)continue;
+      const x=position.getX(i);
+      const z=position.getZ(i);
+      if(x<0){
+        left=Math.max(left,x);
+        leftCount++;
+      }else{
+        right=Math.min(right,x);
+        rightCount++;
+      }
+      zSum+=z;
+      zCount++;
+    }
+
+    if(leftCount<2||rightCount<2||!Number.isFinite(left)||!Number.isFinite(right))continue;
+    const gap=right-left;
+    if(gap<=width*.035)continue;
+
+    const centre=(left+right)*.5;
+    const symmetry=1-Math.min(1,Math.abs(centre)/(width*.18));
+    const upperBias=.7+.3*((y-yLow)/(box.max.y-yLow));
+    const score=gap*symmetry*upperBias;
+
+    if(!best||score>best.score){
+      best={
+        x:centre,
+        y,
+        z:zCount?zSum/zCount:0,
+        gap,
+        score
+      };
+    }
+  }
+
+  if(best){
+    return {
+      x:best.x,
+      y:best.y,
+      // The chain lies through the middle plane of the detected opening.
+      z:best.z,
+      confidence:1
+    };
+  }
+
+  // Conservative fallback for unusual pendant silhouettes.
+  return {
+    x:0,
+    y:box.max.y-height*.105,
+    z:(box.min.z+box.max.z)*.5,
+    confidence:0
+  };
+}
+
 function _createPendantDisplayChain(geometry,presentation){
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
@@ -366,19 +446,11 @@ function _createPendantDisplayChain(geometry,presentation){
   if(!box||!sphere)return null;
 
   const radius=Math.max(1,sphere.radius);
-  const width=Math.max(1e-6,box.max.x-box.min.x);
-  const height=Math.max(1e-6,box.max.y-box.min.y);
-  const topY=box.max.y;
+  const opening=_estimatePendantBailOpening(geometry);
   const rise=radius*(Number.isFinite(presentation.chainRise)?presentation.chainRise:4.25);
   const topSpan=radius*(Number.isFinite(presentation.chainTopSpan)?presentation.chainTopSpan:2.15);
-
-  // The lowest point of the sample chain is centred in the bail opening.
-  // The chain is one continuous V-shaped run: no artificial vertical tail.
-  const bailCenterX=0;
-  const bailCenterY=topY-Math.min(height*.045,radius*.07);
-  const bailCenterZ=-Math.min(radius*.045,width*.03);
-  const shoulderHalf=Math.max(radius*.085,Math.min(radius*.17,width*.12));
-  const shoulderY=topY+radius*.17;
+  const shoulderHalf=radius*.15;
+  const shoulderY=opening.y+radius*.24;
 
   const group=new THREE.Group();
   group.name='AGDP_Pendant_Display_Chain';
@@ -395,18 +467,21 @@ function _createPendantDisplayChain(geometry,presentation){
   const linkGeometry=new THREE.TorusGeometry(radius*.038,radius*.0105,6,12);
   const linkSpacing=radius*.105;
 
+  // One uninterrupted V. Its nadir is the detected centre of the bail
+  // opening, so the sample chain passes through the opening rather than
+  // ending above it or acquiring an artificial vertical section.
   const chainCurve=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-topSpan,shoulderY+rise,bailCenterZ),
-    new THREE.Vector3(-topSpan*.42,shoulderY+rise*.46,bailCenterZ-radius*.035),
-    new THREE.Vector3(-shoulderHalf,shoulderY,bailCenterZ-radius*.02),
-    new THREE.Vector3(bailCenterX,bailCenterY,bailCenterZ),
-    new THREE.Vector3(shoulderHalf,shoulderY,bailCenterZ-radius*.02),
-    new THREE.Vector3(topSpan*.42,shoulderY+rise*.46,bailCenterZ-radius*.035),
-    new THREE.Vector3(topSpan,shoulderY+rise,bailCenterZ)
+    new THREE.Vector3(opening.x-topSpan,shoulderY+rise,opening.z),
+    new THREE.Vector3(opening.x-topSpan*.43,shoulderY+rise*.47,opening.z-radius*.025),
+    new THREE.Vector3(opening.x-shoulderHalf,shoulderY,opening.z),
+    new THREE.Vector3(opening.x,opening.y,opening.z),
+    new THREE.Vector3(opening.x+shoulderHalf,shoulderY,opening.z),
+    new THREE.Vector3(opening.x+topSpan*.43,shoulderY+rise*.47,opening.z-radius*.025),
+    new THREE.Vector3(opening.x+topSpan,shoulderY+rise,opening.z)
   ],false,'centripetal');
 
   const length=chainCurve.getLength();
-  const count=Math.max(34,Math.min(110,Math.round(length/linkSpacing)));
+  const count=Math.max(36,Math.min(112,Math.round(length/linkSpacing)));
   for(let i=0;i<count;i++){
     const t=count===1?0:i/(count-1);
     const point=chainCurve.getPoint(t);
