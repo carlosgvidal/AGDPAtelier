@@ -1570,7 +1570,15 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   const floors={lattice:.24,vessel:.18,cellular:.22};
   const accentRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|transversal-subtractive-v106');
   const voidCutters=[];
-  const applyTransversalCuts = true;
+  // Closed annular typologies were receiving three unconditional transverse
+  // cutters after their positive nodes/ribs had already been planned. A cutter
+  // could therefore remove the supporting band directly beneath a node. If the
+  // subsequent union was numerically weak, the visible result looked exactly
+  // like a missing node with a drilled hole. Preserve positive vocabulary on
+  // circular bodies: transverse voids are allowed only when no surface mass
+  // has been requested for this variant.
+  const hasProtectedSurfaceMass = closed && decorations.length>0;
+  const applyTransversalCuts = !hasProtectedSurfaceMass;
   const phase=(p.compositionSignature?.phaseA||0)+accentRng()*Math.PI*2;
 
   const latticeI=clamp(Math.max(floors.lattice,featureWeights.lattice||0),floors.lattice,1);
@@ -1614,7 +1622,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   // recompone mediante un puente curvo explícito que salta por encima de
   // la cicatriz. Esto es una consecuencia geométrica, no un parámetro más
   // extremo: la pieza conserva la evidencia de la interrupción.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='rupture' && closed) {
+  if (p.mutation && p.mutation.active && p.mutation.mode==='rupture' && closed && !hasProtectedSurfaceMass) {
     const sv=p.mutation.severity;
     const ruptureRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|rupture-scar');
     const rt=ruptureRng()*Math.PI*2;
@@ -1677,7 +1685,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   // Erosión literal: varios vacíos reales, mayores y más numerosos que el
   // sistema de vacíos habitual, que consumen estructura en vez de
   // decorarla.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='erosion') {
+  if (p.mutation && p.mutation.active && p.mutation.mode==='erosion' && !hasProtectedSurfaceMass) {
     const sv=p.mutation.severity;
     const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|erosion');
     const erosionCutters=[];
@@ -1778,14 +1786,16 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
     decorations.push(organicNodeAt(wasm,[massCenterR*ict,massCenterR*ist,0],massR,12,invT));
-    const voidT=invT+Math.PI*0.5+iRng()*0.3;
-    const vct=Math.cos(voidT), vst=Math.sin(voidT);
-    const voidSurf=localSurfaceRZ(voidT,0);
-    const voidR=Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.7+0.5*sv));
-    try{
-      const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 24);
-      bodyManifold=safeDifference(wasm,bodyManifold, voidCutter);
-    }catch(err){ console.warn('AGDP: inversión omitida por seguridad topológica',err); }
+    if(!hasProtectedSurfaceMass){
+      const voidT=invT+Math.PI*0.5+iRng()*0.3;
+      const vct=Math.cos(voidT), vst=Math.sin(voidT);
+      const voidSurf=localSurfaceRZ(voidT,0);
+      const voidR=Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.7+0.5*sv));
+      try{
+        const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 24);
+        bodyManifold=safeDifference(wasm,bodyManifold, voidCutter);
+      }catch(err){ console.warn('AGDP: inversión omitida por seguridad topológica',err); }
+    }
   }
 
   const allParts = [bodyManifold, ...decorations];
@@ -3325,6 +3335,21 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     allowConstructiveOverlap:true, booleanUnion:true, allowedSolids:expectedComponents
   };
   const audit = window.validate(V, F, extra);
+  // Validation must be a gate, not merely a report. Previously an annular
+  // variant with boundary/non-manifold edges could still be returned to the
+  // widget as long as its component count happened to match. Reject it so the
+  // caller can advance to the next seed instead of displaying a perforated
+  // ring or a body with a missing node.
+  if(!audit || !audit.manifoldOK || !audit.finite || audit.components!==expectedComponents){
+    const reasons=[];
+    if(!audit) reasons.push('missing-audit');
+    else {
+      if(!audit.manifoldOK) reasons.push('non-manifold');
+      if(!audit.finite) reasons.push('non-finite');
+      if(audit.components!==expectedComponents) reasons.push('components:'+audit.components);
+    }
+    throw new Error('AGDP_VARIANT_REJECTED topology: '+reasons.join(','));
+  }
   const weightLimits=AGDP_SILVER_HOLLOWING.thresholdsGrams[silverWeightProfileKey(p)]||{rejectAbove:Infinity};
   audit.weightLimitG=weightLimits.rejectAbove;
   audit.weightOK=audit.silverG<=weightLimits.rejectAbove;
