@@ -318,9 +318,13 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     objectEulerDeg:[0,0,-10], cameraDirection:[0.49,0.21,0.85], framing:1.18
   }),
   brooch:Object.freeze({
-    // Near-frontal presentation preserves the AGDP face while a restrained
-    // yaw reveals that the rear fastening is an integrated solid clip.
-    objectEulerDeg:[0,-5,0], cameraDirection:[0.30,0.18,0.94], framing:1.18
+    // Frontal catalogue presentation. A 90-degree rotation in the current
+    // presentation plane places the open end of the integrated rear clip
+    // downward while preserving a restrained view of its depth.
+    objectEulerDeg:[0,-5,90],
+    cameraDirection:[0.10,0.10,0.99],
+    framing:1.42,
+    verticalOffset:-0.015
   }),
   hoopEarring:Object.freeze({
     // Hoops are conventionally photographed hanging with a slight
@@ -515,8 +519,10 @@ function _createPendantDisplayChain(geometry,presentation){
   // slightly and read as a physically connected cable chain.
   const linkMajorRadius=radius*.038;
   const linkTubeRadius=radius*.0105;
-  const projectedLinkLength=2*(linkMajorRadius+linkTubeRadius)*1.28;
-  const linkSpacing=projectedLinkLength*.72;
+  const projectedLinkLength=2*(linkMajorRadius+linkTubeRadius)*1.34;
+  // Slightly less than half a link length: neighbouring links overlap enough
+  // to read as one continuous cable chain even at tablet-scale zoom.
+  const linkSpacing=projectedLinkLength*.46;
 
   // One uninterrupted V. Its nadir is the detected centre of the bail
   // opening, so the sample chain passes through the opening rather than
@@ -532,18 +538,42 @@ function _createPendantDisplayChain(geometry,presentation){
   ],false,'centripetal');
 
   const length=chainCurve.getLength();
-  const count=Math.max(44,Math.min(160,Math.ceil(length/linkSpacing)+1));
+  const count=Math.max(58,Math.min(240,Math.ceil(length/linkSpacing)+1));
+  const curveLengths=chainCurve.getLengths(Math.max(200,count*3));
+
+  function parameterAtDistance(distance){
+    const target=THREE.MathUtils.clamp(distance,0,length);
+    let low=0,high=curveLengths.length-1;
+    while(low<high){
+      const mid=(low+high)>>1;
+      if(curveLengths[mid]<target)low=mid+1;
+      else high=mid;
+    }
+    const index=Math.max(1,low);
+    const before=curveLengths[index-1];
+    const after=curveLengths[index];
+    const alpha=(after>before)?(target-before)/(after-before):0;
+    return ((index-1)+alpha)/(curveLengths.length-1);
+  }
+
   for(let i=0;i<count;i++){
-    const t=count===1?0:i/(count-1);
+    const distance=(i/(count-1))*length;
+    const t=parameterAtDistance(distance);
     const point=chainCurve.getPoint(t);
     const tangent=chainCurve.getTangent(t).normalize();
+
     const link=new THREE.Mesh(linkGeometry,chainMaterial);
     link.position.copy(point);
-    link.scale.set(.72,1.28,1);
-    link.rotation.z=Math.atan2(tangent.y,tangent.x)-Math.PI/2;
-    const even=(i%2===0);
-    link.rotation.x=even?THREE.MathUtils.degToRad(58):THREE.MathUtils.degToRad(-18);
-    link.rotation.y=even?THREE.MathUtils.degToRad(8):THREE.MathUtils.degToRad(-8);
+    link.scale.set(.66,1.34,1);
+
+    // Keep every link's long axis tangent to the chain path. Alternate only
+    // a restrained twist around that tangent so links interlock without
+    // turning into detached edge-on rods.
+    const tangentAngle=Math.atan2(tangent.y,tangent.x)-Math.PI/2;
+    link.rotation.set(0,0,tangentAngle);
+    const twist=(i%2===0)?THREE.MathUtils.degToRad(24):THREE.MathUtils.degToRad(-24);
+    link.rotateOnAxis(new THREE.Vector3(0,1,0),twist);
+
     group.add(link);
   }
 
