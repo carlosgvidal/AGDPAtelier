@@ -273,11 +273,10 @@ let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // Frontal catalogue view with the hoop descending beneath the
-    // highest-volume sector. The 90-degree image-plane rotation corrects
-    // the former left-to-right band pose while preserving the hero-facing
-    // orientation selected around the ring's own axis.
-    objectEulerDeg:[0,0,88.5],
+    // Catalogue view corrected by rotating the piece 90 degrees around Y.
+    // The dynamic hero yaw is then added to this base orientation so the
+    // highest-volume sector remains directed toward the camera.
+    objectEulerDeg:[0,90,-1.5],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.95,
     autoHeroYaw:true,
@@ -296,18 +295,18 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     chainRise:4.25
   }),
   bangle:Object.freeze({
-    // Same catalogue logic as the ring: the bracelet body descends in the
-    // image plane while the highest-volume sector faces the camera.
-    objectEulerDeg:[0,0,90],
+    // Catalogue view rotated 90 degrees around Y, matching the corrected
+    // ring orientation while retaining automatic hero-facing alignment.
+    objectEulerDeg:[0,90,0],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.82,
     autoHeroYaw:true,
     verticalOffset:-0.035
   }),
   cuffBracelet:Object.freeze({
-    // Open cuff shown like the reference: opening upward, front arc low and
-    // the dominant sculptural sector oriented toward the camera.
-    objectEulerDeg:[0,0,90],
+    // Open cuff rotated 90 degrees around Y. Its dominant sculptural sector
+    // is still oriented automatically toward the camera.
+    objectEulerDeg:[0,90,0],
     cameraDirection:[0.04,0.18,0.983],
     framing:1.76,
     autoHeroYaw:true,
@@ -373,14 +372,13 @@ function _createPendantDisplayChain(geometry,presentation){
   const rise=radius*(Number.isFinite(presentation.chainRise)?presentation.chainRise:4.25);
   const topSpan=radius*(Number.isFinite(presentation.chainTopSpan)?presentation.chainTopSpan:2.15);
 
-  // The display chain enters below the bail, passes through its centred
-  // opening and only then divides into the two catalogue-style branches.
-  const bailX=0;
-  const bailEntryY=topY-Math.min(height*.09,radius*.13);
-  const bailExitY=topY+Math.min(height*.025,radius*.04);
-  const bailZ=-Math.min(radius*.045,width*.03);
-  const splitY=topY+radius*.20;
-  const splitHalf=Math.max(radius*.075,Math.min(radius*.15,width*.11));
+  // The lowest point of the sample chain is centred in the bail opening.
+  // The chain is one continuous V-shaped run: no artificial vertical tail.
+  const bailCenterX=0;
+  const bailCenterY=topY-Math.min(height*.045,radius*.07);
+  const bailCenterZ=-Math.min(radius*.045,width*.03);
+  const shoulderHalf=Math.max(radius*.085,Math.min(radius*.17,width*.12));
+  const shoulderY=topY+radius*.17;
 
   const group=new THREE.Group();
   group.name='AGDP_Pendant_Display_Chain';
@@ -397,53 +395,32 @@ function _createPendantDisplayChain(geometry,presentation){
   const linkGeometry=new THREE.TorusGeometry(radius*.038,radius*.0105,6,12);
   const linkSpacing=radius*.105;
 
-  function addLinksOnCurve(curve,alternateOffset=0){
-    const length=curve.getLength();
-    const count=Math.max(5,Math.min(60,Math.round(length/linkSpacing)));
-    for(let i=0;i<count;i++){
-      const t=count===1?0:i/(count-1);
-      const point=curve.getPoint(t);
-      const tangent=curve.getTangent(t).normalize();
-      const link=new THREE.Mesh(linkGeometry,chainMaterial);
-      link.position.copy(point);
-      link.scale.set(.72,1.28,1);
-      link.rotation.z=Math.atan2(tangent.y,tangent.x)-Math.PI/2;
-      const even=((i+alternateOffset)%2===0);
-      link.rotation.x=even?THREE.MathUtils.degToRad(58):THREE.MathUtils.degToRad(-18);
-      link.rotation.y=even?THREE.MathUtils.degToRad(8):THREE.MathUtils.degToRad(-8);
-      group.add(link);
-    }
+  const chainCurve=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-topSpan,shoulderY+rise,bailCenterZ),
+    new THREE.Vector3(-topSpan*.42,shoulderY+rise*.46,bailCenterZ-radius*.035),
+    new THREE.Vector3(-shoulderHalf,shoulderY,bailCenterZ-radius*.02),
+    new THREE.Vector3(bailCenterX,bailCenterY,bailCenterZ),
+    new THREE.Vector3(shoulderHalf,shoulderY,bailCenterZ-radius*.02),
+    new THREE.Vector3(topSpan*.42,shoulderY+rise*.46,bailCenterZ-radius*.035),
+    new THREE.Vector3(topSpan,shoulderY+rise,bailCenterZ)
+  ],false,'centripetal');
+
+  const length=chainCurve.getLength();
+  const count=Math.max(34,Math.min(110,Math.round(length/linkSpacing)));
+  for(let i=0;i<count;i++){
+    const t=count===1?0:i/(count-1);
+    const point=chainCurve.getPoint(t);
+    const tangent=chainCurve.getTangent(t).normalize();
+    const link=new THREE.Mesh(linkGeometry,chainMaterial);
+    link.position.copy(point);
+    link.scale.set(.72,1.28,1);
+    link.rotation.z=Math.atan2(tangent.y,tangent.x)-Math.PI/2;
+    const even=(i%2===0);
+    link.rotation.x=even?THREE.MathUtils.degToRad(58):THREE.MathUtils.degToRad(-18);
+    link.rotation.y=even?THREE.MathUtils.degToRad(8):THREE.MathUtils.degToRad(-8);
+    group.add(link);
   }
 
-  const threadedCurve=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(bailX,bailEntryY,bailZ+radius*.03),
-    new THREE.Vector3(bailX,bailExitY,bailZ-radius*.02),
-    new THREE.Vector3(0,splitY,bailZ-radius*.025)
-  ]);
-  addLinksOnCurve(threadedCurve,0);
-
-  const shoulder=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-splitHalf,splitY,bailZ-radius*.025),
-    new THREE.Vector3(0,splitY-radius*.028,bailZ-radius*.03),
-    new THREE.Vector3(splitHalf,splitY,bailZ-radius*.025)
-  ]);
-  const connector=new THREE.Mesh(
-    new THREE.TubeGeometry(shoulder,14,radius*.0105,6,false),
-    chainMaterial
-  );
-  group.add(connector);
-
-  function addBranch(side){
-    const curve=new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(side*splitHalf,splitY,bailZ-radius*.025),
-      new THREE.Vector3(side*topSpan*.42,splitY+rise*.46,bailZ-radius*.04),
-      new THREE.Vector3(side*topSpan,splitY+rise,bailZ)
-    );
-    addLinksOnCurve(curve,side<0?1:0);
-  }
-
-  addBranch(-1);
-  addBranch(1);
   return group;
 }
 
