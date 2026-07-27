@@ -273,10 +273,11 @@ let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // Frontal, restrained catalogue view: the ring occupies approximately
-    // half of a square canvas and the slightly elevated camera reveals the
-    // upper inner edge without turning the piece into a three-quarter view.
-    objectEulerDeg:[0,0,-1.5],
+    // Frontal catalogue view with the hoop descending beneath the
+    // highest-volume sector. The 90-degree image-plane rotation corrects
+    // the former left-to-right band pose while preserving the hero-facing
+    // orientation selected around the ring's own axis.
+    objectEulerDeg:[0,0,88.5],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.95,
     autoHeroYaw:true,
