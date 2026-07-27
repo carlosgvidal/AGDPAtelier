@@ -593,7 +593,10 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
     q(pfO[i],pbO[i],pbO[j],pfO[j]);
     q(pfI[i],pfI[j],pbI[j],pbI[i]);
   }
-  return {V,F};
+  // The YZ loop construction above is topologically closed but uses the
+  // opposite global winding from the rest of the generator. Reverse every
+  // triangle so outward normals remain consistent through booleans and export.
+  return {V,F:F.map(([a,b,c])=>[a,c,b])};
 }
 
 
@@ -2638,9 +2641,14 @@ async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceT
     const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
     const capHalfX=crownHalfX+footprintOverlap;
     const capHalfY=crownHalfY+footprintOverlap;
-    let capFill=Manifold.cylinder(capHeight,1,1,160,true)
-      .scale([capHalfX,capHalfY,1])
-      .translate([0,0,capCenterZ]);
+    // Use a physically beveled, high-resolution elliptical transition rather
+    // than a flat-ended cylinder. The previous 90-degree rim concentrated
+    // interpolated normals and produced triangular highlights between the
+    // crown and the rear mechanism in polished materials.
+    const capBevel=Math.max(.20,Math.min(.42,minFeature*.34,capHeight*.18));
+    let capFill=beveledEllipticalCylinderManifold(
+      wasm,[0,0,capCenterZ],capHalfX,capHalfY,capHeight,capBevel,192
+    );
     capFill=decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature);
     base=unionAll(wasm,[base,capFill]);
   }
@@ -2806,7 +2814,7 @@ async function makeBroochClipManifold(wasm,p){
   p.broochAssemblyRequired=false;
   p.broochBaseSource=baseBuild.source;
   p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
-  p.broochGeneratorVersion='brooch-v6-closed-cap-relief-fixed-back-cantilever-flap';
+  p.broochGeneratorVersion='brooch-v7-beveled-cap-fixed-bail-winding';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
