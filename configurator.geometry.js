@@ -2256,27 +2256,41 @@ async function makePendantManifold(wasm, p) {
   // 2.8 mm on small pieces, up to 4.0 mm on large pieces.
   const autoPassageD=clamp(2.8+(targetEnvelope-14)*.06,2.8,4.0);
   const passageR=Math.max(1.4,p.chainFitRadiusMm!=null?p.chainFitRadiusMm:autoPassageD*.5);
-  const topY=outerR*sy;
+  // Use the generated solid's actual upper bound, not the nominal annulus radius.
+  // Surface fields can move the real attachment surface above or below outerR.
+  const coreMeshForAttachment=manifoldToMesh(core);
+  let topY=-Infinity;
+  for(const v of coreMeshForAttachment.V) if(v[1]>topY) topY=v[1];
 
   // True circular torus bail: circular silhouette, circular opening and
   // circular wire section. This avoids the flat inner cylinder and broad
   // triangulated faces of an extruded washer.
   const wireR=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.5);
-  const attachEmbed=Math.max(wireR*.72,(p.minFeature||.8)*1.15);
+  const attachEmbed=Math.max(wireR*1.05,(p.minFeature||.8)*1.35);
   const bailOuterR=passageR+wireR*2;
   const crownCenter=[0,topY+bailOuterR-attachEmbed,0];
-  const bailBuild=circularBailTorusManifoldX(wasm,crownCenter,passageR,wireR,512,96);
+  // 256x48 preserves a sub-0.003 mm faceting error while reducing the bail
+  // from 98,304 to 24,576 triangles, avoiding intermittent memory spikes.
+  const bailBuild=circularBailTorusManifoldX(wasm,crownCenter,passageR,wireR,256,48);
   parts.push(bailBuild.manifold);
 
+  // Add a compact, hidden volumetric bridge under the torus. This bridge
+  // overlaps both the actual body surface and the lower torus tube, so the
+  // union cannot depend on a near-tangent contact in extreme variants.
+  const torusLowerTubeCenterY=crownCenter[1]-bailBuild.metrics.majorRadius;
+  const bridgeR=Math.max(AGDP_STRUCTURAL_WALL_MM*.85,wireR*.68);
+  const bridgeBottom=[0,topY-Math.max(attachEmbed*.72,bridgeR*.55),0];
+  const bridgeTop=[0,torusLowerTubeCenterY,0];
+  parts.push(cylinderBetween(wasm,bridgeBottom,bridgeTop,bridgeR,48));
+  parts.push(sphereAt(wasm,bridgeBottom,bridgeR,32));
+  parts.push(sphereAt(wasm,bridgeTop,bridgeR,32));
+
   let manifold=unionAll(wasm,parts);
-  let mesh=manifoldToMesh(manifold);
-  let preflight=validate(mesh.V,mesh.F,{type:'pendant-annular-preflight',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
-  if(preflight.components!==1||!preflight.manifoldOK)throw new Error('AGDP annular pendant core failed continuity validation');
-
   // No passage subtraction: the chain opening already exists in the bail mesh.
-
+  // Convert and validate the final union only once to limit peak memory.
   const finalMesh=manifoldToMesh(manifold);
   const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
+  const preflight=finalAudit;
   if(!finalAudit.ok||finalAudit.components!==1)throw new Error('AGDP annular pendant failed structural validation');
 
   p.pendantBodyEnvelopeMm=targetEnvelope;
