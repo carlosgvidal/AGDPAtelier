@@ -272,7 +272,14 @@ let _mesh3d = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    objectEulerDeg:[0,0,-6], cameraDirection:[0.56,0.38,0.74], framing:1.15
+    // Frontal, restrained catalogue view: the ring occupies approximately
+    // half of a square canvas and the slightly elevated camera reveals the
+    // upper inner edge without turning the piece into a three-quarter view.
+    objectEulerDeg:[0,0,-1.5],
+    cameraDirection:[0.04,0.16,0.986],
+    framing:1.95,
+    autoHeroYaw:true,
+    verticalOffset:-0.035
   }),
   pendant:Object.freeze({
     objectEulerDeg:[0,0,0], cameraDirection:[0.05,0.09,1.0], framing:1.17
@@ -316,6 +323,58 @@ function _presentationViewFor(nextMesh){
 }
 function _degToRad3(values){
   return values.map(v=>THREE.MathUtils.degToRad(v||0));
+}
+
+function _ringHeroYaw(geometry){
+  // The ring is generated around the Y axis. A uniform band contributes
+  // almost the same radial envelope at every angle, while sculptural nodes,
+  // crowns and relief extend farther from that axis. Measuring the strongest
+  // radial envelope therefore gives a stable catalogue-facing direction
+  // without depending on seed metadata or changing the geometry itself.
+  const position=geometry&&geometry.getAttribute&&geometry.getAttribute('position');
+  if(!position||position.count<16)return 0;
+
+  const BIN_COUNT=96;
+  const envelope=new Float64Array(BIN_COUNT);
+  envelope.fill(-Infinity);
+
+  for(let i=0;i<position.count;i++){
+    const x=position.getX(i), z=position.getZ(i);
+    const radial=Math.hypot(x,z);
+    if(!Number.isFinite(radial)||radial<1e-6)continue;
+    let angle=Math.atan2(x,z); // angle 0 faces the +Z camera direction
+    if(angle<0)angle+=Math.PI*2;
+    const bin=Math.min(BIN_COUNT-1,Math.floor(angle/(Math.PI*2)*BIN_COUNT));
+    if(radial>envelope[bin])envelope[bin]=radial;
+  }
+
+  const finite=Array.from(envelope).filter(Number.isFinite).sort((a,b)=>a-b);
+  if(finite.length<BIN_COUNT*.35)return 0;
+  const baseline=finite[Math.floor(finite.length*.45)];
+  const score=new Float64Array(BIN_COUNT);
+
+  // Circular smoothing suppresses triangle-level noise and favours a
+  // coherent high-volume sector rather than a single isolated vertex.
+  const KERNEL=[1,2,3,4,5,4,3,2,1];
+  const half=(KERNEL.length-1)/2;
+  for(let i=0;i<BIN_COUNT;i++){
+    let total=0, weight=0;
+    for(let k=-half;k<=half;k++){
+      const j=(i+k+BIN_COUNT)%BIN_COUNT;
+      const value=Number.isFinite(envelope[j])?Math.max(0,envelope[j]-baseline):0;
+      const kw=KERNEL[k+half];
+      total+=value*kw;
+      weight+=kw;
+    }
+    score[i]=total/weight;
+  }
+
+  let best=0;
+  for(let i=1;i<BIN_COUNT;i++)if(score[i]>score[best])best=i;
+  if(score[best]<=1e-5)return 0;
+
+  const dominantAngle=((best+.5)/BIN_COUNT)*Math.PI*2;
+  return -dominantAngle;
 }
 
 let _controls = null;
@@ -378,7 +437,9 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _mesh3d.castShadow = true;
   const presentation=_presentationViewFor(nextMesh);
   const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
-  _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
+  const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
+  const heroYaw=(type==='ring'&&presentation.autoHeroYaw)?_ringHeroYaw(geometry):0;
+  _mesh3d.rotation.set(objectEuler[0],objectEuler[1]+heroYaw,objectEuler[2]);
   _scene.add(_mesh3d);
 
   geometry.computeBoundingBox();
@@ -387,7 +448,8 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const radius=Math.max(1,sphere?sphere.radius:10);
   _groundPlane.position.y = -radius * 1.02;
 
-  _controls.target.set(0,0,0);
+  const verticalOffset=Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0;
+  _controls.target.set(0,radius*verticalOffset,0);
   const vFov=THREE.MathUtils.degToRad(_camera.fov);
   const hFov=2*Math.atan(Math.tan(vFov/2)*Math.max(0.35,_camera.aspect));
   const limitingFov=Math.min(vFov,hFov);
