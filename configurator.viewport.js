@@ -273,9 +273,8 @@ let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // Catalogue view corrected by rotating the piece 90 degrees around Z.
-    // The dynamic hero yaw is then added to this base orientation so the
-    // highest-volume sector remains directed toward the camera.
+    // Catalogue view rotated around Z. The native hero-facing rotation is
+    // composed separately with a quaternion to avoid changing its axis.
     objectEulerDeg:[0,0,88.5],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.95,
@@ -295,8 +294,8 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     chainRise:4.25
   }),
   bangle:Object.freeze({
-    // Catalogue view rotated 90 degrees around Z, matching the corrected
-    // ring orientation while retaining automatic hero-facing alignment.
+    // Catalogue view rotated around Z, with native hero-facing alignment
+    // composed separately to prevent an edge-on result.
     objectEulerDeg:[0,0,90],
     cameraDirection:[0.04,0.16,0.986],
     framing:1.82,
@@ -304,8 +303,8 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     verticalOffset:-0.035
   }),
   cuffBracelet:Object.freeze({
-    // Open cuff rotated 90 degrees around Z. Its dominant sculptural sector
-    // is still oriented automatically toward the camera.
+    // Open cuff rotated around Z. Its dominant sculptural sector is aligned
+    // on the native axis before the catalogue rotation is applied.
     objectEulerDeg:[0,0,90],
     cameraDirection:[0.04,0.18,0.983],
     framing:1.76,
@@ -665,7 +664,24 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
   const heroYaw=(presentation.autoHeroYaw&&(type==='ring'||type==='bangle'||type==='cuffBracelet'))
     ?_ringHeroYaw(geometry):0;
-  _mesh3d.rotation.set(objectEuler[0],objectEuler[1]+heroYaw,objectEuler[2]);
+
+  if(type==='ring'||type==='bangle'||type==='cuffBracelet'){
+    // Compose the two rotations explicitly. The hero rotation belongs to the
+    // native Y axis of the generated annular piece; the catalogue pose is a
+    // separate 90-degree rotation around Z. Combining both values in one
+    // Euler changed the effective axes and produced the edge-on pose seen in
+    // the tablet capture.
+    const heroQuaternion=new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0,1,0),
+      heroYaw
+    );
+    const presentationQuaternion=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(objectEuler[0],objectEuler[1],objectEuler[2],'XYZ')
+    );
+    _mesh3d.quaternion.copy(presentationQuaternion).multiply(heroQuaternion);
+  }else{
+    _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
+  }
   _scene.add(_mesh3d);
 
   if(type==='pendant'&&presentation.displayChain){
