@@ -296,10 +296,22 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     chainRise:4.25
   }),
   bangle:Object.freeze({
-    objectEulerDeg:[0,0,8], cameraDirection:[0.60,0.38,0.71], framing:1.18
+    // Same catalogue logic as the ring: the bracelet body descends in the
+    // image plane while the highest-volume sector faces the camera.
+    objectEulerDeg:[0,0,90],
+    cameraDirection:[0.04,0.16,0.986],
+    framing:1.82,
+    autoHeroYaw:true,
+    verticalOffset:-0.035
   }),
   cuffBracelet:Object.freeze({
-    objectEulerDeg:[0,0,6], cameraDirection:[0.51,0.38,0.78], framing:1.18
+    // Open cuff shown like the reference: opening upward, front arc low and
+    // the dominant sculptural sector oriented toward the camera.
+    objectEulerDeg:[0,0,90],
+    cameraDirection:[0.04,0.18,0.983],
+    framing:1.76,
+    autoHeroYaw:true,
+    verticalOffset:-0.025
   }),
   cufflinks:Object.freeze({
     objectEulerDeg:[0,-8,0], cameraDirection:[0.26,0.14,0.96], framing:1.20
@@ -355,12 +367,20 @@ function _createPendantDisplayChain(geometry,presentation){
   if(!box||!sphere)return null;
 
   const radius=Math.max(1,sphere.radius);
+  const width=Math.max(1e-6,box.max.x-box.min.x);
+  const height=Math.max(1e-6,box.max.y-box.min.y);
   const topY=box.max.y;
   const rise=radius*(Number.isFinite(presentation.chainRise)?presentation.chainRise:4.25);
   const topSpan=radius*(Number.isFinite(presentation.chainTopSpan)?presentation.chainTopSpan:2.15);
-  const anchorGap=Math.max(radius*.075,Math.min(radius*.15,(box.max.x-box.min.x)*.10));
-  const startY=topY+radius*.025;
-  const backZ=-radius*.11;
+
+  // The display chain enters below the bail, passes through its centred
+  // opening and only then divides into the two catalogue-style branches.
+  const bailX=0;
+  const bailEntryY=topY-Math.min(height*.09,radius*.13);
+  const bailExitY=topY+Math.min(height*.025,radius*.04);
+  const bailZ=-Math.min(radius*.045,width*.03);
+  const splitY=topY+radius*.20;
+  const splitHalf=Math.max(radius*.075,Math.min(radius*.15,width*.11));
 
   const group=new THREE.Group();
   group.name='AGDP_Pendant_Display_Chain';
@@ -377,46 +397,53 @@ function _createPendantDisplayChain(geometry,presentation){
   const linkGeometry=new THREE.TorusGeometry(radius*.038,radius*.0105,6,12);
   const linkSpacing=radius*.105;
 
-  function addBranch(side){
-    const curve=new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(side*anchorGap,startY,backZ),
-      new THREE.Vector3(side*topSpan*.42,startY+rise*.48,backZ-radius*.035),
-      new THREE.Vector3(side*topSpan,startY+rise,backZ)
-    );
+  function addLinksOnCurve(curve,alternateOffset=0){
     const length=curve.getLength();
-    const count=Math.max(18,Math.min(54,Math.round(length/linkSpacing)));
+    const count=Math.max(5,Math.min(60,Math.round(length/linkSpacing)));
     for(let i=0;i<count;i++){
-      const t=(i+.15)/(count-.7);
-      const point=curve.getPoint(clamp(t,0,1));
-      const tangent=curve.getTangent(clamp(t,0,1)).normalize();
+      const t=count===1?0:i/(count-1);
+      const point=curve.getPoint(t);
+      const tangent=curve.getTangent(t).normalize();
       const link=new THREE.Mesh(linkGeometry,chainMaterial);
       link.position.copy(point);
-
-      // Elliptical, alternating links suggest a fine cable chain without
-      // adding hundreds of facets or competing visually with the pendant.
       link.scale.set(.72,1.28,1);
       link.rotation.z=Math.atan2(tangent.y,tangent.x)-Math.PI/2;
-      link.rotation.x=(i%2===0)?THREE.MathUtils.degToRad(58):THREE.MathUtils.degToRad(-18);
-      link.rotation.y=(i%2===0)?THREE.MathUtils.degToRad(8):THREE.MathUtils.degToRad(-8);
+      const even=((i+alternateOffset)%2===0);
+      link.rotation.x=even?THREE.MathUtils.degToRad(58):THREE.MathUtils.degToRad(-18);
+      link.rotation.y=even?THREE.MathUtils.degToRad(8):THREE.MathUtils.degToRad(-8);
       group.add(link);
     }
   }
 
-  addBranch(-1);
-  addBranch(1);
+  const threadedCurve=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(bailX,bailEntryY,bailZ+radius*.03),
+    new THREE.Vector3(bailX,bailExitY,bailZ-radius*.02),
+    new THREE.Vector3(0,splitY,bailZ-radius*.025)
+  ]);
+  addLinksOnCurve(threadedCurve,0);
 
-  // A restrained connector behind the bail visually joins both chain runs
-  // while remaining clearly separate from the generated/exported jewellery.
-  const connectorCurve=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-anchorGap,startY,backZ),
-    new THREE.Vector3(0,startY-radius*.035,backZ-radius*.01),
-    new THREE.Vector3(anchorGap,startY,backZ)
+  const shoulder=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-splitHalf,splitY,bailZ-radius*.025),
+    new THREE.Vector3(0,splitY-radius*.028,bailZ-radius*.03),
+    new THREE.Vector3(splitHalf,splitY,bailZ-radius*.025)
   ]);
   const connector=new THREE.Mesh(
-    new THREE.TubeGeometry(connectorCurve,12,radius*.0105,6,false),
+    new THREE.TubeGeometry(shoulder,14,radius*.0105,6,false),
     chainMaterial
   );
   group.add(connector);
+
+  function addBranch(side){
+    const curve=new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(side*splitHalf,splitY,bailZ-radius*.025),
+      new THREE.Vector3(side*topSpan*.42,splitY+rise*.46,bailZ-radius*.04),
+      new THREE.Vector3(side*topSpan,splitY+rise,bailZ)
+    );
+    addLinksOnCurve(curve,side<0?1:0);
+  }
+
+  addBranch(-1);
+  addBranch(1);
   return group;
 }
 
@@ -538,7 +565,8 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const presentation=_presentationViewFor(nextMesh);
   const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
   const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
-  const heroYaw=(type==='ring'&&presentation.autoHeroYaw)?_ringHeroYaw(geometry):0;
+  const heroYaw=(presentation.autoHeroYaw&&(type==='ring'||type==='bangle'||type==='cuffBracelet'))
+    ?_ringHeroYaw(geometry):0;
   _mesh3d.rotation.set(objectEuler[0],objectEuler[1]+heroYaw,objectEuler[2]);
   _scene.add(_mesh3d);
 
