@@ -145,7 +145,7 @@ generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
     },
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
-      typeBrooch:'Brooch', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
+      typeBrooch:'Brooch', typeHoopEarring:'Earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
 generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
@@ -165,7 +165,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
       dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
-      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',brooch:'Brooch',hoopEarring:'Hoop earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
+      tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',brooch:'Brooch',hoopEarring:'Earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
     }
   };
 
@@ -562,26 +562,8 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
     let overlay=document.getElementById('agdpOrderOverlay');
     if(overlay)return overlay;
 
-    const style=document.createElement('style');
-    style.textContent=`
-      .agdp-order-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
-      .agdp-order-overlay.open{display:flex}
-      .agdp-order-dialog{width:min(680px,100%);max-height:92vh;overflow:auto;background:#fbf9fa;color:#000;padding:28px;box-sizing:border-box;font-family:Helvetica,Arial,sans-serif}
-      .agdp-order-dialog h2{font-size:21px;margin:0 0 8px;font-weight:500}
-      .agdp-order-dialog p{font-size:14px;line-height:1.45;margin:0 0 20px}
-      .agdp-order-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-      .agdp-order-field{display:flex;flex-direction:column;gap:5px}
-      .agdp-order-field.full{grid-column:1/-1}
-      .agdp-order-field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-      .agdp-order-field input{font:inherit;border:1px solid #777;background:#fff;padding:11px;box-sizing:border-box;width:100%}
-      .agdp-order-confirm{display:flex;gap:10px;align-items:flex-start;margin:20px 0;font-size:13px;line-height:1.4}
-      .agdp-order-actions{display:flex;gap:10px;justify-content:flex-end}
-      .agdp-order-actions button{font:inherit;padding:11px 18px;cursor:pointer}
-      .agdp-order-message{min-height:20px;margin-top:14px;font-size:13px}
-      @media(max-width:600px){.agdp-order-grid{grid-template-columns:1fr}.agdp-order-field.full{grid-column:auto}.agdp-order-dialog{padding:20px}}
-    `;
-    document.head.appendChild(style);
-
+    // Order-dialog presentation is defined in agdp-site.css so it shares
+    // the typography, palette and responsive behavior of the main site.
     overlay=document.createElement('div');
     overlay.id='agdpOrderOverlay';
     overlay.className='agdp-order-overlay';
