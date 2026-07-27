@@ -2419,6 +2419,63 @@ function flattenedNodeAt(wasm,center,rx,ry,rz,segments){
   return Manifold.sphere(1,segments||18).scale([rx,ry,rz]).translate(center);
 }
 
+function decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature){
+  const { Manifold }=wasm;
+  const domeI=featureIntensity(p,'dome');
+  const vesselI=featureIntensity(p,'vessel');
+  const cageI=featureIntensity(p,'cage');
+  const wrappedI=featureIntensity(p,'wrapped');
+  const interI=featureIntensity(p,'interweave');
+  const effR=Math.max(minFeature*2.4,Math.min(capHalfX,capHalfY));
+  const reliefDepth=clamp(effR*(.16+.18*Math.max(domeI,vesselI,cageI,wrappedI,interI)),1.2,4.2);
+  const overlap=Math.max(.18,minFeature*.24);
+  const parts=[];
+
+  if(domeI>.08){
+    const rr=effR*(.30+.24*domeI);
+    parts.push(sphereAt(wasm,[0,0,capTopZ-overlap],rr,24).scale([1,1,.38+.28*domeI]));
+  }
+  if(vesselI>.08){
+    const polarity=(p.variation?.offset||0)>=0?1:-1;
+    const rr=effR*(.20+.22*vesselI);
+    parts.push(sphereAt(wasm,[polarity*effR*.20,-effR*.09,capTopZ-overlap],rr,24).scale([1.16,.86,.44+.20*vesselI]));
+  }
+  if(cageI>.08){
+    const barR=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.045+.025*cageI));
+    const span=effR*(.48+.20*cageI);
+    parts.push(cylinderBetween(wasm,[-span,0,capTopZ-overlap],[span,0,capTopZ-overlap],barR,24));
+    parts.push(cylinderBetween(wasm,[0,-span,capTopZ-overlap],[0,span,capTopZ-overlap],barR,24));
+  }
+  if(wrappedI>.08){
+    const count=2+Math.round(wrappedI*2);
+    for(let i=0;i<count;i++){
+      const a=(p.variation?.phaseB||0)+i*Math.PI*2/count;
+      const rr=effR*(.58+.07*Math.sin(a*2));
+      const nr=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.05+.035*wrappedI));
+      parts.push(sphereAt(wasm,[Math.cos(a)*rr,Math.sin(a)*rr,capTopZ-overlap],nr,24));
+    }
+  }
+  if(interI>.12){
+    const r=Math.max(AGDP_MIN_WALL_MM*.75,effR*(.038+.026*interI));
+    const span=effR*.66;
+    parts.push(cylinderBetween(wasm,[-span*.72,-span*.38,capTopZ-overlap],[span*.72,span*.38,capTopZ-overlap],r,24));
+    parts.push(cylinderBetween(wasm,[-span*.72,span*.38,capTopZ-overlap],[span*.72,-span*.38,capTopZ-overlap],r,24));
+  }
+
+  if(!parts.length) return capFill;
+
+  // Restrict every added operation to the cap footprint and to the outward
+  // side only. This keeps all new volume away from the rear mechanism.
+  const margin=Math.max(minFeature*.34,AGDP_STRUCTURAL_WALL_MM*.22);
+  const maskHalfX=Math.max(minFeature*1.8,capHalfX-margin);
+  const maskHalfY=Math.max(minFeature*1.8,capHalfY-margin);
+  const mask=Manifold.cylinder(reliefDepth+overlap*2,1,1,160,true)
+    .scale([maskHalfX,maskHalfY,1])
+    .translate([0,0,capTopZ+(reliefDepth-overlap*2)*.5]);
+  const relief=Manifold.intersection(unionAll(wasm,parts),mask);
+  return unionAll(wasm,[capFill,relief]);
+}
+
 // Shared by clip-like typologies (universal clip and related mechanisms, any
 // future one): the seed picks among three genuinely different visible
 // masses — continuous (via the same makeFaceManifold pendants and
@@ -2508,9 +2565,12 @@ async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceT
     const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
     const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
     const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
-    const capFill=Manifold.cylinder(capHeight,1,1,160,true)
-      .scale([crownHalfX+footprintOverlap,crownHalfY+footprintOverlap,1])
+    const capHalfX=crownHalfX+footprintOverlap;
+    const capHalfY=crownHalfY+footprintOverlap;
+    let capFill=Manifold.cylinder(capHeight,1,1,160,true)
+      .scale([capHalfX,capHalfY,1])
       .translate([0,0,capCenterZ]);
+    capFill=decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature);
     base=unionAll(wasm,[base,capFill]);
   }
 
@@ -2569,54 +2629,6 @@ async function makeBroochClipManifold(wasm,p){
   const backerZ=faceBackZ+(embedDepth-backerT)/2;
   let backer=Manifold.cube([backerW,backerH,backerDepth],true)
     .translate([0,0,backerZ]);
-
-  /* FRONT-FACE TREATMENT FOR THE BROOCH BACKER
-     The backer closes the annular opening and is therefore visible from the
-     exterior as the brooch's central cap. Previously this exposed face was a
-     bare planar cube surface. Build a shallow secondary face from the same
-     AGDP parameter set and fuse only its front relief into the backer. The
-     mechanism, rear face, clearances and every other typology remain
-     unchanged. */
-  const backerFrontZ=faceBackZ+embedDepth;
-  const capMargin=Math.max(AGDP_MIN_WALL_MM*.85,minFeature*.72);
-  const capW=Math.max(AGDP_STRUCTURAL_WALL_MM*2,backerW-capMargin*2);
-  const capH=Math.max(AGDP_STRUCTURAL_WALL_MM*2,backerH-capMargin*2);
-  const capOuterR=Math.max(AGDP_STRUCTURAL_WALL_MM*1.4,Math.min(capW,capH)*.5);
-  const capReliefDepth=clamp(faceTh*.28,.95,1.45);
-  const capOverlap=Math.max(minFeature*.38,AGDP_MIN_WALL_MM*.42);
-  const capParams=Object.assign({},p,{
-    type:'broochBackerFrontFace',
-    mainSize:capOuterR*2,
-    bandWidth:capReliefDepth,
-    opening:0,
-    crown:false,
-    spikes:0,
-    mutation:{active:false,severity:0,mode:null}
-  });
-  let capRelief=(await makeFaceManifold(
-    wasm,capParams,capOuterR,capReliefDepth,Math.max(capReliefDepth*1.15,1.2)
-  )).manifold;
-  const capReliefMesh=manifoldToMesh(capRelief);
-  const capReliefBounds=bounds(capReliefMesh.V);
-  const capScaleX=capW/Math.max(1e-6,capReliefBounds.dim[0]);
-  const capScaleY=capH/Math.max(1e-6,capReliefBounds.dim[1]);
-  const capScaleZ=capReliefDepth/Math.max(1e-6,capReliefBounds.dim[2]);
-  capRelief=capRelief.scale([capScaleX,capScaleY,capScaleZ]);
-  const scaledCapMesh=manifoldToMesh(capRelief);
-  const scaledCapBounds=bounds(scaledCapMesh.V);
-  const capTargetMinZ=backerFrontZ-capOverlap;
-  capRelief=capRelief.translate([0,0,capTargetMinZ-scaledCapBounds.min[2]]);
-
-  // Clip the generated treatment to a shallow volume immediately above the
-  // backer's front face. This guarantees that decoration affects that face
-  // only and cannot propagate into the rear mechanism or spring throat.
-  const capClipDepth=capReliefDepth+capOverlap;
-  const capClip=Manifold.cube([capW,capH,capClipDepth],true)
-    .translate([0,0,backerFrontZ+(capReliefDepth-capOverlap)*.5]);
-  const clippedCapRelief=Manifold.intersection(capRelief,capClip);
-  try{ capRelief.delete(); }catch(e){}
-  try{ capClip.delete(); }catch(e){}
-  backer=unionAll(wasm,[backer,clippedCapRelief]);
 
   // Reject a face/backer pair that does not share real volume. This prevents
   // removeFloatingComponents() from silently discarding the mechanism later.
@@ -2714,7 +2726,7 @@ async function makeBroochClipManifold(wasm,p){
   p.broochAssemblyRequired=false;
   p.broochBaseSource=baseBuild.source;
   p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
-  p.broochGeneratorVersion='brooch-v5-decorated-front-cap-pendant-or-cufflink-base-cantilever-flap';
+  p.broochGeneratorVersion='brooch-v6-closed-cap-relief-fixed-back-cantilever-flap';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
