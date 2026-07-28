@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-earrings-y90-framing14-v12';
+const AGDP_VIEWPORT_BUILD='2026-07-28-earrings-y90-side-by-side-v13';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -685,6 +685,67 @@ _resize();
 
 
 
+function _separateEarringPairForY90(geometry){
+  const position=geometry.getAttribute('position');
+  if(!position||position.count<16)return null;
+
+  // The native pair is separated along X. After the 90-degree Y display
+  // rotation that axis becomes camera depth, causing one earring to sit behind
+  // the other. Identify the two native copies by their X gap, then translate
+  // them only along local Z. After Y=90 this becomes horizontal screen space.
+  const samples=[];
+  for(let i=0;i<position.count;i++)samples.push({x:position.getX(i),i});
+  samples.sort((a,b)=>a.x-b.x);
+
+  const minSide=Math.max(8,Math.floor(samples.length*.15));
+  let splitIndex=-1,bestGap=-Infinity;
+  for(let i=minSide;i<=samples.length-minSide;i++){
+    const gap=samples[i].x-samples[i-1].x;
+    if(gap>bestGap){bestGap=gap;splitIndex=i;}
+  }
+  if(splitIndex<minSide||splitIndex>samples.length-minSide)return null;
+
+  const threshold=(samples[splitIndex-1].x+samples[splitIndex].x)*.5;
+  const groups=[[],[]];
+  for(let i=0;i<position.count;i++)groups[position.getX(i)<=threshold?0:1].push(i);
+  if(groups[0].length<8||groups[1].length<8)return null;
+
+  const components=groups.map(vertices=>{
+    let cz=0,minZ=Infinity,maxZ=-Infinity;
+    for(const vi of vertices){
+      const z=position.getZ(vi);
+      cz+=z;
+      if(z<minZ)minZ=z;
+      if(z>maxZ)maxZ=z;
+    }
+    return {vertices,cz:cz/vertices.length,minZ,maxZ,widthZ:Math.max(1e-6,maxZ-minZ)};
+  });
+
+  const gap=Math.max(components[0].widthZ,components[1].widthZ)*.18;
+  const centerDistance=components[0].widthZ*.5+components[1].widthZ*.5+gap;
+  const midpointZ=(components[0].cz+components[1].cz)*.5;
+  const targets=[midpointZ-centerDistance*.5,midpointZ+centerDistance*.5];
+
+  for(let componentIndex=0;componentIndex<2;componentIndex++){
+    const component=components[componentIndex];
+    const shiftZ=targets[componentIndex]-component.cz;
+    for(const vi of component.vertices){
+      position.setXYZ(vi,position.getX(vi),position.getY(vi),position.getZ(vi)+shiftZ);
+    }
+  }
+  position.needsUpdate=true;
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return {
+    splitAxis:'x',
+    translationAxis:'local-z',
+    screenAxisAfterY90:'x',
+    gap,
+    centerDistance,
+    componentWidthsZ:components.map(c=>c.widthZ)
+  };
+}
+
 function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
   if(!position||position.count<16)return null;
@@ -795,7 +856,10 @@ window.AGDP_setRenderMesh = function(nextMesh){
 
   const type=_normalizedPresentationType(nextMesh);
   const strictNativeEarring=_isStrictNativeEarring(nextMesh);
-  if(type==='cufflinks'&&!strictNativeEarring){
+  let earringPairSeparation=null;
+  if(strictNativeEarring){
+    earringPairSeparation=_separateEarringPairForY90(geometry);
+  }else if(type==='cufflinks'){
     // Preserve the incoming mesh pose and move each complete cufflink only
     // along X, reducing the centre-to-centre separation by exactly 15%.
     _arrangePairedComponents(geometry,{pairSpacingScale:.85});
@@ -879,6 +943,7 @@ window.AGDP_setRenderMesh = function(nextMesh){
   window.AGDP_LAST_PRESENTATION_AUDIT={
     rawType:nextMesh&&nextMesh.audit&&nextMesh.audit.type,
     strictNativeEarring,
+    earringPairSeparation,
     normalizedType:type,
     meshRotation:[_mesh3d.rotation.x,_mesh3d.rotation.y,_mesh3d.rotation.z],
     meshQuaternion:[_mesh3d.quaternion.x,_mesh3d.quaternion.y,_mesh3d.quaternion.z,_mesh3d.quaternion.w],
