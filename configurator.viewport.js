@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-native-mesh-reset-v9';
+const AGDP_VIEWPORT_BUILD='2026-07-28-native-mesh-front-camera-v10';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -354,7 +354,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     framing:1.32
   }),
   default:Object.freeze({
-    objectEulerDeg:[0,0,0], cameraDirection:[0.42,0.30,1], framing:1.20
+    objectEulerDeg:[0,0,0], cameraDirection:[0,0,1], framing:1.20
   })
 });
 window.AGDP_PRESENTATION_VIEWS=AGDP_PRESENTATION_VIEWS;
