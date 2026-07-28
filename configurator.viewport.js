@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-earrings-strict-native-v11';
+const AGDP_VIEWPORT_BUILD='2026-07-28-earrings-y90-framing14-v12';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -352,6 +352,13 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     // Preserve the incoming cufflink pose and spacing adjustment. Increase the
     // framing factor by 10% so the pair occupies 10% less of the canvas.
     framing:1.32
+  }),
+  hoopEarring:Object.freeze({
+    // Presentation-only: rotate the complete native pair 90 degrees around Y
+    // and add 1.4 framing space relative to the canvas.
+    objectEulerDeg:[0,90,0],
+    cameraDirection:[0,0,1],
+    framing:1.4
   }),
   default:Object.freeze({
     objectEulerDeg:[0,0,0], cameraDirection:[0,0,1], framing:1.20
@@ -811,14 +818,14 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _mesh3d = new THREE.Mesh(geometry, _material);
   _mesh3d.castShadow = true;
   const presentation=strictNativeEarring
-    ? AGDP_PRESENTATION_VIEWS.default
+    ? AGDP_PRESENTATION_VIEWS.hoopEarring
     : _presentationViewFor(nextMesh);
   if(strictNativeEarring){
-    // Strict native path: no presentation rotation, inherited quaternion,
-    // scale adjustment or matrix transform is allowed for earrings.
+    // Earring geometry remains untouched. Only the Three.js display object is
+    // rotated for presentation; no vertex, face, pair-spacing or scale edit.
+    const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,90,0]);
     _mesh3d.position.set(0,0,0);
-    _mesh3d.rotation.set(0,0,0,'XYZ');
-    _mesh3d.quaternion.identity();
+    _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2],'XYZ');
     _mesh3d.scale.set(1,1,1);
     _mesh3d.updateMatrix();
   }else{
@@ -853,14 +860,14 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _contactShadow.scale.set(shadowWidth*1.08,shadowDepth*.72,1);
   _contactShadow.visible=true;
 
-  const verticalOffset=strictNativeEarring?0:(Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0);
+  const verticalOffset=Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0;
   _controls.target.set(0,radius*verticalOffset,0);
   const vFov=THREE.MathUtils.degToRad(_camera.fov);
   const hFov=2*Math.atan(Math.tan(vFov/2)*Math.max(0.35,_camera.aspect));
   const limitingFov=Math.min(vFov,hFov);
-  const framing=strictNativeEarring?1.20:(Number.isFinite(presentation.framing)?presentation.framing:1.20);
+  const framing=Number.isFinite(presentation.framing)?presentation.framing:1.20;
   const fitDistance=(fitRadius/Math.sin(Math.max(0.08,limitingFov/2)))*framing;
-  const cameraDirection=strictNativeEarring?[0,0,1]:(presentation.cameraDirection||[0.42,0.30,1]);
+  const cameraDirection=presentation.cameraDirection||[0.42,0.30,1];
   const dir=new THREE.Vector3(cameraDirection[0],cameraDirection[1],cameraDirection[2]).normalize();
   const normalizedCameraDirection=dir.clone();
   _camera.position.copy(dir.multiplyScalar(fitDistance));
