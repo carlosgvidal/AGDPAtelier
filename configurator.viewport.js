@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-27-cufflinks-type-fix-v4';
+const AGDP_VIEWPORT_BUILD='2026-07-28-cufflinks-pipeline-fix-v5';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -681,101 +681,92 @@ _resize();
 function _levelCufflinkTerminalBars(geometry,groups,presentation){
   if(!presentation||!presentation.cufflinkAutoLevel)return null;
   const position=geometry.getAttribute('position');
-  const index=geometry.getIndex();
-  if(!position||!index||!groups||groups.length!==2)return null;
-
-  const vertexToSide=new Int8Array(position.count);
-  vertexToSide.fill(-1);
-  groups.forEach((vertices,side)=>vertices.forEach(vi=>{vertexToSide[vi]=side;}));
-
-  // Build connected solids inside each spatially separated cufflink. The
-  // largest solid is treated as the crown; the solid farthest from it is the
-  // terminal toggle/bar. This keeps all presentation changes local to the
-  // viewport copy and does not touch nextMesh or the printable source mesh.
-  const parent=new Int32Array(position.count);
-  const rank=new Uint8Array(position.count);
-  for(let i=0;i<parent.length;i++)parent[i]=i;
-  function find(x){
-    while(parent[x]!==x){parent[x]=parent[parent[x]];x=parent[x];}
-    return x;
-  }
-  function unite(a,b){
-    if(vertexToSide[a]<0||vertexToSide[a]!==vertexToSide[b])return;
-    let ra=find(a),rb=find(b);
-    if(ra===rb)return;
-    if(rank[ra]<rank[rb])parent[ra]=rb;
-    else if(rank[ra]>rank[rb])parent[rb]=ra;
-    else{parent[rb]=ra;rank[ra]++;}
-  }
-  for(let i=0;i<index.count;i+=3){
-    const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
-    unite(a,b);unite(b,c);unite(c,a);
-  }
+  if(!position||!groups||groups.length!==2)return null;
 
   const maxDeg=Number.isFinite(presentation.cufflinkAutoLevelMaxDeg)
     ?Math.abs(presentation.cufflinkAutoLevelMaxDeg):18;
+  const maxRad=THREE.MathUtils.degToRad(maxDeg);
   const results=[];
-  const normalizeAngle=a=>Math.atan2(Math.sin(a),Math.cos(a));
+
+  function centroid(vertices){
+    let x=0,y=0,z=0;
+    for(const vi of vertices){x+=position.getX(vi);y+=position.getY(vi);z+=position.getZ(vi);}
+    const inv=1/Math.max(1,vertices.length);
+    return {x:x*inv,y:y*inv,z:z*inv};
+  }
+  function distance2(vi,c){
+    const dx=position.getX(vi)-c.x,dy=position.getY(vi)-c.y,dz=position.getZ(vi)-c.z;
+    return dx*dx+dy*dy+dz*dz;
+  }
 
   for(let side=0;side<2;side++){
-    const solidsMap=new Map();
-    for(const vi of groups[side]){
-      const root=find(vi);
-      if(!solidsMap.has(root))solidsMap.set(root,[]);
-      solidsMap.get(root).push(vi);
-    }
-    const solids=Array.from(solidsMap.values()).filter(v=>v.length>=6).map(vertices=>{
-      let cx=0,cy=0,cz=0;
-      for(const vi of vertices){cx+=position.getX(vi);cy+=position.getY(vi);cz+=position.getZ(vi);}
-      const inv=1/vertices.length;
-      return {vertices,cx:cx*inv,cy:cy*inv,cz:cz*inv};
-    }).sort((a,b)=>b.vertices.length-a.vertices.length);
-    if(solids.length<2){results.push({side,applied:false,reason:'insufficient-solids'});continue;}
+    const vertices=groups[side];
+    if(!vertices||vertices.length<16){results.push({side,applied:false,reason:'too-few-vertices'});continue;}
 
-    const crown=solids[0];
-    let terminal=null,best=-Infinity;
-    for(const solid of solids.slice(1)){
-      const distance=Math.hypot(solid.cx-crown.cx,solid.cy-crown.cy,solid.cz-crown.cz);
-      // Favour a genuinely remote solid while still preferring a bar/toggle
-      // substantial enough not to be a tiny decorative fragment.
-      const score=distance*Math.sqrt(solid.vertices.length);
-      if(score>best){best=score;terminal=solid;}
+    // Geometry-only two-cluster split. Unlike the previous implementation,
+    // this works when crown, post and terminal bar are fused into one printable
+    // manifold. Seeds are the most distant vertex pair found by two farthest
+    // point passes; iterations then separate the dense crown from the remote bar.
+    let seedA=vertices[0];
+    let c0=centroid(vertices);
+    for(const vi of vertices)if(distance2(vi,c0)>distance2(seedA,c0))seedA=vi;
+    const seedPos={x:position.getX(seedA),y:position.getY(seedA),z:position.getZ(seedA)};
+    let seedB=seedA,best=-1;
+    for(const vi of vertices){const d=distance2(vi,seedPos);if(d>best){best=d;seedB=vi;}}
+    let centers=[
+      {x:position.getX(seedA),y:position.getY(seedA),z:position.getZ(seedA)},
+      {x:position.getX(seedB),y:position.getY(seedB),z:position.getZ(seedB)}
+    ];
+    let clusters=[[],[]];
+    for(let iteration=0;iteration<12;iteration++){
+      clusters=[[],[]];
+      for(const vi of vertices){
+        const d0=distance2(vi,centers[0]),d1=distance2(vi,centers[1]);
+        clusters[d0<=d1?0:1].push(vi);
+      }
+      if(!clusters[0].length||!clusters[1].length)break;
+      centers=[centroid(clusters[0]),centroid(clusters[1])];
     }
-    if(!terminal){results.push({side,applied:false,reason:'terminal-not-found'});continue;}
+    if(!clusters[0].length||!clusters[1].length){results.push({side,applied:false,reason:'cluster-failed'});continue;}
 
-    const towardX=terminal.cx-crown.cx;
-    const towardY=terminal.cy-crown.cy;
-    const towardLen=Math.hypot(towardX,towardY)||1;
-    const ux=towardX/towardLen,uy=towardY/towardLen;
-    const edgeSamples=crown.vertices.map(vi=>({
-      projection:(position.getX(vi)-crown.cx)*ux+(position.getY(vi)-crown.cy)*uy,
+    const crownIndex=clusters[0].length>=clusters[1].length?0:1;
+    const terminalIndex=1-crownIndex;
+    const crownVertices=clusters[crownIndex],terminalVertices=clusters[terminalIndex];
+    const crown=centroid(crownVertices),terminal=centroid(terminalVertices);
+
+    const dx=terminal.x-crown.x,dy=terminal.y-crown.y;
+    const radius=Math.hypot(dx,dy);
+    if(radius<1e-7){results.push({side,applied:false,reason:'degenerate-axis'});continue;}
+
+    // Crown edge facing the terminal bar. The requested visual contact is
+    // measured in the presentation XY plane: terminal center and facing crown
+    // edge must share the same height.
+    const ux=dx/radius,uy=dy/radius;
+    const edgeSamples=crownVertices.map(vi=>({
+      projection:(position.getX(vi)-crown.x)*ux+(position.getY(vi)-crown.y)*uy,
       y:position.getY(vi)
     })).sort((a,b)=>b.projection-a.projection);
-    const edgeCount=Math.max(6,Math.floor(edgeSamples.length*.12));
+    const edgeCount=Math.max(8,Math.floor(edgeSamples.length*.10));
     const edgeYs=edgeSamples.slice(0,edgeCount).map(v=>v.y).sort((a,b)=>a-b);
-    const targetY=edgeYs[Math.floor(edgeYs.length*.5)];
+    const targetY=edgeYs[Math.floor(edgeYs.length/2)];
 
-    const dx=terminal.cx-crown.cx,dy=terminal.cy-crown.cy;
-    const radius=Math.hypot(dx,dy);
-    if(radius<1e-6){results.push({side,applied:false,reason:'degenerate-axis'});continue;}
-    const desiredY=THREE.MathUtils.clamp(targetY-crown.cy,-radius,radius);
     const base=Math.atan2(dy,dx);
-    const asin=Math.asin(desiredY/radius);
-    const candidates=[normalizeAngle(asin-base),normalizeAngle((Math.PI-asin)-base)];
-    let angle=candidates.reduce((a,b)=>Math.abs(a)<=Math.abs(b)?a:b);
-    const limit=THREE.MathUtils.degToRad(maxDeg);
-    angle=THREE.MathUtils.clamp(angle,-limit,limit);
+    const desired=Math.asin(THREE.MathUtils.clamp((targetY-crown.y)/radius,-1,1));
+    const candidates=[desired-base,(Math.PI-desired)-base].map(a=>Math.atan2(Math.sin(a),Math.cos(a)));
+    let angle=Math.abs(candidates[0])<=Math.abs(candidates[1])?candidates[0]:candidates[1];
+    angle=THREE.MathUtils.clamp(angle,-maxRad,maxRad);
     const cos=Math.cos(angle),sin=Math.sin(angle);
 
-    for(const vi of groups[side]){
-      const x=position.getX(vi)-crown.cx;
-      const y=position.getY(vi)-crown.cy;
-      position.setXYZ(vi,crown.cx+x*cos-y*sin,crown.cy+x*sin+y*cos,position.getZ(vi));
+    for(const vi of vertices){
+      const x=position.getX(vi)-crown.x,y=position.getY(vi)-crown.y;
+      position.setXYZ(vi,crown.x+x*cos-y*sin,crown.y+x*sin+y*cos,position.getZ(vi));
     }
+    const terminalYAfter=crown.y+dx*sin+dy*cos;
     results.push({
       side,applied:true,angleDeg:THREE.MathUtils.radToDeg(angle),
-      crownVertexCount:crown.vertices.length,terminalVertexCount:terminal.vertices.length,
-      terminalYBefore:terminal.cy,targetCrownEdgeY:targetY
+      crownVertexCount:crownVertices.length,terminalVertexCount:terminalVertices.length,
+      terminalYBefore:terminal.y,terminalYAfter,targetCrownEdgeY:targetY,
+      residualY:terminalYAfter-targetY
     });
   }
   position.needsUpdate=true;
@@ -819,23 +810,15 @@ function _arrangePairedComponents(geometry,presentation){
   const beforeDistance=Math.abs(components[1].cx-components[0].cx);
   const spacingScale=Number.isFinite(presentation&&presentation.pairSpacingScale)
     ?presentation.pairSpacingScale:.82;
-  const rotations=(presentation&&presentation.isCufflinkPair)
-    ?[THREE.MathUtils.degToRad(335),THREE.MathUtils.degToRad(220)]
-    :[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
-
   for(let componentIndex=0;componentIndex<2;componentIndex++){
     const component=components[componentIndex];
-    const angle=rotations[componentIndex];
-    const cos=Math.cos(angle),sin=Math.sin(angle);
     const targetCx=midpointX+(component.cx-midpointX)*spacingScale;
+    const shiftX=targetCx-component.cx;
 
+    // Preserve each cufflink's existing orientation exactly. Only translate
+    // it toward the pair midpoint; no hard-coded 335/220-degree local turns.
     for(const vi of component.vertices){
-      const x=position.getX(vi)-component.cx;
-      const y=position.getY(vi)-component.cy;
-      const z=position.getZ(vi)-component.cz;
-      const rx=x*cos+z*sin;
-      const rz=-x*sin+z*cos;
-      position.setXYZ(vi,targetCx+rx,component.cy+y,component.cz+rz);
+      position.setXYZ(vi,position.getX(vi)+shiftX,position.getY(vi),position.getZ(vi));
     }
   }
 
