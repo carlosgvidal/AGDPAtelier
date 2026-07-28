@@ -320,6 +320,8 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     verticalOffset:-0.005,
     pairSpacingScale:.52,
     pairGroupYawDeg:27,
+    cufflinkAutoLevel:true,
+    cufflinkAutoLevelMaxDeg:18,
     preservePreSpacingFit:true,
     isCufflinkPair:true
   }),
@@ -671,6 +673,111 @@ window.addEventListener('resize', _resize);
 _resize();
 
 
+
+function _levelCufflinkTerminalBars(geometry,groups,presentation){
+  if(!presentation||!presentation.cufflinkAutoLevel)return null;
+  const position=geometry.getAttribute('position');
+  const index=geometry.getIndex();
+  if(!position||!index||!groups||groups.length!==2)return null;
+
+  const vertexToSide=new Int8Array(position.count);
+  vertexToSide.fill(-1);
+  groups.forEach((vertices,side)=>vertices.forEach(vi=>{vertexToSide[vi]=side;}));
+
+  // Build connected solids inside each spatially separated cufflink. The
+  // largest solid is treated as the crown; the solid farthest from it is the
+  // terminal toggle/bar. This keeps all presentation changes local to the
+  // viewport copy and does not touch nextMesh or the printable source mesh.
+  const parent=new Int32Array(position.count);
+  const rank=new Uint8Array(position.count);
+  for(let i=0;i<parent.length;i++)parent[i]=i;
+  function find(x){
+    while(parent[x]!==x){parent[x]=parent[parent[x]];x=parent[x];}
+    return x;
+  }
+  function unite(a,b){
+    if(vertexToSide[a]<0||vertexToSide[a]!==vertexToSide[b])return;
+    let ra=find(a),rb=find(b);
+    if(ra===rb)return;
+    if(rank[ra]<rank[rb])parent[ra]=rb;
+    else if(rank[ra]>rank[rb])parent[rb]=ra;
+    else{parent[rb]=ra;rank[ra]++;}
+  }
+  for(let i=0;i<index.count;i+=3){
+    const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
+    unite(a,b);unite(b,c);unite(c,a);
+  }
+
+  const maxDeg=Number.isFinite(presentation.cufflinkAutoLevelMaxDeg)
+    ?Math.abs(presentation.cufflinkAutoLevelMaxDeg):18;
+  const results=[];
+  const normalizeAngle=a=>Math.atan2(Math.sin(a),Math.cos(a));
+
+  for(let side=0;side<2;side++){
+    const solidsMap=new Map();
+    for(const vi of groups[side]){
+      const root=find(vi);
+      if(!solidsMap.has(root))solidsMap.set(root,[]);
+      solidsMap.get(root).push(vi);
+    }
+    const solids=Array.from(solidsMap.values()).filter(v=>v.length>=6).map(vertices=>{
+      let cx=0,cy=0,cz=0;
+      for(const vi of vertices){cx+=position.getX(vi);cy+=position.getY(vi);cz+=position.getZ(vi);}
+      const inv=1/vertices.length;
+      return {vertices,cx:cx*inv,cy:cy*inv,cz:cz*inv};
+    }).sort((a,b)=>b.vertices.length-a.vertices.length);
+    if(solids.length<2){results.push({side,applied:false,reason:'insufficient-solids'});continue;}
+
+    const crown=solids[0];
+    let terminal=null,best=-Infinity;
+    for(const solid of solids.slice(1)){
+      const distance=Math.hypot(solid.cx-crown.cx,solid.cy-crown.cy,solid.cz-crown.cz);
+      // Favour a genuinely remote solid while still preferring a bar/toggle
+      // substantial enough not to be a tiny decorative fragment.
+      const score=distance*Math.sqrt(solid.vertices.length);
+      if(score>best){best=score;terminal=solid;}
+    }
+    if(!terminal){results.push({side,applied:false,reason:'terminal-not-found'});continue;}
+
+    const towardX=terminal.cx-crown.cx;
+    const towardY=terminal.cy-crown.cy;
+    const towardLen=Math.hypot(towardX,towardY)||1;
+    const ux=towardX/towardLen,uy=towardY/towardLen;
+    const edgeSamples=crown.vertices.map(vi=>({
+      projection:(position.getX(vi)-crown.cx)*ux+(position.getY(vi)-crown.cy)*uy,
+      y:position.getY(vi)
+    })).sort((a,b)=>b.projection-a.projection);
+    const edgeCount=Math.max(6,Math.floor(edgeSamples.length*.12));
+    const edgeYs=edgeSamples.slice(0,edgeCount).map(v=>v.y).sort((a,b)=>a-b);
+    const targetY=edgeYs[Math.floor(edgeYs.length*.5)];
+
+    const dx=terminal.cx-crown.cx,dy=terminal.cy-crown.cy;
+    const radius=Math.hypot(dx,dy);
+    if(radius<1e-6){results.push({side,applied:false,reason:'degenerate-axis'});continue;}
+    const desiredY=THREE.MathUtils.clamp(targetY-crown.cy,-radius,radius);
+    const base=Math.atan2(dy,dx);
+    const asin=Math.asin(desiredY/radius);
+    const candidates=[normalizeAngle(asin-base),normalizeAngle((Math.PI-asin)-base)];
+    let angle=candidates.reduce((a,b)=>Math.abs(a)<=Math.abs(b)?a:b);
+    const limit=THREE.MathUtils.degToRad(maxDeg);
+    angle=THREE.MathUtils.clamp(angle,-limit,limit);
+    const cos=Math.cos(angle),sin=Math.sin(angle);
+
+    for(const vi of groups[side]){
+      const x=position.getX(vi)-crown.cx;
+      const y=position.getY(vi)-crown.cy;
+      position.setXYZ(vi,crown.cx+x*cos-y*sin,crown.cy+x*sin+y*cos,position.getZ(vi));
+    }
+    results.push({
+      side,applied:true,angleDeg:THREE.MathUtils.radToDeg(angle),
+      crownVertexCount:crown.vertices.length,terminalVertexCount:terminal.vertices.length,
+      terminalYBefore:terminal.cy,targetCrownEdgeY:targetY
+    });
+  }
+  position.needsUpdate=true;
+  return results;
+}
+
 function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
   if(!position||position.count<16)return null;
@@ -728,6 +835,13 @@ function _arrangePairedComponents(geometry,presentation){
     }
   }
 
+  // Preserve the established pair pose. Then apply only the smallest
+  // individual in-plane correction required to bring each terminal bar to
+  // the height of the crown edge, eliminating the visual impression that the
+  // cufflink is floating.
+  const individualLevelAudit=(presentation&&presentation.isCufflinkPair)
+    ?_levelCufflinkTerminalBars(geometry,groups,presentation):null;
+
   position.needsUpdate=true;
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
@@ -736,7 +850,8 @@ function _arrangePairedComponents(geometry,presentation){
     beforeDistance,
     afterDistance:beforeDistance*spacingScale,
     spacingScale,
-    vertexCounts:[groups[0].length,groups[1].length]
+    vertexCounts:[groups[0].length,groups[1].length],
+    individualLevelAudit
   };
 }
 
