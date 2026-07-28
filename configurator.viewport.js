@@ -728,7 +728,9 @@ function _arrangePairedComponents(geometry,presentation){
   const spacingScale=Number.isFinite(presentation&&presentation.pairSpacingScale)
     ?presentation.pairSpacingScale:.82;
   const rotations=(presentation&&presentation.isCufflinkPair)
-    ?[THREE.MathUtils.degToRad(180),THREE.MathUtils.degToRad(90)]
+    // Additional turns from the current stable cufflink pose:
+    // 170° + 180° = 350°; 145° + 90° = 235°.
+    ?[THREE.MathUtils.degToRad(350),THREE.MathUtils.degToRad(235)]
     :[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
 
   for(let componentIndex=0;componentIndex<2;componentIndex++){
@@ -755,6 +757,36 @@ function _arrangePairedComponents(geometry,presentation){
         component.cy+y,
         component.cz+rz
       );
+    }
+  }
+
+  // After rotation, keep paired pieces from intersecting.
+  // This is applied only to cufflinks and preserves their left-right order.
+  if(presentation&&presentation.isCufflinkPair){
+    const boxes=components.map(component=>{
+      let minX=Infinity,maxX=-Infinity;
+      for(const vi of component.vertices){
+        const x=position.getX(vi);
+        if(x<minX)minX=x;
+        if(x>maxX)maxX=x;
+      }
+      return {component,minX,maxX};
+    });
+
+    const overallMin=Math.min(boxes[0].minX,boxes[1].minX);
+    const overallMax=Math.max(boxes[0].maxX,boxes[1].maxX);
+    const pairWidth=Math.max(1e-6,overallMax-overallMin);
+    const minimumGap=pairWidth*.06;
+    const overlap=(boxes[0].maxX+minimumGap)-boxes[1].minX;
+
+    if(overlap>0){
+      const half=overlap*.5;
+      for(const vi of boxes[0].component.vertices){
+        position.setX(vi,position.getX(vi)-half);
+      }
+      for(const vi of boxes[1].component.vertices){
+        position.setX(vi,position.getX(vi)+half);
+      }
     }
   }
 
