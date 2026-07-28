@@ -730,7 +730,7 @@ function _arrangePairedComponents(geometry,presentation){
   const rotations=(presentation&&presentation.isCufflinkPair)
     // Additional turns from the current stable cufflink pose:
     // 170° + 180° = 350°; 145° + 90° = 235°.
-    ?[THREE.MathUtils.degToRad(335),THREE.MathUtils.degToRad(220)]
+    ?[THREE.MathUtils.degToRad(2),THREE.MathUtils.degToRad(247)]
     :[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
 
   for(let componentIndex=0;componentIndex<2;componentIndex++){
