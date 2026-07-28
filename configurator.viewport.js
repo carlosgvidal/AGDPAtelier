@@ -298,7 +298,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     // composed separately to prevent an edge-on result.
     objectEulerDeg:[0,0,90],
     cameraDirection:[0.04,0.16,0.986],
-    framing:1.82,
+    framing:1.274,
     autoHeroYaw:true,
     verticalOffset:-0.035
   }),
@@ -307,7 +307,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     // on the native axis before the catalogue rotation is applied.
     objectEulerDeg:[0,0,90],
     cameraDirection:[0.04,0.18,0.983],
-    framing:1.76,
+    framing:1.232,
     autoHeroYaw:true,
     verticalOffset:-0.025
   }),
@@ -322,7 +322,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     // so the clip orientation is inverted without changing camera or scale.
     objectEulerDeg:[0,-5,270],
     cameraDirection:[0.10,0.10,0.99],
-    framing:1.42,
+    framing:1.846,
     verticalOffset:-0.015
   }),
   hoopEarring:Object.freeze({
@@ -725,15 +725,17 @@ function _rotateHoopEarringPairComponents(geometry){
       const y=position.getY(vi)-component.cy;
       const z=position.getZ(vi)-component.cz;
 
-      // Rotate around each earring's own current local Z axis.
-      const rx=x*cos-y*sin;
-      const ry=x*sin+y*cos;
+      // Horizontal turn around each earring's own current local Y axis.
+      // This changes which side faces the camera without turning the hoop
+      // upside down in the image plane.
+      const rx=x*cos+z*sin;
+      const rz=-x*sin+z*cos;
 
       position.setXYZ(
         vi,
         component.cx+rx,
-        component.cy+ry,
-        component.cz+z
+        component.cy+y,
+        component.cz+rz
       );
     }
   }
