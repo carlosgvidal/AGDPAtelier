@@ -325,7 +325,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     // Horizontal 90-degree turn to the left around the current local Y axis.
     objectEulerDeg:[0,-90,-10],
     cameraDirection:[0.49,0.21,0.85],
-    framing:1.593
+    framing:1.9116
   }),
   brooch:Object.freeze({
     // Same presentation axis as before, rotated an additional 180 degrees
