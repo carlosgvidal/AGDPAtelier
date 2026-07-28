@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-native-mesh-front-camera-v10';
+const AGDP_VIEWPORT_BUILD='2026-07-28-earrings-strict-native-v11';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -735,6 +735,28 @@ function _arrangePairedComponents(geometry,presentation){
   };
 }
 
+function _isStrictNativeEarring(nextMesh){
+  const audit=nextMesh&&nextMesh.audit;
+  const candidates=[
+    audit&&audit.type,
+    audit&&audit.typology,
+    audit&&audit.productType,
+    audit&&audit.category,
+    nextMesh&&nextMesh.type,
+    nextMesh&&nextMesh.typology,
+    nextMesh&&nextMesh.productType,
+    nextMesh&&nextMesh.category
+  ];
+  return candidates.some(value=>{
+    const key=String(value||'').toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+    return key==='earring'||key==='earrings'||key==='hoopearring'||
+      key==='hoopearrings'||key==='hoop'||key==='hoops'||
+      key==='arete'||key==='aretes'||key==='pendientearete'||
+      key==='pendientesaretes';
+  });
+}
+
 function _normalizedPresentationType(nextMesh){
   const raw=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
   const key=String(raw||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -765,7 +787,8 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
 
   const type=_normalizedPresentationType(nextMesh);
-  if(type==='cufflinks'){
+  const strictNativeEarring=_isStrictNativeEarring(nextMesh);
+  if(type==='cufflinks'&&!strictNativeEarring){
     // Preserve the incoming mesh pose and move each complete cufflink only
     // along X, reducing the centre-to-centre separation by exactly 15%.
     _arrangePairedComponents(geometry,{pairSpacingScale:.85});
@@ -787,12 +810,24 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.center();
   _mesh3d = new THREE.Mesh(geometry, _material);
   _mesh3d.castShadow = true;
-  const presentation=_presentationViewFor(nextMesh);
-  const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
-  _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
+  const presentation=strictNativeEarring
+    ? AGDP_PRESENTATION_VIEWS.default
+    : _presentationViewFor(nextMesh);
+  if(strictNativeEarring){
+    // Strict native path: no presentation rotation, inherited quaternion,
+    // scale adjustment or matrix transform is allowed for earrings.
+    _mesh3d.position.set(0,0,0);
+    _mesh3d.rotation.set(0,0,0,'XYZ');
+    _mesh3d.quaternion.identity();
+    _mesh3d.scale.set(1,1,1);
+    _mesh3d.updateMatrix();
+  }else{
+    const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
+    _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
+  }
   _scene.add(_mesh3d);
 
-  if(type==='pendant'&&presentation.displayChain){
+  if(!strictNativeEarring&&type==='pendant'&&presentation.displayChain){
     _presentationAccessory=_createPendantDisplayChain(geometry,presentation);
     if(_presentationAccessory){
       _presentationAccessory.rotation.copy(_mesh3d.rotation);
@@ -818,21 +853,32 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _contactShadow.scale.set(shadowWidth*1.08,shadowDepth*.72,1);
   _contactShadow.visible=true;
 
-  const verticalOffset=Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0;
+  const verticalOffset=strictNativeEarring?0:(Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0);
   _controls.target.set(0,radius*verticalOffset,0);
   const vFov=THREE.MathUtils.degToRad(_camera.fov);
   const hFov=2*Math.atan(Math.tan(vFov/2)*Math.max(0.35,_camera.aspect));
   const limitingFov=Math.min(vFov,hFov);
-  const framing=Number.isFinite(presentation.framing)?presentation.framing:1.20;
+  const framing=strictNativeEarring?1.20:(Number.isFinite(presentation.framing)?presentation.framing:1.20);
   const fitDistance=(fitRadius/Math.sin(Math.max(0.08,limitingFov/2)))*framing;
-  const cameraDirection=presentation.cameraDirection||[0.42,0.30,1];
+  const cameraDirection=strictNativeEarring?[0,0,1]:(presentation.cameraDirection||[0.42,0.30,1]);
   const dir=new THREE.Vector3(cameraDirection[0],cameraDirection[1],cameraDirection[2]).normalize();
+  const normalizedCameraDirection=dir.clone();
   _camera.position.copy(dir.multiplyScalar(fitDistance));
   _camera.near=Math.max(0.01, radius*0.015);
   _camera.far=fitDistance+radius*8;
   _camera.updateProjectionMatrix();
   _controls.minDistance=Math.max(radius*0.18, 0.35);
   _controls.maxDistance=fitDistance*5;
+  window.AGDP_LAST_PRESENTATION_AUDIT={
+    rawType:nextMesh&&nextMesh.audit&&nextMesh.audit.type,
+    strictNativeEarring,
+    normalizedType:type,
+    meshRotation:[_mesh3d.rotation.x,_mesh3d.rotation.y,_mesh3d.rotation.z],
+    meshQuaternion:[_mesh3d.quaternion.x,_mesh3d.quaternion.y,_mesh3d.quaternion.z,_mesh3d.quaternion.w],
+    meshScale:[_mesh3d.scale.x,_mesh3d.scale.y,_mesh3d.scale.z],
+    cameraDirection:[normalizedCameraDirection.x,normalizedCameraDirection.y,normalizedCameraDirection.z],
+    controlsTarget:[_controls.target.x,_controls.target.y,_controls.target.z]
+  };
   _controls.update();
 };
 
