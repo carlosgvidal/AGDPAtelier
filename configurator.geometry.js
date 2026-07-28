@@ -111,29 +111,14 @@ function safeDifference(wasm, a, b) {
   return result;
 }
 
-// Builds a customer-facing pair from one validated unit mesh. The two
-// earrings are arranged as a jewellery product composition rather than as
-// two rigidly duplicated orthographic copies: the right unit remains nearly
-// frontal, while the left unit turns into a controlled three-quarter view.
-// This lets the annular body dominate visually and places the French hook
-// behind it in perspective. The underlying printable geometry is unchanged;
-// only each copy's presentation transform and position are modified.
-function identicalFacingPairMesh(unitV, unitF, centerSpacing){
-  const rad=d=>d*Math.PI/180;
-  const rotateX=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0],v[1]*c-v[2]*sn,v[1]*sn+v[2]*c];};
-  const rotateY=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0]*c+v[2]*sn,v[1],-v[0]*sn+v[2]*c];};
-  const rotateZ=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0]*c-v[1]*sn,v[0]*sn+v[1]*c,v[2]];};
-  const pose=(v,rx,ry,rz)=>rotateZ(rotateY(rotateX(v,rad(rx)),rad(ry)),rad(rz));
-
-  const half=centerSpacing*.54;
-  const leftV=unitV.map(v=>{
-    const r=pose(v,-5,-40,-5);
-    return [r[0]-half,r[1]-1.5,r[2]+1.8];
-  });
-  const rightV=unitV.map(v=>{
-    const r=pose(v,2,-10,3);
-    return [r[0]+half,r[1]+1.0,r[2]-0.8];
-  });
+// Builds a pair from one validated unit mesh without changing its native
+// orientation. Each copy receives translation only: no rotation, mirroring,
+// axis exchange, vertical offset or depth offset is baked into the exported
+// vertices. Presentation belongs to the viewport, never to printable V/F.
+function identicalNativePairMesh(unitV, unitF, centerSpacing){
+  const half=centerSpacing*.5;
+  const leftV=unitV.map(v=>[v[0]-half,v[1],v[2]]);
+  const rightV=unitV.map(v=>[v[0]+half,v[1],v[2]]);
   const offset=leftV.length;
   const leftF=unitF.map(f=>[f[0],f[1],f[2]]);
   const rightF=unitF.map(f=>[f[0]+offset,f[1]+offset,f[2]+offset]);
@@ -3309,10 +3294,10 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     const unitDepth=xs.length?Math.max(...xs)-Math.min(...xs):0;
     const minimumClearGapMm=6;
     const pairSpacing=Math.max((p.hoopBodySpanMm||p.mainSize||26)+minimumClearGapMm,unitDepth+minimumClearGapMm);
-    ({V,F}=identicalFacingPairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
+    ({V,F}=identicalNativePairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
     p.hoopPairCenterSpacingMm=pairSpacing;
     p.hoopPairComponents=2;
-    p.hoopPairPresentation='asymmetricJewelleryProductComposition';
+    p.hoopPairPresentation='nativeOrientationTranslationOnly';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
