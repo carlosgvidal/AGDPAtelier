@@ -728,7 +728,7 @@ function _arrangePairedComponents(geometry,presentation){
   const spacingScale=Number.isFinite(presentation&&presentation.pairSpacingScale)
     ?presentation.pairSpacingScale:.82;
   const rotations=(presentation&&presentation.isCufflinkPair)
-    ?[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(145)]
+    ?[THREE.MathUtils.degToRad(180),THREE.MathUtils.degToRad(90)]
     :[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
 
   for(let componentIndex=0;componentIndex<2;componentIndex++){
