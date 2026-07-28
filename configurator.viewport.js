@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+const AGDP_VIEWPORT_BUILD='2026-07-27-cufflinks-type-fix-v4';
+window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
+console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
+
 const _canvas3d = document.getElementById('view');
 const _scene = new THREE.Scene();
 _scene.background = new THREE.Color(0xffffff);
@@ -905,8 +909,12 @@ window.AGDP_setRenderMesh = function(nextMesh){
         geometry.userData.presentationFitRadius=preArrangeRadius;
       }
       console.info('AGDP cufflinks presentation audit',{
+        build:AGDP_VIEWPORT_BUILD,
         rawType:nextMesh&&nextMesh.audit&&nextMesh.audit.type,
         normalizedType:type,
+        presentationIsCufflinkPair:pairPresentation.isCufflinkPair===true,
+        pairSpacingScale:pairPresentation.pairSpacingScale,
+        cufflinkAutoLevel:pairPresentation.cufflinkAutoLevel===true,
         pairYawDeg,
         pairAudit,
         preArrangeRadius,
