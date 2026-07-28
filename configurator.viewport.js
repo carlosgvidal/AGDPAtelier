@@ -314,11 +314,12 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
   cufflinks:Object.freeze({
     // Preserve the two established local cufflink poses, then rotate the
     // complete pair as one rigid presentation object around the Y axis.
-    objectEulerDeg:[0,27,0],
+    objectEulerDeg:[0,0,0],
     cameraDirection:[0.04,0.08,0.996],
     framing:1.50,
     verticalOffset:-0.005,
-    pairSpacingScale:.82,
+    pairSpacingScale:.62,
+    pairGroupYawDeg:27,
     isCufflinkPair:true
   }),
   earCuff:Object.freeze({
@@ -787,6 +788,17 @@ window.AGDP_setRenderMesh = function(nextMesh){
   if(type==='hoopEarring'||type==='cufflinks'){
     const pairPresentation=_presentationViewFor(nextMesh);
     _arrangePairedComponents(geometry,pairPresentation);
+
+    // For cufflinks, rotate the already-arranged pair as one rigid geometric
+    // unit around the world Y axis. This makes the +27-degree turn explicit
+    // and independent of mesh Euler order, camera controls or later centering.
+    if(type==='cufflinks'){
+      const pairYawDeg=Number.isFinite(pairPresentation.pairGroupYawDeg)
+        ?pairPresentation.pairGroupYawDeg:27;
+      geometry.rotateY(THREE.MathUtils.degToRad(pairYawDeg));
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+    }
   }
 
   geometry.computeVertexNormals();
