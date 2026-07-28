@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-cufflinks-spacing-shadow-v7';
+const AGDP_VIEWPORT_BUILD='2026-07-28-alignment-air-shadow-earrings-reset-v8';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -75,7 +75,7 @@ const _contactShadow = new THREE.Mesh(
   new THREE.MeshBasicMaterial({
     map:_createContactShadowTexture(),
     transparent:true,
-    opacity:.48,
+    opacity:.504,
     depthWrite:false,
     toneMapped:false
   })
@@ -299,12 +299,11 @@ let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({
-    // Catalogue view rotated around Z. The native hero-facing rotation is
-    // composed separately with a quaternion to avoid changing its axis.
-    objectEulerDeg:[0,0,88.5],
-    cameraDirection:[0.04,0.16,0.986],
+    // Same spatial presentation as the ear cuff. Keep the ring's existing
+    // framing and vertical margin unchanged.
+    objectEulerDeg:[0,-90,-10],
+    cameraDirection:[0.49,0.21,0.85],
     framing:1.95,
-    autoHeroYaw:true,
     verticalOffset:-0.035
   }),
   pendant:Object.freeze({
@@ -320,21 +319,19 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     chainRise:4.25
   }),
   bangle:Object.freeze({
-    // Catalogue view rotated around Z, with native hero-facing alignment
-    // composed separately to prevent an edge-on result.
-    objectEulerDeg:[0,0,90],
-    cameraDirection:[0.04,0.16,0.986],
+    // Same spatial presentation as the ear cuff. Keep the bracelet's existing
+    // framing and vertical margin unchanged.
+    objectEulerDeg:[0,-90,-10],
+    cameraDirection:[0.49,0.21,0.85],
     framing:1.274,
-    autoHeroYaw:true,
     verticalOffset:-0.035
   }),
   cuffBracelet:Object.freeze({
-    // Open cuff rotated around Z. Its dominant sculptural sector is aligned
-    // on the native axis before the catalogue rotation is applied.
-    objectEulerDeg:[0,0,90],
-    cameraDirection:[0.04,0.18,0.983],
+    // Same spatial presentation as the ear cuff. Keep the open bracelet's
+    // existing framing and vertical margin unchanged.
+    objectEulerDeg:[0,-90,-10],
+    cameraDirection:[0.49,0.21,0.85],
     framing:1.232,
-    autoHeroYaw:true,
     verticalOffset:-0.025
   }),
   earCuff:Object.freeze({
@@ -352,14 +349,14 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     verticalOffset:-0.015
   }),
   hoopEarring:Object.freeze({
-    // Neutral base pose: the former presentation tilt is removed. The two
-    // earrings are then rotated independently around their local horizontal
-    // axes by the pair-layout helper below.
-    objectEulerDeg:[0,0,0],
-    cameraDirection:[0.04,0.08,0.996],
-    framing:1.525,
-    verticalOffset:-0.005,
-    pairSpacingScale:.82
+    // No earring-specific pose, camera direction, offset or pair arrangement.
+    // Retain only the existing framing so the current amount of air remains.
+    framing:1.525
+  }),
+  cufflinks:Object.freeze({
+    // Preserve the incoming cufflink pose and spacing adjustment. Increase the
+    // framing factor by 10% so the pair occupies 10% less of the canvas.
+    framing:1.32
   }),
   default:Object.freeze({
     objectEulerDeg:[0,0,0], cameraDirection:[0.42,0.30,1], framing:1.20
@@ -774,10 +771,7 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
 
   const type=_normalizedPresentationType(nextMesh);
-  if(type==='hoopEarring'){
-    const pairPresentation=_presentationViewFor(nextMesh);
-    _arrangePairedComponents(geometry,pairPresentation);
-  }else if(type==='cufflinks'){
+  if(type==='cufflinks'){
     // Preserve the incoming mesh pose and move each complete cufflink only
     // along X, reducing the centre-to-centre separation by exactly 15%.
     _arrangePairedComponents(geometry,{pairSpacingScale:.85});
@@ -801,37 +795,7 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _mesh3d.castShadow = true;
   const presentation=_presentationViewFor(nextMesh);
   const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
-  const heroYaw=(presentation.autoHeroYaw&&(type==='ring'||type==='bangle'||type==='cuffBracelet'))
-    ?_ringHeroYaw(geometry):0;
-
-  if(type==='ring'||type==='bangle'||type==='cuffBracelet'){
-    // Compose the two rotations explicitly. The hero rotation belongs to the
-    // native Y axis of the generated annular piece; the catalogue pose is a
-    // separate 90-degree rotation around Z. Combining both values in one
-    // Euler changed the effective axes and produced the edge-on pose seen in
-    // the tablet capture.
-    const heroQuaternion=new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0,1,0),
-      heroYaw
-    );
-    const presentationQuaternion=new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(objectEuler[0],objectEuler[1],objectEuler[2],'XYZ')
-    );
-    _mesh3d.quaternion.copy(presentationQuaternion).multiply(heroQuaternion);
-
-    if(type==='ring'){
-      // The catalogue pose is correct, but the ring is inverted within that
-      // pose. Rotate only the ring 180 degrees around its current local Z
-      // axis, leaving both bracelet presentations untouched.
-      const ringFlipQuaternion=new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0,0,1),
-        Math.PI
-      );
-      _mesh3d.quaternion.multiply(ringFlipQuaternion);
-    }
-  }else{
-    _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
-  }
+  _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
   _scene.add(_mesh3d);
 
   if(type==='pendant'&&presentation.displayChain){
