@@ -658,6 +658,91 @@ window.AGDP_onCanvasResize = _resize;
 window.addEventListener('resize', _resize);
 _resize();
 
+
+function _rotateHoopEarringPairComponents(geometry){
+  const position=geometry.getAttribute('position');
+  const index=geometry.getIndex();
+  if(!position||!index||position.count<8||index.count<6)return;
+
+  const parent=new Int32Array(position.count);
+  const rank=new Uint8Array(position.count);
+  for(let i=0;i<parent.length;i++)parent[i]=i;
+
+  function find(x){
+    while(parent[x]!==x){
+      parent[x]=parent[parent[x]];
+      x=parent[x];
+    }
+    return x;
+  }
+  function unite(a,b){
+    let ra=find(a),rb=find(b);
+    if(ra===rb)return;
+    if(rank[ra]<rank[rb])parent[ra]=rb;
+    else if(rank[ra]>rank[rb])parent[rb]=ra;
+    else{parent[rb]=ra;rank[ra]++;}
+  }
+
+  for(let i=0;i<index.count;i+=3){
+    const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
+    unite(a,b);unite(b,c);unite(c,a);
+  }
+
+  const groups=new Map();
+  for(let i=0;i<position.count;i++){
+    const root=find(i);
+    if(!groups.has(root))groups.set(root,[]);
+    groups.get(root).push(i);
+  }
+
+  const components=Array.from(groups.values())
+    .filter(vertices=>vertices.length>=8)
+    .map(vertices=>{
+      let cx=0,cy=0,cz=0;
+      for(const vi of vertices){
+        cx+=position.getX(vi);
+        cy+=position.getY(vi);
+        cz+=position.getZ(vi);
+      }
+      const inv=1/vertices.length;
+      return {vertices,cx:cx*inv,cy:cy*inv,cz:cz*inv};
+    })
+    .sort((a,b)=>b.vertices.length-a.vertices.length)
+    .slice(0,2)
+    .sort((a,b)=>a.cx-b.cx);
+
+  if(components.length<2)return;
+
+  const rotations=[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
+
+  for(let componentIndex=0;componentIndex<2;componentIndex++){
+    const component=components[componentIndex];
+    const angle=rotations[componentIndex];
+    const cos=Math.cos(angle),sin=Math.sin(angle);
+
+    for(const vi of component.vertices){
+      const x=position.getX(vi)-component.cx;
+      const y=position.getY(vi)-component.cy;
+      const z=position.getZ(vi)-component.cz;
+
+      // Rotate around each earring's own current local Z axis.
+      const rx=x*cos-y*sin;
+      const ry=x*sin+y*cos;
+
+      position.setXYZ(
+        vi,
+        component.cx+rx,
+        component.cy+ry,
+        component.cz+z
+      );
+    }
+  }
+
+  position.needsUpdate=true;
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+}
+
 window.AGDP_setRenderMesh = function(nextMesh){
   if(_mesh3d){ _scene.remove(_mesh3d); _mesh3d.geometry.dispose(); _mesh3d=null; }
   if(_presentationAccessory){
@@ -678,6 +763,12 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
+
+  const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
+  if(type==='hoopEarring'){
+    _rotateHoopEarringPairComponents(geometry);
+  }
+
   geometry.computeVertexNormals();
   {
     let minY=Infinity, maxY=-Infinity;
@@ -696,7 +787,6 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _mesh3d.castShadow = true;
   const presentation=_presentationViewFor(nextMesh);
   const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
-  const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
   const heroYaw=(presentation.autoHeroYaw&&(type==='ring'||type==='bangle'||type==='cuffBracelet'))
     ?_ringHeroYaw(geometry):0;
 
