@@ -312,10 +312,20 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     verticalOffset:-0.025
   }),
   cufflinks:Object.freeze({
-    objectEulerDeg:[0,-8,0], cameraDirection:[0.26,0.14,0.96], framing:1.20
+    // Same paired catalogue treatment as hoop earrings: neutral base pose,
+    // independent horizontal turns, closer spacing and 25% more surrounding
+    // canvas space.
+    objectEulerDeg:[0,0,0],
+    cameraDirection:[0.04,0.08,0.996],
+    framing:1.50,
+    verticalOffset:-0.005,
+    pairSpacingScale:.82
   }),
   earCuff:Object.freeze({
-    objectEulerDeg:[0,0,-10], cameraDirection:[0.49,0.21,0.85], framing:1.18
+    // Horizontal 90-degree turn to the left around the current local Y axis.
+    objectEulerDeg:[0,-90,-10],
+    cameraDirection:[0.49,0.21,0.85],
+    framing:1.18
   }),
   brooch:Object.freeze({
     // Same presentation axis as before, rotated an additional 180 degrees
@@ -326,14 +336,14 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     verticalOffset:-0.015
   }),
   hoopEarring:Object.freeze({
-    // Hoops are conventionally photographed hanging with a slight
-    // forward tilt so the ring's own circular silhouette and the
-    // decorated lower body are both legible at once -- close to the
-    // pendant's near-frontal logic (front faces +Z by construction, via
-    // the shared makeFaceManifold body) but with a bit more yaw since a
-    // hoop's own ring shape benefits from showing depth, unlike a flat
-    // pendant plate.
-    objectEulerDeg:[0,-6,0], cameraDirection:[0.22,0.16,0.97], framing:1.22
+    // Neutral base pose: the former presentation tilt is removed. The two
+    // earrings are then rotated independently around their local horizontal
+    // axes by the pair-layout helper below.
+    objectEulerDeg:[0,0,0],
+    cameraDirection:[0.04,0.08,0.996],
+    framing:1.525,
+    verticalOffset:-0.005,
+    pairSpacingScale:.82
   }),
   default:Object.freeze({
     objectEulerDeg:[0,0,0], cameraDirection:[0.42,0.30,1], framing:1.20
@@ -659,7 +669,7 @@ window.addEventListener('resize', _resize);
 _resize();
 
 
-function _rotateHoopEarringPairComponents(geometry){
+function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
   const index=geometry.getIndex();
   if(!position||!index||position.count<8||index.count<6)return;
@@ -713,6 +723,9 @@ function _rotateHoopEarringPairComponents(geometry){
 
   if(components.length<2)return;
 
+  const midpointX=(components[0].cx+components[1].cx)*.5;
+  const spacingScale=Number.isFinite(presentation&&presentation.pairSpacingScale)
+    ?presentation.pairSpacingScale:.82;
   const rotations=[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
 
   for(let componentIndex=0;componentIndex<2;componentIndex++){
@@ -720,20 +733,22 @@ function _rotateHoopEarringPairComponents(geometry){
     const angle=rotations[componentIndex];
     const cos=Math.cos(angle),sin=Math.sin(angle);
 
+    // Bring both pieces closer while preserving their left-right order.
+    const targetCx=midpointX+(component.cx-midpointX)*spacingScale;
+    const shiftX=targetCx-component.cx;
+
     for(const vi of component.vertices){
       const x=position.getX(vi)-component.cx;
       const y=position.getY(vi)-component.cy;
       const z=position.getZ(vi)-component.cz;
 
-      // Horizontal turn around each earring's own current local Y axis.
-      // This changes which side faces the camera without turning the hoop
-      // upside down in the image plane.
+      // Horizontal turn around each piece's own local Y axis.
       const rx=x*cos+z*sin;
       const rz=-x*sin+z*cos;
 
       position.setXYZ(
         vi,
-        component.cx+rx,
+        component.cx+shiftX+rx,
         component.cy+y,
         component.cz+rz
       );
@@ -767,8 +782,9 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
 
   const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
-  if(type==='hoopEarring'){
-    _rotateHoopEarringPairComponents(geometry);
+  if(type==='hoopEarring'||type==='cufflinks'){
+    const pairPresentation=_presentationViewFor(nextMesh);
+    _arrangePairedComponents(geometry,pairPresentation);
   }
 
   geometry.computeVertexNormals();
