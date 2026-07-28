@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-cufflinks-pipeline-fix-v5';
+const AGDP_VIEWPORT_BUILD='2026-07-28-presentation-reset-v6';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -314,20 +314,6 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     framing:1.232,
     autoHeroYaw:true,
     verticalOffset:-0.025
-  }),
-  cufflinks:Object.freeze({
-    // Preserve the two established local cufflink poses, then rotate the
-    // complete pair as one rigid presentation object around the Y axis.
-    objectEulerDeg:[0,0,0],
-    cameraDirection:[0.04,0.08,0.996],
-    framing:1.50,
-    verticalOffset:-0.005,
-    pairSpacingScale:.52,
-    pairGroupYawDeg:27,
-    cufflinkAutoLevel:true,
-    cufflinkAutoLevelMaxDeg:18,
-    preservePreSpacingFit:true,
-    isCufflinkPair:true
   }),
   earCuff:Object.freeze({
     // Horizontal 90-degree turn to the left around the current local Y axis.
@@ -678,110 +664,12 @@ _resize();
 
 
 
-function _levelCufflinkTerminalBars(geometry,groups,presentation){
-  if(!presentation||!presentation.cufflinkAutoLevel)return null;
-  const position=geometry.getAttribute('position');
-  if(!position||!groups||groups.length!==2)return null;
-
-  const maxDeg=Number.isFinite(presentation.cufflinkAutoLevelMaxDeg)
-    ?Math.abs(presentation.cufflinkAutoLevelMaxDeg):18;
-  const maxRad=THREE.MathUtils.degToRad(maxDeg);
-  const results=[];
-
-  function centroid(vertices){
-    let x=0,y=0,z=0;
-    for(const vi of vertices){x+=position.getX(vi);y+=position.getY(vi);z+=position.getZ(vi);}
-    const inv=1/Math.max(1,vertices.length);
-    return {x:x*inv,y:y*inv,z:z*inv};
-  }
-  function distance2(vi,c){
-    const dx=position.getX(vi)-c.x,dy=position.getY(vi)-c.y,dz=position.getZ(vi)-c.z;
-    return dx*dx+dy*dy+dz*dz;
-  }
-
-  for(let side=0;side<2;side++){
-    const vertices=groups[side];
-    if(!vertices||vertices.length<16){results.push({side,applied:false,reason:'too-few-vertices'});continue;}
-
-    // Geometry-only two-cluster split. Unlike the previous implementation,
-    // this works when crown, post and terminal bar are fused into one printable
-    // manifold. Seeds are the most distant vertex pair found by two farthest
-    // point passes; iterations then separate the dense crown from the remote bar.
-    let seedA=vertices[0];
-    let c0=centroid(vertices);
-    for(const vi of vertices)if(distance2(vi,c0)>distance2(seedA,c0))seedA=vi;
-    const seedPos={x:position.getX(seedA),y:position.getY(seedA),z:position.getZ(seedA)};
-    let seedB=seedA,best=-1;
-    for(const vi of vertices){const d=distance2(vi,seedPos);if(d>best){best=d;seedB=vi;}}
-    let centers=[
-      {x:position.getX(seedA),y:position.getY(seedA),z:position.getZ(seedA)},
-      {x:position.getX(seedB),y:position.getY(seedB),z:position.getZ(seedB)}
-    ];
-    let clusters=[[],[]];
-    for(let iteration=0;iteration<12;iteration++){
-      clusters=[[],[]];
-      for(const vi of vertices){
-        const d0=distance2(vi,centers[0]),d1=distance2(vi,centers[1]);
-        clusters[d0<=d1?0:1].push(vi);
-      }
-      if(!clusters[0].length||!clusters[1].length)break;
-      centers=[centroid(clusters[0]),centroid(clusters[1])];
-    }
-    if(!clusters[0].length||!clusters[1].length){results.push({side,applied:false,reason:'cluster-failed'});continue;}
-
-    const crownIndex=clusters[0].length>=clusters[1].length?0:1;
-    const terminalIndex=1-crownIndex;
-    const crownVertices=clusters[crownIndex],terminalVertices=clusters[terminalIndex];
-    const crown=centroid(crownVertices),terminal=centroid(terminalVertices);
-
-    const dx=terminal.x-crown.x,dy=terminal.y-crown.y;
-    const radius=Math.hypot(dx,dy);
-    if(radius<1e-7){results.push({side,applied:false,reason:'degenerate-axis'});continue;}
-
-    // Crown edge facing the terminal bar. The requested visual contact is
-    // measured in the presentation XY plane: terminal center and facing crown
-    // edge must share the same height.
-    const ux=dx/radius,uy=dy/radius;
-    const edgeSamples=crownVertices.map(vi=>({
-      projection:(position.getX(vi)-crown.x)*ux+(position.getY(vi)-crown.y)*uy,
-      y:position.getY(vi)
-    })).sort((a,b)=>b.projection-a.projection);
-    const edgeCount=Math.max(8,Math.floor(edgeSamples.length*.10));
-    const edgeYs=edgeSamples.slice(0,edgeCount).map(v=>v.y).sort((a,b)=>a-b);
-    const targetY=edgeYs[Math.floor(edgeYs.length/2)];
-
-    const base=Math.atan2(dy,dx);
-    const desired=Math.asin(THREE.MathUtils.clamp((targetY-crown.y)/radius,-1,1));
-    const candidates=[desired-base,(Math.PI-desired)-base].map(a=>Math.atan2(Math.sin(a),Math.cos(a)));
-    let angle=Math.abs(candidates[0])<=Math.abs(candidates[1])?candidates[0]:candidates[1];
-    angle=THREE.MathUtils.clamp(angle,-maxRad,maxRad);
-    const cos=Math.cos(angle),sin=Math.sin(angle);
-
-    for(const vi of vertices){
-      const x=position.getX(vi)-crown.x,y=position.getY(vi)-crown.y;
-      position.setXYZ(vi,crown.x+x*cos-y*sin,crown.y+x*sin+y*cos,position.getZ(vi));
-    }
-    const terminalYAfter=crown.y+dx*sin+dy*cos;
-    results.push({
-      side,applied:true,angleDeg:THREE.MathUtils.radToDeg(angle),
-      crownVertexCount:crownVertices.length,terminalVertexCount:terminalVertices.length,
-      terminalYBefore:terminal.y,terminalYAfter,targetCrownEdgeY:targetY,
-      residualY:terminalYAfter-targetY
-    });
-  }
-  position.needsUpdate=true;
-  return results;
-}
-
 function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
   if(!position||position.count<16)return null;
 
-  // Split the complete pair spatially, not by mesh connectivity. A cufflink
-  // can contain several disconnected solids (face, post, toggle), so choosing
-  // only the two largest topological components leaves much of each piece
-  // unchanged. The largest clear gap on X reliably separates the left and
-  // right cufflinks and includes every vertex belonging to either piece.
+  // Split the complete earring pair spatially rather than by mesh connectivity.
+  // The largest clear gap on X separates the left and right presentation pieces.
   const samples=[];
   for(let i=0;i<position.count;i++)samples.push({x:position.getX(i),i});
   samples.sort((a,b)=>a.x-b.x);
@@ -815,19 +703,11 @@ function _arrangePairedComponents(geometry,presentation){
     const targetCx=midpointX+(component.cx-midpointX)*spacingScale;
     const shiftX=targetCx-component.cx;
 
-    // Preserve each cufflink's existing orientation exactly. Only translate
-    // it toward the pair midpoint; no hard-coded 335/220-degree local turns.
+    // Translate each presentation piece toward the pair midpoint.
     for(const vi of component.vertices){
       position.setXYZ(vi,position.getX(vi)+shiftX,position.getY(vi),position.getZ(vi));
     }
   }
-
-  // Preserve the established pair pose. Then apply only the smallest
-  // individual in-plane correction required to bring each terminal bar to
-  // the height of the crown edge, eliminating the visual impression that the
-  // cufflink is floating.
-  const individualLevelAudit=(presentation&&presentation.isCufflinkPair)
-    ?_levelCufflinkTerminalBars(geometry,groups,presentation):null;
 
   position.needsUpdate=true;
   geometry.computeBoundingBox();
@@ -837,15 +717,13 @@ function _arrangePairedComponents(geometry,presentation){
     beforeDistance,
     afterDistance:beforeDistance*spacingScale,
     spacingScale,
-    vertexCounts:[groups[0].length,groups[1].length],
-    individualLevelAudit
+    vertexCounts:[groups[0].length,groups[1].length]
   };
 }
 
 function _normalizedPresentationType(nextMesh){
   const raw=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
   const key=String(raw||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  if(key==='cufflink'||key==='cufflinks'||key==='mancuernilla'||key==='mancuernillas')return 'cufflinks';
   if(key==='hoopearring'||key==='hoopearrings')return 'hoopEarring';
   if(key==='earcuff'||key==='earcuffs')return 'earCuff';
   return raw;
@@ -873,37 +751,9 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
 
   const type=_normalizedPresentationType(nextMesh);
-  if(type==='hoopEarring'||type==='cufflinks'){
+  if(type==='hoopEarring'){
     const pairPresentation=_presentationViewFor(nextMesh);
-    geometry.computeBoundingSphere();
-    const preArrangeRadius=geometry.boundingSphere?geometry.boundingSphere.radius:null;
-    const pairAudit=_arrangePairedComponents(geometry,pairPresentation);
-
-    // For cufflinks, rotate the already-arranged pair as one rigid geometric
-    // unit around the world Y axis. This makes the +27-degree turn explicit
-    // and independent of mesh Euler order, camera controls or later centering.
-    if(type==='cufflinks'){
-      const pairYawDeg=Number.isFinite(pairPresentation.pairGroupYawDeg)
-        ?pairPresentation.pairGroupYawDeg:27;
-      geometry.rotateY(THREE.MathUtils.degToRad(pairYawDeg));
-      geometry.computeBoundingBox();
-      geometry.computeBoundingSphere();
-      if(pairPresentation.preservePreSpacingFit&&Number.isFinite(preArrangeRadius)){
-        geometry.userData.presentationFitRadius=preArrangeRadius;
-      }
-      console.info('AGDP cufflinks presentation audit',{
-        build:AGDP_VIEWPORT_BUILD,
-        rawType:nextMesh&&nextMesh.audit&&nextMesh.audit.type,
-        normalizedType:type,
-        presentationIsCufflinkPair:pairPresentation.isCufflinkPair===true,
-        pairSpacingScale:pairPresentation.pairSpacingScale,
-        cufflinkAutoLevel:pairPresentation.cufflinkAutoLevel===true,
-        pairYawDeg,
-        pairAudit,
-        preArrangeRadius,
-        postArrangeRadius:geometry.boundingSphere&&geometry.boundingSphere.radius
-      });
-    }
+    _arrangePairedComponents(geometry,pairPresentation);
   }
 
   geometry.computeVertexNormals();
@@ -969,8 +819,7 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.computeBoundingSphere();
   const sphere=geometry.boundingSphere;
   const radius=Math.max(1,sphere?sphere.radius:10);
-  const fitRadius=(type==='cufflinks'&&Number.isFinite(geometry.userData.presentationFitRadius))
-    ?Math.max(1,geometry.userData.presentationFitRadius):radius;
+  const fitRadius=radius;
   _groundPlane.position.y = -radius * 1.02;
 
   const verticalOffset=Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0;
@@ -979,8 +828,6 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const hFov=2*Math.atan(Math.tan(vFov/2)*Math.max(0.35,_camera.aspect));
   const limitingFov=Math.min(vFov,hFov);
   const framing=Number.isFinite(presentation.framing)?presentation.framing:1.20;
-  // Cufflinks use the pre-spacing radius so automatic camera fitting does not
-  // zoom inward and visually cancel the deliberate reduction in separation.
   const fitDistance=(fitRadius/Math.sin(Math.max(0.08,limitingFov/2)))*framing;
   const cameraDirection=presentation.cameraDirection||[0.42,0.30,1];
   const dir=new THREE.Vector3(cameraDirection[0],cameraDirection[1],cameraDirection[2]).normalize();
