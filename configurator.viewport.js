@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-alignment-air-shadow-earrings-reset-v8';
+const AGDP_VIEWPORT_BUILD='2026-07-28-native-mesh-reset-v9';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -348,11 +348,6 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     framing:1.846,
     verticalOffset:-0.015
   }),
-  hoopEarring:Object.freeze({
-    // No earring-specific pose, camera direction, offset or pair arrangement.
-    // Retain only the existing framing so the current amount of air remains.
-    framing:1.525
-  }),
   cufflinks:Object.freeze({
     // Preserve the incoming cufflink pose and spacing adjustment. Increase the
     // framing factor by 10% so the pair occupies 10% less of the canvas.
@@ -687,7 +682,7 @@ function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
   if(!position||position.count<16)return null;
 
-  // Split the complete earring pair spatially rather than by mesh connectivity.
+  // Split the complete pair spatially rather than by mesh connectivity.
   // The largest clear gap on X separates the left and right presentation pieces.
   const samples=[];
   for(let i=0;i<position.count;i++)samples.push({x:position.getX(i),i});
@@ -743,7 +738,6 @@ function _arrangePairedComponents(geometry,presentation){
 function _normalizedPresentationType(nextMesh){
   const raw=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
   const key=String(raw||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  if(key==='hoopearring'||key==='hoopearrings')return 'hoopEarring';
   if(key==='earcuff'||key==='earcuffs')return 'earCuff';
   if(key==='cufflink'||key==='cufflinks'||key==='mancuernilla'||key==='mancuernillas')return 'cufflinks';
   return raw;
