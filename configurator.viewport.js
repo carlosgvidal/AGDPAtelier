@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-presentation-reset-v6';
+const AGDP_VIEWPORT_BUILD='2026-07-28-cufflinks-spacing-shadow-v7';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -55,13 +55,35 @@ _keyLight.shadow.mapSize.set(1024, 1024);
 _keyLight.shadow.camera.near = 0.1;
 _keyLight.shadow.camera.far = 50;
 _keyLight.shadow.bias = -0.001;
-const _groundPlane = new THREE.Mesh(
-  new THREE.PlaneGeometry(200, 200),
-  new THREE.ShadowMaterial({ opacity: 0.10 })
+function _createContactShadowTexture(){
+  const size=256;
+  const canvas=document.createElement('canvas');
+  canvas.width=size; canvas.height=size;
+  const ctx=canvas.getContext('2d');
+  const gradient=ctx.createRadialGradient(size*.5,size*.5,0,size*.5,size*.5,size*.5);
+  gradient.addColorStop(0,'rgba(40,32,36,0.18)');
+  gradient.addColorStop(.42,'rgba(40,32,36,0.09)');
+  gradient.addColorStop(1,'rgba(40,32,36,0)');
+  ctx.fillStyle=gradient;
+  ctx.fillRect(0,0,size,size);
+  const texture=new THREE.CanvasTexture(canvas);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  return texture;
+}
+const _contactShadow = new THREE.Mesh(
+  new THREE.PlaneGeometry(1,1),
+  new THREE.MeshBasicMaterial({
+    map:_createContactShadowTexture(),
+    transparent:true,
+    opacity:.48,
+    depthWrite:false,
+    toneMapped:false
+  })
 );
-_groundPlane.rotation.x = -Math.PI / 2;
-_groundPlane.receiveShadow = true;
-_scene.add(_groundPlane);
+_contactShadow.rotation.x=-Math.PI/2;
+_contactShadow.renderOrder=-1;
+_contactShadow.visible=false;
+_scene.add(_contactShadow);
 
 function createLightTentEnvironment(renderer){
   const envScene = new THREE.Scene();
@@ -726,6 +748,7 @@ function _normalizedPresentationType(nextMesh){
   const key=String(raw||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   if(key==='hoopearring'||key==='hoopearrings')return 'hoopEarring';
   if(key==='earcuff'||key==='earcuffs')return 'earCuff';
+  if(key==='cufflink'||key==='cufflinks'||key==='mancuernilla'||key==='mancuernillas')return 'cufflinks';
   return raw;
 }
 
@@ -741,7 +764,7 @@ window.AGDP_setRenderMesh = function(nextMesh){
   _createControls();
   _controls.target.copy(prevTarget);
   _camera.position.copy(prevPos);
-  if(!nextMesh || !nextMesh.V || !nextMesh.V.length){ _controls.update(); return; }
+  if(!nextMesh || !nextMesh.V || !nextMesh.V.length){ _contactShadow.visible=false; _controls.update(); return; }
   const positions = new Float32Array(nextMesh.V.length*3);
   for(let i=0;i<nextMesh.V.length;i++){ positions[i*3]=nextMesh.V[i][0]; positions[i*3+1]=nextMesh.V[i][1]; positions[i*3+2]=nextMesh.V[i][2]; }
   const indices = new Uint32Array(nextMesh.F.length*3);
@@ -754,6 +777,10 @@ window.AGDP_setRenderMesh = function(nextMesh){
   if(type==='hoopEarring'){
     const pairPresentation=_presentationViewFor(nextMesh);
     _arrangePairedComponents(geometry,pairPresentation);
+  }else if(type==='cufflinks'){
+    // Preserve the incoming mesh pose and move each complete cufflink only
+    // along X, reducing the centre-to-centre separation by exactly 15%.
+    _arrangePairedComponents(geometry,{pairSpacingScale:.85});
   }
 
   geometry.computeVertexNormals();
@@ -820,7 +847,18 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const sphere=geometry.boundingSphere;
   const radius=Math.max(1,sphere?sphere.radius:10);
   const fitRadius=radius;
-  _groundPlane.position.y = -radius * 1.02;
+
+  // Position a very soft contact shadow directly below the already-oriented
+  // display mesh. This is presentation-only and applies to every typology.
+  _mesh3d.updateMatrixWorld(true);
+  const worldBox=new THREE.Box3().setFromObject(_mesh3d);
+  const worldSize=worldBox.getSize(new THREE.Vector3());
+  const worldCenter=worldBox.getCenter(new THREE.Vector3());
+  const shadowWidth=Math.max(worldSize.x,radius*.55);
+  const shadowDepth=Math.max(worldSize.z,radius*.42);
+  _contactShadow.position.set(worldCenter.x,worldBox.min.y-Math.max(radius*.012,.002),worldCenter.z);
+  _contactShadow.scale.set(shadowWidth*1.08,shadowDepth*.72,1);
+  _contactShadow.visible=true;
 
   const verticalOffset=Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0;
   _controls.target.set(0,radius*verticalOffset,0);
