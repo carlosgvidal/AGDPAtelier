@@ -318,8 +318,9 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     cameraDirection:[0.04,0.08,0.996],
     framing:1.50,
     verticalOffset:-0.005,
-    pairSpacingScale:.62,
+    pairSpacingScale:.52,
     pairGroupYawDeg:27,
+    preservePreSpacingFit:true,
     isCufflinkPair:true
   }),
   earCuff:Object.freeze({
@@ -353,7 +354,7 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
 window.AGDP_PRESENTATION_VIEWS=AGDP_PRESENTATION_VIEWS;
 
 function _presentationViewFor(nextMesh){
-  const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
+  const type=_normalizedPresentationType(nextMesh);
   return AGDP_PRESENTATION_VIEWS[type]||AGDP_PRESENTATION_VIEWS.default;
 }
 function _degToRad3(values){
@@ -672,59 +673,39 @@ _resize();
 
 function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
-  const index=geometry.getIndex();
-  if(!position||!index||position.count<8||index.count<6)return;
+  if(!position||position.count<16)return null;
 
-  const parent=new Int32Array(position.count);
-  const rank=new Uint8Array(position.count);
-  for(let i=0;i<parent.length;i++)parent[i]=i;
+  // Split the complete pair spatially, not by mesh connectivity. A cufflink
+  // can contain several disconnected solids (face, post, toggle), so choosing
+  // only the two largest topological components leaves much of each piece
+  // unchanged. The largest clear gap on X reliably separates the left and
+  // right cufflinks and includes every vertex belonging to either piece.
+  const samples=[];
+  for(let i=0;i<position.count;i++)samples.push({x:position.getX(i),i});
+  samples.sort((a,b)=>a.x-b.x);
 
-  function find(x){
-    while(parent[x]!==x){
-      parent[x]=parent[parent[x]];
-      x=parent[x];
-    }
-    return x;
+  const minSide=Math.max(8,Math.floor(samples.length*.15));
+  let splitIndex=-1,bestGap=-Infinity;
+  for(let i=minSide;i<=samples.length-minSide;i++){
+    const gap=samples[i].x-samples[i-1].x;
+    if(gap>bestGap){bestGap=gap;splitIndex=i;}
   }
-  function unite(a,b){
-    let ra=find(a),rb=find(b);
-    if(ra===rb)return;
-    if(rank[ra]<rank[rb])parent[ra]=rb;
-    else if(rank[ra]>rank[rb])parent[rb]=ra;
-    else{parent[rb]=ra;rank[ra]++;}
-  }
+  if(splitIndex<minSide||splitIndex>samples.length-minSide)return null;
 
-  for(let i=0;i<index.count;i+=3){
-    const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
-    unite(a,b);unite(b,c);unite(c,a);
-  }
+  const threshold=(samples[splitIndex-1].x+samples[splitIndex].x)*.5;
+  const groups=[[],[]];
+  for(let i=0;i<position.count;i++)groups[position.getX(i)<=threshold?0:1].push(i);
+  if(groups[0].length<8||groups[1].length<8)return null;
 
-  const groups=new Map();
-  for(let i=0;i<position.count;i++){
-    const root=find(i);
-    if(!groups.has(root))groups.set(root,[]);
-    groups.get(root).push(i);
-  }
-
-  const components=Array.from(groups.values())
-    .filter(vertices=>vertices.length>=8)
-    .map(vertices=>{
-      let cx=0,cy=0,cz=0;
-      for(const vi of vertices){
-        cx+=position.getX(vi);
-        cy+=position.getY(vi);
-        cz+=position.getZ(vi);
-      }
-      const inv=1/vertices.length;
-      return {vertices,cx:cx*inv,cy:cy*inv,cz:cz*inv};
-    })
-    .sort((a,b)=>b.vertices.length-a.vertices.length)
-    .slice(0,2)
-    .sort((a,b)=>a.cx-b.cx);
-
-  if(components.length<2)return;
+  const components=groups.map(vertices=>{
+    let cx=0,cy=0,cz=0;
+    for(const vi of vertices){cx+=position.getX(vi);cy+=position.getY(vi);cz+=position.getZ(vi);}
+    const inv=1/vertices.length;
+    return {vertices,cx:cx*inv,cy:cy*inv,cz:cz*inv};
+  });
 
   const midpointX=(components[0].cx+components[1].cx)*.5;
+  const beforeDistance=Math.abs(components[1].cx-components[0].cx);
   const spacingScale=Number.isFinite(presentation&&presentation.pairSpacingScale)
     ?presentation.pairSpacingScale:.82;
   const rotations=(presentation&&presentation.isCufflinkPair)
@@ -735,32 +716,37 @@ function _arrangePairedComponents(geometry,presentation){
     const component=components[componentIndex];
     const angle=rotations[componentIndex];
     const cos=Math.cos(angle),sin=Math.sin(angle);
-
-    // Bring both pieces closer while preserving their left-right order.
     const targetCx=midpointX+(component.cx-midpointX)*spacingScale;
-    const shiftX=targetCx-component.cx;
 
     for(const vi of component.vertices){
       const x=position.getX(vi)-component.cx;
       const y=position.getY(vi)-component.cy;
       const z=position.getZ(vi)-component.cz;
-
-      // Horizontal turn around each piece's own local Y axis.
       const rx=x*cos+z*sin;
       const rz=-x*sin+z*cos;
-
-      position.setXYZ(
-        vi,
-        component.cx+shiftX+rx,
-        component.cy+y,
-        component.cz+rz
-      );
+      position.setXYZ(vi,targetCx+rx,component.cy+y,component.cz+rz);
     }
   }
 
   position.needsUpdate=true;
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
+  return {
+    threshold,
+    beforeDistance,
+    afterDistance:beforeDistance*spacingScale,
+    spacingScale,
+    vertexCounts:[groups[0].length,groups[1].length]
+  };
+}
+
+function _normalizedPresentationType(nextMesh){
+  const raw=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
+  const key=String(raw||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(key==='cufflink'||key==='cufflinks'||key==='mancuernilla'||key==='mancuernillas')return 'cufflinks';
+  if(key==='hoopearring'||key==='hoopearrings')return 'hoopEarring';
+  if(key==='earcuff'||key==='earcuffs')return 'earCuff';
+  return raw;
 }
 
 window.AGDP_setRenderMesh = function(nextMesh){
@@ -784,10 +770,12 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
 
-  const type=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
+  const type=_normalizedPresentationType(nextMesh);
   if(type==='hoopEarring'||type==='cufflinks'){
     const pairPresentation=_presentationViewFor(nextMesh);
-    _arrangePairedComponents(geometry,pairPresentation);
+    geometry.computeBoundingSphere();
+    const preArrangeRadius=geometry.boundingSphere?geometry.boundingSphere.radius:null;
+    const pairAudit=_arrangePairedComponents(geometry,pairPresentation);
 
     // For cufflinks, rotate the already-arranged pair as one rigid geometric
     // unit around the world Y axis. This makes the +27-degree turn explicit
@@ -798,6 +786,17 @@ window.AGDP_setRenderMesh = function(nextMesh){
       geometry.rotateY(THREE.MathUtils.degToRad(pairYawDeg));
       geometry.computeBoundingBox();
       geometry.computeBoundingSphere();
+      if(pairPresentation.preservePreSpacingFit&&Number.isFinite(preArrangeRadius)){
+        geometry.userData.presentationFitRadius=preArrangeRadius;
+      }
+      console.info('AGDP cufflinks presentation audit',{
+        rawType:nextMesh&&nextMesh.audit&&nextMesh.audit.type,
+        normalizedType:type,
+        pairYawDeg,
+        pairAudit,
+        preArrangeRadius,
+        postArrangeRadius:geometry.boundingSphere&&geometry.boundingSphere.radius
+      });
     }
   }
 
@@ -864,6 +863,8 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.computeBoundingSphere();
   const sphere=geometry.boundingSphere;
   const radius=Math.max(1,sphere?sphere.radius:10);
+  const fitRadius=(type==='cufflinks'&&Number.isFinite(geometry.userData.presentationFitRadius))
+    ?Math.max(1,geometry.userData.presentationFitRadius):radius;
   _groundPlane.position.y = -radius * 1.02;
 
   const verticalOffset=Number.isFinite(presentation.verticalOffset)?presentation.verticalOffset:0;
@@ -872,7 +873,9 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const hFov=2*Math.atan(Math.tan(vFov/2)*Math.max(0.35,_camera.aspect));
   const limitingFov=Math.min(vFov,hFov);
   const framing=Number.isFinite(presentation.framing)?presentation.framing:1.20;
-  const fitDistance=(radius/Math.sin(Math.max(0.08,limitingFov/2)))*framing;
+  // Cufflinks use the pre-spacing radius so automatic camera fitting does not
+  // zoom inward and visually cancel the deliberate reduction in separation.
+  const fitDistance=(fitRadius/Math.sin(Math.max(0.08,limitingFov/2)))*framing;
   const cameraDirection=presentation.cameraDirection||[0.42,0.30,1];
   const dir=new THREE.Vector3(cameraDirection[0],cameraDirection[1],cameraDirection[2]).normalize();
   _camera.position.copy(dir.multiplyScalar(fitDistance));
