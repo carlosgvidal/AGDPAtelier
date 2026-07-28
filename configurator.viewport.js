@@ -319,7 +319,8 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     cameraDirection:[0.04,0.08,0.996],
     framing:1.50,
     verticalOffset:-0.005,
-    pairSpacingScale:.82
+    pairSpacingScale:.82,
+    isCufflinkPair:true
   }),
   earCuff:Object.freeze({
     // Horizontal 90-degree turn to the left around the current local Y axis.
@@ -726,7 +727,9 @@ function _arrangePairedComponents(geometry,presentation){
   const midpointX=(components[0].cx+components[1].cx)*.5;
   const spacingScale=Number.isFinite(presentation&&presentation.pairSpacingScale)
     ?presentation.pairSpacingScale:.82;
-  const rotations=[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
+  const rotations=(presentation&&presentation.isCufflinkPair)
+    ?[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(145)]
+    :[THREE.MathUtils.degToRad(170),THREE.MathUtils.degToRad(180)];
 
   for(let componentIndex=0;componentIndex<2;componentIndex++){
     const component=components[componentIndex];
