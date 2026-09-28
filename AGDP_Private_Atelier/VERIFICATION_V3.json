@@ -1,0 +1,35 @@
+{
+  "version": "AGDP_ATELIER_HIGH_JEWELRY_V3",
+  "static_checks": {
+    "all_js_node_check": true,
+    "api_quote_removed_inherited_from_v2": true,
+    "obj_mtl_export_retained": true
+  },
+  "grammar": {
+    "cuts": [
+      "asscher",
+      "cushion",
+      "emerald",
+      "princess",
+      "baguette"
+    ],
+    "void_priority": true,
+    "full_bezel_faceted": false
+  },
+  "runtime_browser_tested": false,
+  "limitation": "No explicit semantic window polygons or booleanized settings; void-aware placement uses compiled holes/frames plus internal/oblique surface scoring.",
+  "sha256": {
+    "configurator.js": "241d1b7ee4daeefb2c178c298d4659de8a9d351b05c1f48378f8aa0f7c234b58",
+    "configurator.engine.js": "a5085cf61620477458e77339fbf217da3166be9bc6cbb55d579932df260c06b5",
+    "configurator.viewport.js": "27de195ce268a19f96f1c1584d26ce16d74d398d6d3c1ede1ffe6e02bfc48944",
+    "configurator.geometry.js": "8ed9414668c0fba6b444a4bafcf8f7d09099be9234669e879d0720d698a851d9",
+    "index.html": "7a41698ffa2cf867a15a679a5db166865b063679fbcf7b4791c846d286687032",
+    "README_GEMSTONES_V1.txt": "0838840d082d5c285f55b704eeb9ebe5cb9ff269e4f362db1b3a30bafbe76cd8",
+    "README_HIGH_JEWELRY_V3.txt": "2ca378673f4384c42aba5339022e1ace4d74041bc631f6d2567cbd2a9d8691b9",
+    "configurator.gemstones.js": "900b7320957f8bd15a7a59ca106413986004b1becb4a8cf19a525c25fc4f7dd0",
+    "VERIFICATION.json": "05d6334cc3ed9a35d64f3c271b7b25f8e63f78341854f82da80f4e003ac674c3",
+    "configurator.ui.js": "eb16522f5303332f918582ce1f9457505920a29a00fa5292b301cb5dc11fcc08",
+    "README_PRIVATE_V2.txt": "ff00586ee43bec9194b3688e1fd2485a9b289a41aa5e6798659c340e064bddcd",
+    "agdp-site.css": "92552bd1360bc02ce616cf4d12dc63bab006429dde81b6641cd55784228762fd"
+  }
+}
