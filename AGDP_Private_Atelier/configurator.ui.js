@@ -464,6 +464,8 @@ generateBtn:'Generate piece', orderBtn:'Download OBJ',
     currentSeed=acceptedSeed;
     window.AGDP_currentSeed=currentSeed;
     if(window.AGDP_Gemstones){
+      // V8.2: presentation consumes the geometry transaction; it never rejects it.
+      // Normal high-jewelry output already contains gemstones. The fallback exists
       try{
         acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams);
         window.AGDP_currentGemstonePlan=acceptedMesh.gemstones;

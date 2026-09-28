@@ -3266,49 +3266,80 @@ function agdpHJ8ResolvedStone(p,anchor){
 function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
   const program=p.highJewelryProgram,primary=p.primaryGemVolume;
   if(!program||!program.enabled)return manifold;
-  if(!primary)throw new Error('AGDP V7: high-jewelry seed has no primary mineral volume');
 
-  // The mineral dimensions were frozen before the typology constructor ran.
-  // We only query the completed base skin for the exact contact point/orientation.
+  // V8.4 TRANSACTION FIX:
+  // High Jewelry is an optional constructive transaction. A failed gemstone seat must
+  // never invalidate an otherwise valid base-metal manifold. On any HJ failure we
+  // dispose only temporary/intermediate solids, mark the setting rejected, and return
+  // the original manifold untouched, restoring the recoverable behavior proven in V6.
+  const reject=(reason,error)=>{
+    p.highJewelryResolvedStone=null;
+    p.highJewelrySettingV8={
+      accepted:false,
+      primaryVolume:true,
+      stoneFirst:true,
+      lapidaryDriven:true,
+      reason,
+      error:error&&error.message?String(error.message):undefined
+    };
+    p.highJewelryProgram=Object.assign({},program,{enabled:false,reason});
+    console.warn('AGDP V8.4: High Jewelry transaction rolled back:',reason,error||'');
+    return manifold;
+  };
+
+  if(!primary)return reject('missing-primary-mineral-volume');
+
   const pre=manifoldToMeshHelper(manifold);
   const anchor=window.AGDP_Gemstones.semanticAnchor(pre.V,pre.F,p);
   const stone=agdpHJ8ResolvedStone(p,anchor);
-  if(!stone)throw new Error('AGDP V7: no structural anchor for primary mineral volume');
+  if(!stone)return reject('missing-structural-anchor');
 
   const b=agdpHJ5Basis(stone.normal), r=(stone.widthMm||stone.sizeMm)*.5, asp=(stone.lengthMm&&stone.widthMm)?stone.lengthMm/stone.widthMm:(stone.aspect||1);
   const gemDepth=Math.max(1,stone.depthMm||stone.sizeMm*.55), gemLength=stone.lengthMm||stone.sizeMm*asp, gemWidth=stone.widthMm||stone.sizeMm;
   const smallBody=['ring','earCuff','hoopEarring','cufflinks'].includes(p.type);
   const bandLike=['ring','bangle','cuffBracelet','earCuff','hoopEarring'].includes(p.type);
 
-  // HEAD / SADDLE: dimensions derive from the stone. It overlaps the original body
-  // substantially, so the metal is constructed as shoulders around the mineral volume.
   const receiverDepth=smallBody?Math.max(3.0,Math.min(5.6,gemDepth*.72)):Math.max(3.2,Math.min(7.2,gemDepth*.78));
   const receiverX=Math.max(5.2,gemLength+Math.max(1.4,gemWidth*.18));
   const receiverY=Math.max(5.0,gemWidth+Math.max(1.4,gemWidth*.18));
   const inwardOverlap=Math.max(1.15,receiverDepth*.42);
   const receiverCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth*.5-inwardOverlap);
-  let receiver=agdpHJ5OrientedBox(wasm,receiverCenter,stone.normal,receiverX,receiverY,receiverDepth);
-  let supported;
-  try{supported=wasm.Manifold.union(manifold,receiver);}catch(e){try{receiver.delete();}catch(_e){};throw new Error('AGDP V7: primary-volume saddle union failed');}
-  try{receiver.delete();}catch(e){}
 
-  // Seat is deliberately shallow relative to the new head: it keys the stone without
-  // severing the load-bearing band beneath it.
+  let receiver=null,supported=null,cutter=null,metal=null,assembly=null;
+  try{
+    receiver=agdpHJ5OrientedBox(wasm,receiverCenter,stone.normal,receiverX,receiverY,receiverDepth);
+    supported=wasm.Manifold.union(manifold,receiver);
+  }catch(e){
+    try{receiver&&receiver.delete();}catch(_e){}
+    try{supported&&supported.delete();}catch(_e){}
+    return reject('saddle-union-failed',e);
+  }
+  try{receiver&&receiver.delete();}catch(e){}
+  receiver=null;
+
   const seatDepth=Math.max(.70,Math.min(receiverDepth*.62,gemDepth*.46));
   const clearance=Math.max(.08,Math.min(.18,gemWidth*.012));
-  const seatW=gemLength+clearance*2, seatH=gemWidth+clearance*2;
   const seatCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth-inwardOverlap-seatDepth*.46);
-  // V8: the actual lapidary body is the boolean tool. This is no longer a bounding-box seat.
-  // Position the primary gem first, then cut the receiving metal with the same mesh later rendered/exported.
   stone.position=seatCenter.slice();
-  let cutter;
+
   try{
     const gemMesh=window.AGDP_Gemstones.meshPart(stone);
     cutter=meshToManifold(wasm,gemMesh.V,gemMesh.F);
-  }catch(e){throw new Error('AGDP V8: lapidary-volume cutter construction failed: '+(e&&e.message?e.message:e));}
-  let metal;
-  try{metal=wasm.Manifold.difference(supported,cutter);}catch(e){try{supported.delete();}catch(_e){}try{cutter.delete();}catch(_e){};throw new Error('AGDP V7: primary-volume seat boolean failed');}
-  try{supported.delete();}catch(e){} try{cutter.delete();}catch(e){}
+  }catch(e){
+    try{supported&&supported.delete();}catch(_e){}
+    return reject('lapidary-cutter-construction-failed',e);
+  }
+
+  try{
+    metal=wasm.Manifold.difference(supported,cutter);
+  }catch(e){
+    try{supported&&supported.delete();}catch(_e){}
+    try{cutter&&cutter.delete();}catch(_e){}
+    return reject('seat-boolean-failed',e);
+  }
+  try{supported&&supported.delete();}catch(e){}
+  try{cutter&&cutter.delete();}catch(e){}
+  supported=null;cutter=null;
 
   const retain=[];
   const pr=smallBody?.52:.62;
@@ -3330,21 +3361,40 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
     const railR=Math.max(.50,smallBody?.52:.60), ex=gemLength*.51, ey=gemWidth*.5;
     for(const v of [-ey,ey]) retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,v,-seatDepth*.22),agdpHJ5Local(b,stone.position,ex,v,-seatDepth*.22),railR,16));
   }else if(stone.mounting==='inlay'){
-    // Low capture frame; no raised bezel wall.
     const rr=smallBody?.40:.48, ex=r*asp*1.01, ey=r*1.01, z=-seatDepth*.28;
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,14));
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,14));
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,-ex,ey,z),rr,14));
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,-ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,14));
   }
+
   if(retain.length){
-    let assembly;
-    try{assembly=unionAll(wasm,retain);const merged=wasm.Manifold.union(metal,assembly);try{metal.delete();}catch(e){}try{assembly.delete();}catch(e){}metal=merged;}
-    catch(e){try{metal.delete();}catch(_e){}try{assembly&&assembly.delete();}catch(_e){};throw new Error('AGDP V7: primary-volume retention union failed');}
+    try{
+      assembly=unionAll(wasm,retain);
+      const merged=wasm.Manifold.union(metal,assembly);
+      try{metal&&metal.delete();}catch(e){}
+      try{assembly&&assembly.delete();}catch(e){}
+      metal=merged;assembly=null;
+    }catch(e){
+      try{metal&&metal.delete();}catch(_e){}
+      try{assembly&&assembly.delete();}catch(_e){}
+      return reject('retention-union-failed',e);
+    }
   }
 
-  const probe=manifoldToMeshHelper(metal),diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'high-jewelry-v8-lapidary-primary-volume');
-  if(!diag.ok){try{metal.delete();}catch(e){};throw new Error('AGDP V7: primary-volume assembly failed local topology audit: '+topologyFailureReasons(diag).join(','));}
+  let diag;
+  try{
+    const probe=manifoldToMeshHelper(metal);
+    diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'high-jewelry-v8.4-lapidary-primary-volume');
+  }catch(e){
+    try{metal&&metal.delete();}catch(_e){}
+    return reject('local-topology-audit-error',e);
+  }
+  if(!diag.ok){
+    const reasons=topologyFailureReasons(diag);
+    try{metal&&metal.delete();}catch(e){}
+    return reject('local-topology-audit-failed:'+reasons.join(','));
+  }
 
   p.highJewelryResolvedStone=stone;
   p.highJewelrySettingV8={accepted:true,primaryVolume:true,stoneFirst:true,lapidaryDriven:true,booleanSeat:true,receiver:true,receiverDepthMm:+receiverDepth.toFixed(2),seatDepthMm:+seatDepth.toFixed(2),seatClearanceMm:+clearance.toFixed(2),mounting:stone.mounting,bandLike,gemDimensionsMm:[gemLength,gemWidth,gemDepth]};
@@ -3483,7 +3533,22 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   // ever actually reachable by ui.js (which only ever had its OWN
   // pre-compile params object) -- silently broken for brooch and hoopEarring without this fix.
   const gemstoneAnchor=p.highJewelryResolvedStone?{position:p.highJewelryResolvedStone.position,normal:p.highJewelryResolvedStone.normal,scaleRef:p.highJewelryResolvedStone.sizeMm,role:p.highJewelryResolvedStone.structuralRole}:((window.AGDP_Gemstones&&typeof window.AGDP_Gemstones.semanticAnchor==='function')?window.AGDP_Gemstones.semanticAnchor(V,F,p):null);
-  return { V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p, gemstoneAnchor };
+  const result={ V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p, gemstoneAnchor };
+  // V8.2: geometry already owns the resolved primary stone. Do NOT call the
+  // presentation planner again here: doing so made a non-CAD presentation step
+  // capable of rejecting an otherwise valid manifold. Attach the resolved stone
+  // directly and deterministically to the geometry transaction.
+  if(p.highJewelryProgram&&p.highJewelryProgram.enabled&&p.highJewelryResolvedStone){
+    const hj=p.highJewelryProgram;
+    result.gemstones={
+      version:'8.2.0', enabled:true, seed:hj.seed, family:hj.family,
+      mode:'LAPIDARY_PRIMARY_VOLUME', regime:hj.regime, hasVoids:hj.hasVoids,
+      grammar:'AGDP_HIGH_JEWELRY_V8_LAPIDARY_PRIMARY_VOLUME', replaceMetalFocus:true,
+      setting:p.highJewelrySettingV8||null,
+      stones:[p.highJewelryResolvedStone]
+    };
+  }
+  return result;
 }
 function manifoldToMeshHelper(manifoldObj){
   const out = manifoldObj.getMesh();
