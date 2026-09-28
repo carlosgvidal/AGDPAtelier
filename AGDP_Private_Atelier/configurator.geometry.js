@@ -3263,7 +3263,7 @@ function agdpHJ8ResolvedStone(p,anchor){
     structuralRole:'primary-mineral-volume', replaceMetalFocus:true
   });
 }
-function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
+function agdpV9IntegratePrimaryVolume(wasm,manifold,p){
   const program=p.highJewelryProgram,primary=p.primaryGemVolume;
   if(!program||!program.enabled)return manifold;
 
@@ -3298,10 +3298,10 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
 
   if(!primary)return reject('missing-primary-mineral-volume');
 
-  const pre=manifoldToMeshHelper(manifold);
-  const anchor=window.AGDP_Gemstones.semanticAnchor(pre.V,pre.F,p);
-  const stone=agdpHJ8ResolvedStone(p,anchor);
-  if(!stone)return reject('missing-structural-anchor');
+  // V9: position/orientation are fixed by the primary-volume frame BEFORE metal
+  // construction. Never derive the stone from the completed metal skin.
+  const stone=agdpV9ResolvedStoneFromFrame(p);
+  if(!stone)return reject('missing-primary-volume-frame');
 
   const b=agdpHJ5Basis(stone.normal), r=(stone.widthMm||stone.sizeMm)*.5, asp=(stone.lengthMm&&stone.widthMm)?stone.lengthMm/stone.widthMm:(stone.aspect||1);
   const gemDepth=Math.max(1,stone.depthMm||stone.sizeMm*.55), gemLength=stone.lengthMm||stone.sizeMm*asp, gemWidth=stone.widthMm||stone.sizeMm;
@@ -3406,9 +3406,66 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
   }
 
   p.highJewelryResolvedStone=stone;
-  p.highJewelrySettingV8={accepted:true,primaryVolume:true,stoneFirst:true,lapidaryDriven:true,booleanSeat:true,receiver:true,receiverDepthMm:+receiverDepth.toFixed(2),seatDepthMm:+seatDepth.toFixed(2),seatClearanceMm:+clearance.toFixed(2),mounting:stone.mounting,bandLike,gemDimensionsMm:[gemLength,gemWidth,gemDepth]};
+  p.highJewelrySettingV8={accepted:true,architecture:'V9_PRIMARY_VOLUME',primaryVolume:true,stoneFirst:true,lapidaryDriven:true,booleanSeat:true,receiver:true,receiverDepthMm:+receiverDepth.toFixed(2),seatDepthMm:+seatDepth.toFixed(2),seatClearanceMm:+clearance.toFixed(2),mounting:stone.mounting,bandLike,gemDimensionsMm:[gemLength,gemWidth,gemDepth]};
   return metal;
 }
+// =============================================================================
+// AGDP V9 — PRIMARY MINERAL VOLUME ARCHITECTURE
+// The lapidary body is no longer attached after the metal typology exists.
+// Geometry reserves the dominant mineral envelope first. Metal is then built
+// around that envelope and the exact same lapidary mesh is used for the seat.
+// =============================================================================
+function agdpV9PrimaryVolumeFrame(p){
+  const primary=p.primaryGemVolume,program=p.highJewelryProgram;
+  if(!program||!program.enabled||!primary)return null;
+  const L=primary.lengthMm||primary.sizeMm*(primary.aspect||1);
+  const W=primary.widthMm||primary.sizeMm;
+  const D=primary.depthMm||primary.sizeMm*.55;
+  const type=p.type;
+  let position,normal;
+  if(type==='ring'){
+    const innerR=(p.mainSize||18)*.5, radial=innerR+Math.max(2.2,(p.bandWidth||3.6)*.72);
+    position=[0,radial+D*.18,0]; normal=[0,1,0];
+  }else if(type==='bangle'||type==='cuffBracelet'||type==='earCuff'||type==='hoopEarring'){
+    const outer=(p.mainSize||26)*.5;
+    position=[0,outer+Math.max(1.4,(p.bandWidth||4)*.28),0]; normal=[0,1,0];
+  }else if(type==='cufflinks'){
+    position=[0,0,Math.max(1.8,(p.bandWidth||4.8)*.52)]; normal=[0,0,1];
+  }else{
+    // Pendant/brooch and other face-like bodies reserve their dominant volume
+    // on the presentation face, at the compositional centre.
+    position=[0,0,Math.max(1.8,(p.bandWidth||4.8)*.52)]; normal=[0,0,1];
+  }
+  return {
+    position,normal,lengthMm:L,widthMm:W,depthMm:D,
+    dominantEnvelopeMm:Math.max(L,W,D),
+    family:primary.family,cut:primary.cut,
+    structuralRole:'primary-mineral-volume',
+    replaceMetalFocus:true
+  };
+}
+function agdpV9ReservePrimaryVolume(p){
+  const frame=agdpV9PrimaryVolumeFrame(p);
+  p.highJewelryPrimaryFrame=frame;
+  if(!frame)return p;
+  // The typology constructors already consume nodes/rivets/screws as focal metal.
+  // Reserve that compositional role for the mineral before any metal is built.
+  p.highJewelryOriginalFocus=p.highJewelryOriginalFocus||{nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
+  p.nodes=0;p.rivets=0;p.screws=0;
+  p.primaryReservedEnvelopeMm=frame.dominantEnvelopeMm;
+  return p;
+}
+function agdpV9ResolvedStoneFromFrame(p){
+  const frame=p.highJewelryPrimaryFrame,primary=p.primaryGemVolume;
+  if(!frame||!primary)return null;
+  return Object.assign({},primary,{
+    position:frame.position.slice(),
+    normal:frame.normal.slice(),
+    structuralRole:'primary-mineral-volume',
+    replaceMetalFocus:true
+  });
+}
+
 async function makeMeshManifoldEntry(wasm, inputParams){
   const removedTypes = new Set(['choker', 'headpiece', 'comb', 'moneyClip']);
   if (removedTypes.has(inputParams?.type)) {
@@ -3420,6 +3477,9 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   if (window.AGDP_Gemstones && typeof window.AGDP_Gemstones.prepareGeometry === 'function') {
     window.AGDP_Gemstones.prepareGeometry(p);
   }
+  // V9: freeze the primary mineral envelope before any typology constructor runs.
+  // Every downstream metal decision therefore sees the stone as the dominant volume.
+  agdpV9ReservePrimaryVolume(p);
   if (removedTypes.has(p.type)) {
     throw new Error('AGDP typology removed from catalog: ' + p.type);
   }
@@ -3458,7 +3518,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   // V8: finish any conservative body hollowing BEFORE the lapidary interface.
   // The gemstone receiver/seat/retention is therefore never hollowed or perforated afterward.
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
-  manifold=agdpHJ8ApplyPrimaryVolume(wasm,manifold,p);
+  manifold=agdpV9IntegratePrimaryVolume(wasm,manifold,p);
 
   let V, F;
   if(p.type==='hoopEarring') {
