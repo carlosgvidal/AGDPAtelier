@@ -464,13 +464,16 @@ generateBtn:'Generate piece', orderBtn:'Download OBJ',
     currentSeed=acceptedSeed;
     window.AGDP_currentSeed=currentSeed;
     if(window.AGDP_Gemstones){
-      try{
+      // V8.1: geometry.js owns the gemstone transaction. Never silently downgrade
+      // an audited high-jewelry piece to metal-only at presentation time.
+      if(!acceptedMesh.gemstones){
         acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams);
-        window.AGDP_currentGemstonePlan=acceptedMesh.gemstones;
-      }catch(gemError){
-        console.warn('AGDP gemstones: plan omitted after planner error',gemError);
-        acceptedMesh.gemstones={enabled:false,reason:'planner-error',stones:[]};
       }
+      const hj=acceptedMesh.compiledParams&&acceptedMesh.compiledParams.highJewelryProgram;
+      if(hj&&hj.enabled&&(!acceptedMesh.gemstones||!acceptedMesh.gemstones.enabled||!acceptedMesh.gemstones.stones||acceptedMesh.gemstones.stones.length<1)){
+        throw new Error('AGDP V8.1 invariant: accepted high-jewelry mesh has no gemstone plan');
+      }
+      window.AGDP_currentGemstonePlan=acceptedMesh.gemstones;
     }
     window.AGDP_currentMesh=acceptedMesh;
     window.AGDP_currentPieceName=(selectedType||'pieza')+'_'+(currentSeed||'agdp');

@@ -1,7 +1,7 @@
 'use strict';
 /* AGDP Gemstone Layer v1.0 — deterministic, geometry-aware, non-destructive stone bodies. */
 (function(){
-  const VERSION='8.0.0';
+  const VERSION='8.1.0';
   const FACETED=[
     ['diamond',0xffffff,2.417],['ruby',0x9b111e,1.77],['sapphire',0x174a8b,1.77],['emerald',0x168f5b,1.58],
     ['spinel',0xc43b66,1.72],['paraiba-tourmaline',0x24d8cf,1.62],['tourmaline',0x3a9d72,1.62],['aquamarine',0x8ed7e8,1.58],
@@ -127,7 +127,7 @@
     const program=cp.highJewelryProgram||highJewelryProgram(cp);
     if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'metal-only',stones:[]};
     if(cp.highJewelryResolvedStone){
-      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'LAPIDARY_PRIMARY_VOLUME',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_HIGH_JEWELRY_V8_LAPIDARY_PRIMARY_VOLUME',replaceMetalFocus:true,setting:cp.highJewelrySettingV7||cp.highJewelrySettingV6||cp.highJewelrySettingV5||null,stones:[cp.highJewelryResolvedStone]};
+      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'LAPIDARY_PRIMARY_VOLUME',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_HIGH_JEWELRY_V8_LAPIDARY_PRIMARY_VOLUME',replaceMetalFocus:true,setting:cp.highJewelrySettingV8||cp.highJewelrySettingV7||cp.highJewelrySettingV6||cp.highJewelrySettingV5||null,stones:[cp.highJewelryResolvedStone]};
     }
     const anchor=mesh.gemstoneAnchor||semanticAnchor(mesh.V,mesh.F,cp);
     if(!anchor)return {version:VERSION,enabled:false,reason:'no-semantic-focal-anchor',stones:[]};
@@ -184,9 +184,16 @@
   }
   function localToWorld(local,stone){const b=basisFromNormal(stone.normal),p=stone.position;return [p[0]+b.x[0]*local[0]+b.y[0]*local[1]+b.z[0]*local[2],p[1]+b.x[1]*local[0]+b.y[1]*local[1]+b.z[1]*local[2],p[2]+b.x[2]*local[0]+b.y[2]*local[1]+b.z[2]*local[2]];}
   function ellipsoidPart(stone){
-    const V=[],F=[],nu=24,nv=12,r=stone.sizeMm*.5,asp=stone.aspect||1;
-    for(let j=0;j<=nv;j++){const phi=Math.PI*j/nv;for(let i=0;i<nu;i++){const th=2*Math.PI*i/nu;const q=[r*asp*Math.sin(phi)*Math.cos(th),r*Math.sin(phi)*Math.sin(th),r*Math.cos(phi)];V.push(localToWorld(q,stone));}}
-    for(let j=0;j<nv;j++)for(let i=0;i<nu;i++){const k=(i+1)%nu,a=j*nu+i,b=j*nu+k,c=(j+1)*nu+k,d=(j+1)*nu+i;F.push([a,b,c],[a,c,d]);}
+    // Closed ellipsoid with single pole vertices. The V8 implementation duplicated
+    // each pole 24 times, producing degenerate triangles and open/non-manifold input.
+    const V=[],F=[],nu=32,nv=12,r=stone.sizeMm*.5,asp=stone.aspect||1;
+    const top=V.length; V.push(localToWorld([0,0,r],stone));
+    for(let j=1;j<nv;j++){const phi=Math.PI*j/nv;for(let i=0;i<nu;i++){const th=2*Math.PI*i/nu;V.push(localToWorld([r*asp*Math.sin(phi)*Math.cos(th),r*Math.sin(phi)*Math.sin(th),r*Math.cos(phi)],stone));}}
+    const bottom=V.length; V.push(localToWorld([0,0,-r],stone));
+    const first=1,last=1+(nv-2)*nu;
+    for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([top,first+i,first+k]);}
+    for(let j=0;j<nv-2;j++){const a0=1+j*nu,b0=a0+nu;for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([a0+i,b0+i,b0+k],[a0+i,b0+k,a0+k]);}}
+    for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([bottom,last+k,last+i]);}
     return {V,F};
   }
   function outline2D(stone,scale){
@@ -216,9 +223,16 @@
       const t=lap.thicknessMm||D;return ringMesh(stone,[{scale:1,z:t*.5},{scale:1,z:-t*.5}]);
     }
     if(stone.family==='cabochon'){
-      const V=[],F=[],nu=32,nv=10,L=(stone.lengthMm||stone.sizeMm*(stone.aspect||1))*.5,W=(stone.widthMm||stone.sizeMm)*.5,H=(lap.domeHeightMm||D*.72);
-      for(let j=0;j<=nv;j++){const ph=(Math.PI*.5)*j/nv;const rr=Math.sin(ph),z=H*Math.cos(ph);for(let i=0;i<nu;i++){const a=2*Math.PI*i/nu;V.push(localToWorld([L*rr*Math.cos(a),W*rr*Math.sin(a),z],stone));}}
-      for(let j=0;j<nv;j++)for(let i=0;i<nu;i++){const k=(i+1)%nu,a=j*nu+i,b=j*nu+k,c=(j+1)*nu+k,d=(j+1)*nu+i;F.push([a,b,c],[a,c,d]);}return {V,F};
+      // Closed cabochon: one apex, dome rings, vertical/base ring and bottom cap.
+      const V=[],F=[],nu=32,nv=10,L=(stone.lengthMm||stone.sizeMm*(stone.aspect||1))*.5,W=(stone.widthMm||stone.sizeMm)*.5,H=(lap.domeHeightMm||D*.72),base=Math.max(.55,lap.baseMm||D-H);
+      const apex=V.length;V.push(localToWorld([0,0,H],stone));
+      for(let j=1;j<=nv;j++){const ph=(Math.PI*.5)*j/nv,rr=Math.sin(ph),z=H*Math.cos(ph);for(let i=0;i<nu;i++){const a=2*Math.PI*i/nu;V.push(localToWorld([L*rr*Math.cos(a),W*rr*Math.sin(a),z],stone));}}
+      for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([apex,1+i,1+k]);}
+      for(let j=0;j<nv-1;j++){const a0=1+j*nu,b0=a0+nu;for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([a0+i,b0+i,b0+k],[a0+i,b0+k,a0+k]);}}
+      const rim=1+(nv-1)*nu,baseOff=V.length;for(let i=0;i<nu;i++){const a=2*Math.PI*i/nu;V.push(localToWorld([L*Math.cos(a),W*Math.sin(a),-base],stone));}
+      for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([rim+i,baseOff+i,baseOff+k],[rim+i,baseOff+k,rim+k]);}
+      const bottom=V.length;V.push(localToWorld([0,0,-base],stone));for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([bottom,baseOff+k,baseOff+i]);}
+      return {V,F};
     }
     const crown=lap.crownHeightMm||D*.18,g=lap.girdleMm||Math.max(.15,D*.05),pav=lap.pavilionDepthMm||Math.max(.5,D-crown-g);
     const tableScale=Math.sqrt(Math.max(.18,Math.min(.82,lap.tablePct||.60)));

@@ -1,0 +1,24 @@
+{
+  "version": "V8.1_AUDITED",
+  "root_causes_verified": [
+    "ui silently downgraded gemstone planner exceptions to enabled:false metal-only output",
+    "cabochon mesh had open boundary edges and degenerate triangles",
+    "pearl mesh had open boundary edges and degenerate triangles",
+    "V8 plan omitted highJewelrySettingV8 metadata"
+  ],
+  "executed_checks": {
+    "javascript_syntax": "passed_all_js",
+    "lapidary_mesh_topology": "passed_8_of_8_families_zero_boundary_zero_nonmanifold_zero_degenerate",
+    "typology_planner_contract": "passed_8_of_8_enabled_one_stone_nonempty_mesh",
+    "silent_planner_downgrade_search": "absent"
+  },
+  "runtime": {
+    "manifold_wasm": "not_tested_dependency_install_timed_out",
+    "browser_webgl": "not_tested"
+  },
+  "claims_not_made": [
+    "full CAD boolean runtime validation",
+    "Safari/iPad rendering validation",
+    "production-ready setting tolerances"
+  ]
+}
