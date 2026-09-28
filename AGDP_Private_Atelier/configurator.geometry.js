@@ -1,4 +1,4 @@
-/* AGDP V10 UNIFIED TOPOLOGY */
+/* AGDP STRUCTURAL GEM TOPOLOGY — single production geometry source */
 'use strict';
 /* AGDP Lapidary Specification v1.0
    Source classes are explicit: STANDARD_REPORTING, GIA_GUIDANCE, AGDP_DESIGN_RANGE.
@@ -114,7 +114,7 @@
       const cut=family==='faceted'?pickWeighted(rng,CUT_WEIGHTS):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
       return {enabled:true,seed:seed+'|mineral-topology-v11',regime:ms.regime,family,material,cut,
         mounting:ms.interface,hasVoids:(Number(params.holes)||0)>0||(Number(params.frames)||0)>.18,
-        grammar:'AGDP_MINERAL_TOPOLOGY_V11',replaceMetalFocus:true,mineralSystem:ms};
+        grammar:'AGDP_STRUCTURAL_GEMS',replaceMetalFocus:true,mineralSystem:ms};
     }
     return {enabled:false,reason:'no-mineral-topology',seed};
   }
@@ -122,7 +122,7 @@
     const program=highJewelryProgram(p);
     p.highJewelryProgram=program;
     if(!program.enabled)return p;
-    if(!window.AGDP_Lapidary)throw new Error('AGDP V11: lapidary specification is not loaded');
+    if(!window.AGDP_Lapidary)throw new Error('AGDP: lapidary specification is not loaded');
     const ms=program.mineralSystem;
     const rng=window.SeededVariation.createGenerator(program.seed+'|volumes');
     const family=program.family,cut=program.cut;
@@ -184,30 +184,12 @@
     return {position:pos,normal,scaleRef,role,bounds:b};
   }
   function plan(mesh,params){
-    const cp=mesh.compiledParams||params||{};
+    const cp=(mesh&&mesh.compiledParams)||params||{};
     const program=cp.highJewelryProgram||highJewelryProgram(cp);
-    if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'metal-only',stones:[]};
-    if(Array.isArray(cp.resolvedMineralVolumes)&&cp.resolvedMineralVolumes.length){
-      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'MINERAL_TOPOLOGY_SYSTEM',architecture:'V11_LOAD_GRAPH_MINERAL',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_MINERAL_TOPOLOGY_V11',replaceMetalFocus:true,setting:cp.highJewelrySettingsV11||null,stones:cp.resolvedMineralVolumes};
-    }
-    if(cp.highJewelryResolvedStone){
-      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'GEOMETRY_PRIMARY_VOLUME',architecture:'V11_LOAD_GRAPH_MINERAL',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_MINERAL_TOPOLOGY_V11',replaceMetalFocus:true,setting:cp.highJewelrySettingV8||null,stones:[cp.highJewelryResolvedStone]};
-    }
-    const anchor=mesh.gemstoneAnchor||semanticAnchor(mesh.V,mesh.F,cp);
-    if(!anchor)return {version:VERSION,enabled:false,reason:'no-semantic-focal-anchor',stones:[]};
-    const rng=window.SeededVariation.createGenerator(program.seed+'|dimensions');
-    const family=program.family,cut=program.cut;
-    // Focal mass is deliberately large. Face-like pieces use 36–58% of the minor envelope;
-    // band pieces use a multiple of band width so the mineral visibly replaces a node/event mass.
-    const faceLike=cp.type==='brooch'||cp.type==='pendant';
-    let size=faceLike?anchor.scaleRef*(.36+rng()*.22):anchor.scaleRef*(1.18+rng()*.72);
-    size=clamp(size, family==='pearl'?5.5:6.0, faceLike?22.0:16.0);
-    const aspect=cut==='emerald'?1.42:cut==='baguette'?1.72:family==='slab'?1.38:cut==='cushion'?1.08:1;
-    const stone={id:1,family,material:program.material[0],color:program.material[1],ior:family==='faceted'?program.material[2]:1.52,
-      cut,mounting:program.mounting,sizeMm:+size.toFixed(2),position:anchor.position,normal:anchor.normal,aspect,
-      structuralRole:anchor.role,replaceMetalFocus:true};
-    return {version:VERSION,enabled:true,seed:program.seed,family,mode:'FOCAL_MASS',regime:program.regime,
-      hasVoids:program.hasVoids,grammar:program.grammar,replaceMetalFocus:true,stones:[stone]};
+    if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'disabled',stones:[]};
+    const stones=Array.isArray(cp.resolvedMineralVolumes)?cp.resolvedMineralVolumes:[];
+    if(!stones.length)return {version:VERSION,enabled:false,reason:'no-structurally-accepted-mineral-volumes',stones:[]};
+    return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'STRUCTURAL_MINERAL_SYSTEM',architecture:'STRUCTURAL_GEMS',regime:program.regime,grammar:'AGDP_STRUCTURAL_GEMS',replaceMetalFocus:true,setting:cp.highJewelrySettings||null,stones};
   }
   function basisFromNormal(n){const z=norm(n),ref=Math.abs(z[2])>.86?[1,0,0]:[0,0,1],x=norm(cross(ref,z)),y=norm(cross(z,x));return {x,y,z};}
   function threeGroup(THREE,plan,center){
@@ -216,8 +198,11 @@
     for(const s of plan.stones){
       const radius=(s.widthMm||s.sizeMm)*.5; let geo;
       const gm=cutPart(s), positions=[];
-      for(const f of gm.F){for(const idx of f){const v=gm.V[idx];positions.push(v[0]-(center?center[0]:0),v[1]-(center?center[1]:0),v[2]-(center?center[2]:0));}}
-      geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.computeVertexNormals();
+      for(const v of gm.V)positions.push(v[0]-(center?center[0]:0),v[1]-(center?center[1]:0),v[2]-(center?center[2]:0));
+      geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setIndex(gm.F.flat());geo.computeVertexNormals();
+      // Faceted stones intentionally retain crisp planar facets; pearls/cabochons
+      // use shared indexed vertices so normals are continuous rather than pixelated.
+      if(s.family==='faceted'){geo=geo.toNonIndexed();geo.computeVertexNormals();}
       let material;
       if(s.family==='faceted') material=new THREE.MeshPhysicalMaterial({color:s.color,roughness:.04,metalness:0,transmission:.72,thickness:radius*.8,ior:s.ior||1.6,envMapIntensity:1.35,transparent:true,opacity:.96});
       else if(s.family==='pearl') material=new THREE.MeshPhysicalMaterial({color:s.color,roughness:.24,metalness:0,clearcoat:.55,clearcoatRoughness:.18,ior:1.53,envMapIntensity:1.05});
@@ -248,9 +233,8 @@
   }
   function localToWorld(local,stone){const b=basisFromNormal(stone.normal),p=stone.position;return [p[0]+b.x[0]*local[0]+b.y[0]*local[1]+b.z[0]*local[2],p[1]+b.x[1]*local[0]+b.y[1]*local[1]+b.z[1]*local[2],p[2]+b.x[2]*local[0]+b.y[2]*local[1]+b.z[2]*local[2]];}
   function ellipsoidPart(stone){
-    // Closed ellipsoid with single pole vertices. The V8 implementation duplicated
-    // each pole 24 times, producing degenerate triangles and open/non-manifold input.
-    const V=[],F=[],nu=32,nv=12,r=stone.sizeMm*.5,asp=stone.aspect||1;
+    // Closed high-resolution ellipsoid with shared pole vertices.
+    const V=[],F=[],nu=96,nv=48,r=stone.sizeMm*.5,asp=stone.aspect||1;
     const top=V.length; V.push(localToWorld([0,0,r],stone));
     for(let j=1;j<nv;j++){const phi=Math.PI*j/nv;for(let i=0;i<nu;i++){const th=2*Math.PI*i/nu;V.push(localToWorld([r*asp*Math.sin(phi)*Math.cos(th),r*Math.sin(phi)*Math.sin(th),r*Math.cos(phi)],stone));}}
     const bottom=V.length; V.push(localToWorld([0,0,-r],stone));
@@ -270,7 +254,7 @@
     if(stone.cut==='cushion'){
       const q=.72;return [[-L*q,-W], [L*q,-W],[L,-W*q],[L,W*q],[L*q,W],[-L*q,W],[-L,W*q],[-L,-W*q]];
     }
-    const seg=16,out=[];for(let i=0;i<seg;i++){const a=2*Math.PI*i/seg;out.push([L*Math.cos(a),W*Math.sin(a)]);}return out;
+    const seg=64,out=[];for(let i=0;i<seg;i++){const a=2*Math.PI*i/seg;out.push([L*Math.cos(a),W*Math.sin(a)]);}return out;
   }
   function ringMesh(stone,rings){
     const V=[],F=[],counts=[];
@@ -288,7 +272,7 @@
     }
     if(stone.family==='cabochon'){
       // Closed cabochon: one apex, dome rings, vertical/base ring and bottom cap.
-      const V=[],F=[],nu=32,nv=10,L=(stone.lengthMm||stone.sizeMm*(stone.aspect||1))*.5,W=(stone.widthMm||stone.sizeMm)*.5,H=(lap.domeHeightMm||D*.72),base=Math.max(.55,lap.baseMm||D-H);
+      const V=[],F=[],nu=96,nv=24,L=(stone.lengthMm||stone.sizeMm*(stone.aspect||1))*.5,W=(stone.widthMm||stone.sizeMm)*.5,H=(lap.domeHeightMm||D*.72),base=Math.max(.55,lap.baseMm||D-H);
       const apex=V.length;V.push(localToWorld([0,0,H],stone));
       for(let j=1;j<=nv;j++){const ph=(Math.PI*.5)*j/nv,rr=Math.sin(ph),z=H*Math.cos(ph);for(let i=0;i<nu;i++){const a=2*Math.PI*i/nu;V.push(localToWorld([L*rr*Math.cos(a),W*rr*Math.sin(a),z],stone));}}
       for(let i=0;i<nu;i++){const k=(i+1)%nu;F.push([apex,1+i,1+k]);}
@@ -1546,9 +1530,8 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const lobeB = Math.exp(-(d2*d2)/(2*zoneWidthB*zoneWidthB))*0.60;
     return Math.min(1.25, lobeA+lobeB);
   }
-  // V11: mineral events deform the body BEFORE settings are constructed.
-  // This is the shoulder/load-path field: removing the stone later leaves a
-  // structurally legible absence instead of a complete metal piece.
+  // Mineral events deform the body BEFORE settings are constructed.
+  // This shoulder/load-path field makes the body respond to the mineral grammar.
   const mineralEvents=Array.isArray(p.mineralInfluenceEvents)?p.mineralInfluenceEvents:[];
   function mineralSupportMask(t){
     if(!mineralEvents.length)return 0;
@@ -3592,266 +3575,152 @@ function agdpHJ8ResolvedStone(p,anchor){
     structuralRole:'primary-mineral-volume', replaceMetalFocus:true
   });
 }
-function agdpV9IntegratePrimaryVolume(wasm,manifold,p){
-  const program=p.highJewelryProgram,primary=p.primaryGemVolume;
-  if(!program||!program.enabled)return manifold;
-
-  // V8.4 TRANSACTION FIX:
-  // High Jewelry is an optional constructive transaction. A failed gemstone seat must
-  // never invalidate an otherwise valid base-metal manifold. On any HJ failure we
-  // dispose only temporary/intermediate solids, mark the setting rejected, and return
-  // the original manifold untouched, restoring the recoverable behavior proven in V6.
-  const reject=(reason,error,stoneForPresentation=null)=>{
-    // V8.5: roll back only the constructive metal/setting transaction.
-    // Do NOT disable the gemstone program: presentation and export still need a
-    // gemstone even when its boolean seat/retention could not be accepted.
-    p.highJewelryResolvedStone=stoneForPresentation||null;
-    p.highJewelrySettingV8={
-      accepted:false,
-      primaryVolume:true,
-      stoneFirst:true,
-      lapidaryDriven:true,
-      booleanSeat:false,
-      presentationFallback:!!stoneForPresentation,
-      reason,
-      error:error&&error.message?String(error.message):undefined
-    };
-    p.highJewelryProgram=Object.assign({},program,{
-      enabled:true,
-      settingAccepted:false,
-      settingFailureReason:reason
-    });
-    console.warn('AGDP V8.5: High Jewelry CAD setting rolled back; gemstone presentation preserved:',reason,error||'');
-    return manifold;
-  };
-
-  if(!primary)return reject('missing-primary-mineral-volume');
-
-  // V9: position/orientation are fixed by the primary-volume frame BEFORE metal
-  // construction. Never derive the stone from the completed metal skin.
-  const stone=agdpV9ResolvedStoneFromFrame(p);
-  if(!stone)return reject('missing-primary-volume-frame');
-
-  const b=agdpHJ5Basis(stone.normal), r=(stone.widthMm||stone.sizeMm)*.5, asp=(stone.lengthMm&&stone.widthMm)?stone.lengthMm/stone.widthMm:(stone.aspect||1);
-  const gemDepth=Math.max(1,stone.depthMm||stone.sizeMm*.55), gemLength=stone.lengthMm||stone.sizeMm*asp, gemWidth=stone.widthMm||stone.sizeMm;
-  const smallBody=['ring','earCuff','hoopEarring','cufflinks'].includes(p.type);
-  const bandLike=['ring','bangle','cuffBracelet','earCuff','hoopEarring'].includes(p.type);
-
-  const receiverDepth=smallBody?Math.max(3.0,Math.min(5.6,gemDepth*.72)):Math.max(3.2,Math.min(7.2,gemDepth*.78));
-  const receiverX=Math.max(5.2,gemLength+Math.max(1.4,gemWidth*.18));
-  const receiverY=Math.max(5.0,gemWidth+Math.max(1.4,gemWidth*.18));
-  const inwardOverlap=Math.max(1.15,receiverDepth*.42);
-  const receiverCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth*.5-inwardOverlap);
-
-  let receiver=null,supported=null,cutter=null,metal=null,assembly=null;
-  try{
-    receiver=agdpHJ5OrientedBox(wasm,receiverCenter,stone.normal,receiverX,receiverY,receiverDepth);
-    supported=wasm.Manifold.union(manifold,receiver);
-  }catch(e){
-    try{receiver&&receiver.delete();}catch(_e){}
-    try{supported&&supported.delete();}catch(_e){}
-    return reject('saddle-union-failed',e,stone);
-  }
-  try{receiver&&receiver.delete();}catch(e){}
-  receiver=null;
-
-  const seatDepth=Math.max(.70,Math.min(receiverDepth*.62,gemDepth*.46));
-  const clearance=Math.max(.08,Math.min(.18,gemWidth*.012));
-  const seatCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth-inwardOverlap-seatDepth*.46);
-  stone.position=seatCenter.slice();
-
-  try{
-    const gemMesh=window.AGDP_Gemstones.meshPart(stone);
-    cutter=meshToManifold(wasm,gemMesh.V,gemMesh.F);
-  }catch(e){
-    try{supported&&supported.delete();}catch(_e){}
-    return reject('lapidary-cutter-construction-failed',e,stone);
-  }
-
-  try{
-    metal=wasm.Manifold.difference(supported,cutter);
-  }catch(e){
-    try{supported&&supported.delete();}catch(_e){}
-    try{cutter&&cutter.delete();}catch(_e){}
-    return reject('seat-boolean-failed',e,stone);
-  }
-  try{supported&&supported.delete();}catch(e){}
-  try{cutter&&cutter.delete();}catch(e){}
-  supported=null;cutter=null;
-
-  const retain=[];
-  const pr=smallBody?.52:.62;
-  if(stone.mounting==='prong'||stone.mounting==='corner-prong'||stone.mounting==='v-prong'||stone.mounting==='basket'||stone.mounting==='cup-cage'){
-    const ux=gemLength*.5*(stone.mounting==='v-prong'?.96:.88), vy=gemWidth*.5*(stone.mounting==='v-prong'?.96:.88);
-    for(const [u,v] of [[-ux,-vy],[ux,-vy],[ux,vy],[-ux,vy]]){
-      const base=agdpHJ5Local(b,stone.position,u,v,-seatDepth*.52);
-      const tip=agdpHJ5Local(b,stone.position,u*.91,v*.91,Math.max(.75,r*.18));
-      retain.push(cylinderBetween(wasm,base,tip,pr,16));
-    }
-    if(stone.mounting==='basket'||stone.mounting==='cup-cage'){
-      const z=-seatDepth*.55, rr=smallBody?.42:.50, ex=gemLength*.44, ey=gemWidth*.44;
-      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,16));
-      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,-ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,16));
-      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,ey,z),agdpHJ5Local(b,stone.position,-ex,ey,z),rr,16));
-      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,-ex,-ey,z),rr,16));
-    }
-    if(stone.mounting==='cup-cage'){
-      const postBase=agdpHJ5Local(b,stone.position,0,0,-seatDepth*.95),postTip=agdpHJ5Local(b,stone.position,0,0,Math.min(gemDepth*.22,1.6));
-      retain.push(cylinderBetween(wasm,postBase,postTip,smallBody?.50:.60,18));
-    }
-  }else if(stone.mounting==='bezel'||stone.mounting==='flush'){
-    const segs=16,rr=stone.mounting==='flush'?(smallBody?.34:.40):(smallBody?.44:.52),z=-seatDepth*.12;
-    for(let i=0;i<segs;i++){
-      const a=2*Math.PI*i/segs,c=2*Math.PI*(i+1)/segs;
-      const p0=agdpHJ5Local(b,stone.position,Math.cos(a)*gemLength*.51,Math.sin(a)*gemWidth*.51,z);
-      const p1=agdpHJ5Local(b,stone.position,Math.cos(c)*gemLength*.51,Math.sin(c)*gemWidth*.51,z);
-      retain.push(cylinderBetween(wasm,p0,p1,rr,14));
-    }
-  }else if(stone.mounting==='partial-bezel'||stone.mounting==='bar'){
-    const rr=smallBody?.48:.56, ex=gemLength*.48, ey=gemWidth*.52, z=-seatDepth*.12;
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,18));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,18));
-  }else if(stone.mounting==='post-cup'){
-    const postBase=agdpHJ5Local(b,stone.position,0,0,-seatDepth*.9), postTip=agdpHJ5Local(b,stone.position,0,0,Math.min(gemDepth*.28,2.0));
-    retain.push(cylinderBetween(wasm,postBase,postTip,smallBody?.55:.65,18));
-  }else if(stone.mounting==='channel-capture'||stone.mounting==='channel'||stone.mounting==='channel-frame'){
-    const railR=Math.max(.50,smallBody?.52:.60), ex=gemLength*.51, ey=gemWidth*.5;
-    for(const v of [-ey,ey]) retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,v,-seatDepth*.22),agdpHJ5Local(b,stone.position,ex,v,-seatDepth*.22),railR,16));
-  }else if(stone.mounting==='tension'){
-    const rr=Math.max(.65,smallBody?.72:.82),ex=gemLength*.62,ey=gemWidth*.18,z=-seatDepth*.18;
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,0,z),agdpHJ5Local(b,stone.position,-gemLength*.46,0,z),rr,18));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,0,z),agdpHJ5Local(b,stone.position,gemLength*.46,0,z),rr,18));
-  }else if(stone.mounting==='inlay'){
-    const rr=smallBody?.40:.48, ex=r*asp*1.01, ey=r*1.01, z=-seatDepth*.28;
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,14));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,14));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,-ex,ey,z),rr,14));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,-ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,14));
-  }
-
-  if(retain.length){
-    try{
-      assembly=unionAll(wasm,retain);
-      const merged=wasm.Manifold.union(metal,assembly);
-      try{metal&&metal.delete();}catch(e){}
-      try{assembly&&assembly.delete();}catch(e){}
-      metal=merged;assembly=null;
-    }catch(e){
-      try{metal&&metal.delete();}catch(_e){}
-      try{assembly&&assembly.delete();}catch(_e){}
-      return reject('retention-union-failed',e,stone);
-    }
-  }
-
-  let diag;
-  try{
-    const probe=manifoldToMeshHelper(metal);
-    diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'high-jewelry-v8.4-lapidary-primary-volume');
-  }catch(e){
-    try{metal&&metal.delete();}catch(_e){}
-    return reject('local-topology-audit-error',e,stone);
-  }
-  if(!diag.ok){
-    const reasons=topologyFailureReasons(diag);
-    try{metal&&metal.delete();}catch(e){}
-    return reject('local-topology-audit-failed:'+reasons.join(','),null,stone);
-  }
-
-  p.highJewelryResolvedStone=stone;
-  p.highJewelrySettingV8={accepted:true,architecture:'V10_UNIFIED_TOPOLOGY',primaryVolume:true,stoneFirst:true,lapidaryDriven:true,booleanSeat:true,receiver:true,receiverDepthMm:+receiverDepth.toFixed(2),seatDepthMm:+seatDepth.toFixed(2),seatClearanceMm:+clearance.toFixed(2),mounting:stone.mounting,bandLike,gemDimensionsMm:[gemLength,gemWidth,gemDepth]};
-  return metal;
+/* ==========================================================================
+   AGDP STRUCTURAL GEM SYSTEM
+   Mineral events are fixed by the load/composition graph before body creation.
+   After the body has responded to those events, this stage samples the actual
+   production surface at the PREDETERMINED event coordinate and constructs a
+   real, closed, body-connected setting. No setting failure is renderable.
+   ========================================================================== */
+function agdpGemBasis(n){
+  const z=(()=>{const L=Math.hypot(n[0],n[1],n[2])||1;return [n[0]/L,n[1]/L,n[2]/L];})();
+  const ref=Math.abs(z[2])>.86?[1,0,0]:[0,0,1];
+  const x0=[ref[1]*z[2]-ref[2]*z[1],ref[2]*z[0]-ref[0]*z[2],ref[0]*z[1]-ref[1]*z[0]];
+  const xl=Math.hypot(...x0)||1,x=x0.map(v=>v/xl);
+  const y=[z[1]*x[2]-z[2]*x[1],z[2]*x[0]-z[0]*x[2],z[0]*x[1]-z[1]*x[0]];
+  return {x,y,z};
 }
-
-// =============================================================================
-// AGDP V10 — COMPOUND TOPOLOGICAL FAMILY
-// =============================================================================
-function agdpV10CompileTopologicalFamily(p){
-  const program=p.highJewelryProgram,stone=p.primaryGemVolume;
-  if(!program||!program.enabled||!stone){
-    p.topologicalFamily={key:p.type+'::metal',jewelry:p.type,mineral:null};
-    return p.topologicalFamily;
+function agdpGemWorld(b,p,u,v,w){return [p[0]+b.x[0]*u+b.y[0]*v+b.z[0]*w,p[1]+b.x[1]*u+b.y[1]*v+b.z[1]*w,p[2]+b.x[2]*u+b.y[2]*v+b.z[2]*w];}
+function agdpGemOutline(stone,scale=1){
+  const L=(stone.lengthMm||stone.sizeMm*(stone.aspect||1))*scale*.5,W=(stone.widthMm||stone.sizeMm)*scale*.5,lap=stone.lapidary||{};
+  if(stone.cut==='asscher'||stone.cut==='emerald'||stone.cut==='baguette'){
+    const c=Math.max(.04,Math.min(.24,lap.cornerCut||.10)),cx=L*(1-c),cy=W*(1-c);
+    return [[-cx,-W],[cx,-W],[L,-cy],[L,cy],[cx,W],[-cx,W],[-L,cy],[-L,-cy]];
   }
-  p.topologicalFamily={
-    key:p.type+'::'+stone.family+'::'+stone.cut,jewelry:p.type,
-    mineral:{family:stone.family,cut:stone.cut,widthMm:stone.widthMm,lengthMm:stone.lengthMm,
-      depthMm:stone.depthMm,mounting:stone.mounting,lapidary:stone.lapidary,primary:true},
-    hierarchy:['mineral-primary','metal-support','retention','mechanism'],
-    primaryVolumeMm:[stone.lengthMm,stone.widthMm,stone.depthMm],
-    metalMustRespondToPrimary:true
-  };
-  return p.topologicalFamily;
+  if(stone.cut==='princess')return [[-L,-W],[L,-W],[L,W],[-L,W]];
+  if(stone.cut==='cushion')return [[-L*.72,-W],[L*.72,-W],[L,-W*.72],[L,W*.72],[L*.72,W],[-L*.72,W],[-L,W*.72],[-L,-W*.72]];
+  const seg=stone.family==='pearl'||stone.family==='cabochon'?96:64,out=[];
+  for(let i=0;i<seg;i++){const a=2*Math.PI*i/seg;out.push([L*Math.cos(a),W*Math.sin(a)]);}return out;
 }
-// =============================================================================
-// AGDP V9 — PRIMARY MINERAL VOLUME ARCHITECTURE
-// The lapidary body is no longer attached after the metal typology exists.
-// Geometry reserves the dominant mineral envelope first. Metal is then built
-// around that envelope and the exact same lapidary mesh is used for the seat.
-// =============================================================================
-function agdpV11MineralFrames(p){
-  const volumes=Array.isArray(p.gemVolumes)?p.gemVolumes:[];
-  const ms=p.mineralSystem;
-  if(!ms||!ms.enabled||!volumes.length)return [];
+function agdpGemPrismMesh(stone,center,normal,scale,z0,z1){
+  const b=agdpGemBasis(normal),o=agdpGemOutline(stone,scale),V=[],F=[],n=o.length;
+  for(const z of [z0,z1])for(const q of o)V.push(agdpGemWorld(b,center,q[0],q[1],z));
+  for(let i=0;i<n;i++){const j=(i+1)%n;F.push([i,j,n+j],[i,n+j,n+i]);}
+  const cb=V.length;V.push(agdpGemWorld(b,center,0,0,z0));
+  const ct=V.length;V.push(agdpGemWorld(b,center,0,0,z1));
+  for(let i=0;i<n;i++){const j=(i+1)%n;F.push([cb,j,i],[ct,n+i,n+j]);}
+  return {V,F};
+}
+function agdpGemPrism(wasm,stone,center,normal,scale,z0,z1){const m=agdpGemPrismMesh(stone,center,normal,scale,z0,z1);return meshToManifold(wasm,m.V,m.F);}
+function agdpGemFrame(wasm,stone,center,normal,innerScale,outerScale,z0,z1){
+  const outer=agdpGemPrism(wasm,stone,center,normal,outerScale,z0,z1),inner=agdpGemPrism(wasm,stone,center,normal,innerScale,z0-.25,z1+.25);
+  const frame=wasm.Manifold.difference(outer,inner);try{outer.delete();inner.delete();}catch(e){}return frame;
+}
+function agdpAngleDistance(a,b){return Math.abs(wrap(a-b));}
+function agdpSurfaceFrames(manifold,p){
+  const mesh=manifoldToMeshHelper(manifold),V=mesh.V,events=(p.mineralSystem&&p.mineralSystem.events)||[],vols=p.gemVolumes||[];
+  if(!events.length||!vols.length)return [];
   const type=p.type,frames=[];
-  const bandLike=['ring','bangle','cuffBracelet','earCuff','hoopEarring'].includes(type);
-  for(let i=0;i<volumes.length;i++){
-    const stone=volumes[i],ev=ms.events[i]||{u:.5,scale:1};
-    const L=stone.lengthMm||stone.sizeMm*(stone.aspect||1),W=stone.widthMm||stone.sizeMm,D=stone.depthMm||stone.sizeMm*.55;
-    let position,normal;
-    if(bandLike){
-      const t=-Math.PI+2*Math.PI*ev.u;
-      const innerR=(p.mainSize||26)*.5;
-      const support=Math.max(2.0,(p.minFeature||.8)*2.4)+(p.primaryReservedEnvelopeMm||W)*.10;
-      const radial=innerR+support+D*.12;
-      position=[radial*Math.cos(t),radial*Math.sin(t),0];
-      normal=[Math.cos(t),Math.sin(t),0];
-    }else{
-      // Face-like typologies use the graph event coordinate as a compositional
-      // axis. Secondary events alternate vertically so constellations are not
-      // arbitrary scatter.
-      const span=Math.max(12,Math.min(34,(p.clipFaceWidthMm||p.mainSize||28)*.62));
-      const x=(ev.u-.5)*span;
-      const y=i===0?0:((i%2?1:-1)*Math.min(6,W*.55)*Math.ceil(i/2));
-      const z=Math.max(1.8,(p.bandWidth||4.8)*.52);
-      position=[x,y,z]; normal=[0,0,1];
+  function bestXY(t,front,subset){
+    let best=null,score=-Infinity; const pts=subset||V;
+    for(const v of pts){const a=Math.atan2(v[1],v[0]),r=Math.hypot(v[0],v[1]);const angular=agdpAngleDistance(a,t);const sc=-angular*30+(front?v[2]*2:r)-Math.abs(v[2])*.04;if(sc>score){score=sc;best=v;}}
+    return best;
+  }
+  if(type==='cufflinks'){
+    const spacing=p.cufflinkPairCenterSpacingMm||0;
+    for(const side of [-1,1]){
+      const cx=side*spacing*.5,subset=V.filter(v=>side<0?v[0]<0:v[0]>0);
+      for(let i=0;i<events.length;i++){
+        const t=-Math.PI+2*Math.PI*events[i].u;let best=null,score=-Infinity;
+        for(const v of subset){const a=Math.atan2(v[1],v[0]-cx),rad=Math.hypot(v[0]-cx,v[1]);const sc=-agdpAngleDistance(a,t)*28+v[2]*2+rad*.08;if(sc>score){score=sc;best=v;}}
+        if(best)frames.push({sourceIndex:i,position:best.slice(),normal:[0,0,1],event:events[i],pairSide:side});
+      }
     }
-    frames.push({position,normal,lengthMm:L,widthMm:W,depthMm:D,dominantEnvelopeMm:Math.max(L,W,D),
-      family:stone.family,cut:stone.cut,structuralRole:i===0?'primary-mineral-volume':'secondary-mineral-volume',
-      replaceMetalFocus:true,mineralEvent:ev});
+    return frames;
+  }
+  for(let i=0;i<events.length;i++){
+    const ev=events[i],t=-Math.PI+2*Math.PI*ev.u;let best,normal;
+    if(type==='hoopEarring'){
+      let score=-Infinity;for(const v of V){const a=Math.atan2(v[2],v[1]),r=Math.hypot(v[1],v[2]);const sc=-agdpAngleDistance(a,t)*30+r-Math.abs(v[0])*.08;if(sc>score){score=sc;best=v;}}
+      const r=Math.hypot(best[1],best[2])||1;normal=[0,best[1]/r,best[2]/r];
+    }else if(type==='pendant'||type==='brooch'){
+      best=bestXY(t,true);normal=[0,0,1];
+    }else{
+      best=bestXY(t,false);const r=Math.hypot(best[0],best[1])||1;normal=[best[0]/r,best[1]/r,0];
+    }
+    frames.push({sourceIndex:i,position:best.slice(),normal,event:ev});
   }
   return frames;
 }
-function agdpV9ReservePrimaryVolume(p){
-  const frames=agdpV11MineralFrames(p);
-  p.mineralFrames=frames;
-  p.highJewelryPrimaryFrame=frames[0]||null;
-  if(!frames.length)return p;
-  p.highJewelryOriginalFocus=p.highJewelryOriginalFocus||{nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
-  p.primaryReservedEnvelopeMm=Math.max(...frames.map(f=>f.dominantEnvelopeMm));
-  return p;
+function agdpStoneAtFrame(base,frame){
+  const stone=Object.assign({},base),n=frame.normal,p0=frame.position;
+  const w=stone.widthMm||stone.sizeMm,d=stone.depthMm||w*.55;
+  let lift;
+  if(stone.family==='pearl')lift=w*.36;
+  else if(stone.family==='slab')lift=Math.max(.35,d*.34);
+  else lift=Math.max(.65,Math.min(1.35,w*.12));
+  stone.position=[p0[0]+n[0]*lift,p0[1]+n[1]*lift,p0[2]+n[2]*lift];stone.normal=n.slice();stone.surfaceAnchor=p0.slice();
+  stone.structuralRole=frame.sourceIndex===0?'primary-mineral-volume':'secondary-mineral-volume';stone.replaceMetalFocus=true;return stone;
 }
-function agdpV9ResolvedStoneFromFrame(p){
-  const frame=p.highJewelryPrimaryFrame,primary=p.primaryGemVolume;
-  if(!frame||!primary)return null;
-  return Object.assign({},primary,{position:frame.position.slice(),normal:frame.normal.slice(),
-    structuralRole:frame.structuralRole||'primary-mineral-volume',replaceMetalFocus:true});
-}
-function agdpV11IntegrateMineralSystem(wasm,manifold,p){
-  const volumes=Array.isArray(p.gemVolumes)?p.gemVolumes:[];
-  const frames=Array.isArray(p.mineralFrames)?p.mineralFrames:[];
-  if(!volumes.length||!frames.length)return manifold;
-  const originalPrimary=p.primaryGemVolume,originalFrame=p.highJewelryPrimaryFrame;
-  let current=manifold;
-  const resolved=[],settings=[];
-  for(let i=0;i<Math.min(volumes.length,frames.length);i++){
-    p.primaryGemVolume=volumes[i];p.highJewelryPrimaryFrame=frames[i];
-    current=agdpV9IntegratePrimaryVolume(wasm,current,p);
-    if(p.highJewelryResolvedStone)resolved.push(Object.assign({},p.highJewelryResolvedStone,{id:i+1}));
-    if(p.highJewelrySettingV8)settings.push(Object.assign({stoneId:i+1},p.highJewelrySettingV8));
+function agdpSettingForStone(wasm,body,stone){
+  const n=stone.normal,b=agdpGemBasis(n),surface=stone.surfaceAnchor,w=stone.widthMm||stone.sizeMm,L=stone.lengthMm||w,d=stone.depthMm||w*.55;
+  const minWall=Math.max(.65,Math.min(1.05,w*.095));
+  let metal=body,parts=[];
+  // A shape-matched structural saddle is the transition between body and setting.
+  const saddle=agdpGemPrism(wasm,stone,surface,n,1.16,-1.25,.72);
+  try{const merged=wasm.Manifold.union(metal,saddle);try{metal.delete();saddle.delete();}catch(e){}metal=merged;}catch(e){try{saddle.delete();}catch(_){}throw new Error('AGDP_SETTING_SADDLE_UNION_FAILED');}
+  const sp=stone.position;
+  if(stone.mounting==='bezel'||stone.mounting==='partial-bezel'||stone.mounting==='flush'||stone.mounting==='inlay'||stone.mounting==='channel-frame'){
+    if(stone.mounting==='partial-bezel'){
+      const ex=L*.48,ey=w*.56,z=.08;
+      parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,-ey,z),agdpGemWorld(b,sp,ex,-ey,z),minWall,32));
+      parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,ey,z),agdpGemWorld(b,sp,ex,ey,z),minWall,32));
+    }else{
+      const inner=stone.mounting==='inlay'||stone.mounting==='flush'?1.015:1.025,outer=inner+Math.max(.13,(minWall*2)/Math.max(3,w));
+      parts.push(agdpGemFrame(wasm,stone,sp,n,inner,outer,-.28,stone.mounting==='inlay'?.34:.78));
+    }
+  }else if(stone.mounting==='post-cup'||stone.mounting==='cup-cage'){
+    const r=w*.5,post0=agdpGemWorld(b,sp,0,0,-r*.82),post1=agdpGemWorld(b,sp,0,0,-r*.10);
+    parts.push(cylinderBetween(wasm,post0,post1,Math.max(.42,Math.min(.70,w*.065)),32));
+    parts.push(agdpGemFrame(wasm,stone,sp,n,.36,.52,-r*.72,-r*.50));
+    if(stone.mounting==='cup-cage'){
+      for(const a of [0,Math.PI/2,Math.PI,Math.PI*1.5]){
+        const u=Math.cos(a)*r*.43,v=Math.sin(a)*r*.43;
+        parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,u,v,-r*.62),agdpGemWorld(b,sp,u*.82,v*.82,-r*.08),Math.max(.38,minWall*.55),24));
+      }
+    }
+  }else if(stone.mounting==='channel'||stone.mounting==='bar'){
+    const ex=L*.56,ey=w*.56,z=-.08,rr=Math.max(.48,minWall*.62);
+    parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,-ey,z),agdpGemWorld(b,sp,ex,-ey,z),rr,32));
+    parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,ey,z),agdpGemWorld(b,sp,ex,ey,z),rr,32));
+  }else if(stone.mounting==='tension'){
+    const ex=L*.62,z=-.06,rr=Math.max(.62,minWall*.78);
+    parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,0,z),agdpGemWorld(b,sp,-L*.47,0,z),rr,32));
+    parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,ex,0,z),agdpGemWorld(b,sp,L*.47,0,z),rr,32));
+  }else{
+    // prong / v-prong / corner-prong / basket: real body-connected retainers.
+    const pts=agdpGemOutline(stone,.91),take=pts.length>12?[0,Math.floor(pts.length/4),Math.floor(pts.length/2),Math.floor(pts.length*3/4)]:[0,1,2,3].filter(i=>i<pts.length);
+    for(const idx of take){const q=pts[idx],base=agdpGemWorld(b,sp,q[0]*1.07,q[1]*1.07,-.42),tip=agdpGemWorld(b,sp,q[0]*.96,q[1]*.96,Math.max(.55,d*.14));parts.push(cylinderBetween(wasm,base,tip,Math.max(.42,minWall*.58),28));}
+    if(stone.mounting==='basket')parts.push(agdpGemFrame(wasm,stone,sp,n,.82,.94,-.62,-.18));
   }
-  p.primaryGemVolume=originalPrimary;p.highJewelryPrimaryFrame=originalFrame;
-  p.resolvedMineralVolumes=resolved;
-  p.highJewelryResolvedStone=resolved[0]||null;
-  p.highJewelrySettingsV11=settings;
+  if(parts.length){const retain=unionAll(wasm,parts);const merged=wasm.Manifold.union(metal,retain);try{metal.delete();retain.delete();}catch(e){}metal=merged;}
+  // Exact high-resolution lapidary volume cuts the seat. No generic box cutter.
+  const gm=window.AGDP_Gemstones.meshPart(stone),cutter=meshToManifold(wasm,gm.V,gm.F);
+  const seated=wasm.Manifold.difference(metal,cutter);try{metal.delete();cutter.delete();}catch(e){}metal=seated;
+  const probe=manifoldToMeshHelper(metal),diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'structural-gem-setting');
+  if(!diag.ok){try{metal.delete();}catch(e){}throw new Error('AGDP_SETTING_NON_MANIFOLD:'+topologyFailureReasons(diag).join(','));}
+  return {manifold:metal,setting:{accepted:true,mounting:stone.mounting,shapeMatchedSaddle:true,exactLapidarySeat:true,renderFallback:false,gemDimensionsMm:[L,w,d]}};
+}
+function agdpIntegrateMineralSystem(wasm,manifold,p){
+  const vols=p.gemVolumes||[];if(!vols.length)return manifold;
+  const frames=agdpSurfaceFrames(manifold,p);if(!frames.length)throw new Error('AGDP_MINERAL_FRAMES_MISSING');
+  let current=manifold;const resolved=[],settings=[];
+  for(let k=0;k<frames.length;k++){
+    const frame=frames[k],base=vols[frame.sourceIndex];if(!base)throw new Error('AGDP_MINERAL_SOURCE_MISSING');
+    const stone=agdpStoneAtFrame(base,frame);const built=agdpSettingForStone(wasm,current,stone);current=built.manifold;
+    stone.id=k+1;resolved.push(stone);settings.push(Object.assign({stoneId:k+1},built.setting));
+  }
+  p.resolvedMineralVolumes=resolved;p.highJewelryResolvedStone=resolved[0]||null;p.highJewelrySettings=settings;
   return current;
 }
 async function makeMeshManifoldEntry(wasm, inputParams){
@@ -3865,8 +3734,6 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   if (window.AGDP_Gemstones && typeof window.AGDP_Gemstones.prepareGeometry === 'function') {
     window.AGDP_Gemstones.prepareGeometry(p);
   }
-  agdpV10CompileTopologicalFamily(p);
-  agdpV9ReservePrimaryVolume(p);
   if (removedTypes.has(p.type)) {
     throw new Error('AGDP typology removed from catalog: ' + p.type);
   }
@@ -3902,10 +3769,10 @@ async function makeMeshManifoldEntry(wasm, inputParams){
       closed: topology.closed, opening: topology.closed?0:topology.opening
     }));
   }
-  // V8: finish any conservative body hollowing BEFORE the lapidary interface.
+  // Finish conservative body hollowing BEFORE the lapidary interface.
   // The gemstone receiver/seat/retention is therefore never hollowed or perforated afterward.
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
-  manifold=agdpV11IntegrateMineralSystem(wasm,manifold,p);
+  manifold=agdpIntegrateMineralSystem(wasm,manifold,p);
 
   let V, F;
   if(p.type==='hoopEarring') {
@@ -3990,19 +3857,12 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   // pre-compile params object) -- silently broken for brooch and hoopEarring without this fix.
   const gemstoneAnchor=p.highJewelryResolvedStone?{position:p.highJewelryResolvedStone.position,normal:p.highJewelryResolvedStone.normal,scaleRef:p.highJewelryResolvedStone.sizeMm,role:p.highJewelryResolvedStone.structuralRole}:((window.AGDP_Gemstones&&typeof window.AGDP_Gemstones.semanticAnchor==='function')?window.AGDP_Gemstones.semanticAnchor(V,F,p):null);
   const result={ V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p, gemstoneAnchor };
-  // V8.2: geometry already owns the resolved primary stone. Do NOT call the
-  // presentation planner again here: doing so made a non-CAD presentation step
-  // capable of rejecting an otherwise valid manifold. Attach the resolved stone
-  // directly and deterministically to the geometry transaction.
-  if(p.highJewelryProgram&&p.highJewelryProgram.enabled&&p.highJewelryResolvedStone){
+  // Attach only mineral volumes whose structural settings passed the same geometry transaction.
+  if(p.highJewelryProgram&&p.highJewelryProgram.enabled&&Array.isArray(p.resolvedMineralVolumes)&&p.resolvedMineralVolumes.length){
     const hj=p.highJewelryProgram;
-    result.gemstones={
-      version:'8.2.0', enabled:true, seed:hj.seed, family:hj.family,
-      mode:'LAPIDARY_PRIMARY_VOLUME', regime:hj.regime, hasVoids:hj.hasVoids,
-      grammar:'AGDP_HIGH_JEWELRY_V8_LAPIDARY_PRIMARY_VOLUME', replaceMetalFocus:true,
-      setting:p.highJewelrySettingV8||null,
-      stones:[p.highJewelryResolvedStone]
-    };
+    result.gemstones={version:'STRUCTURAL_GEMS_1',enabled:true,seed:hj.seed,family:hj.family,
+      mode:'STRUCTURAL_MINERAL_SYSTEM',regime:hj.regime,grammar:'AGDP_STRUCTURAL_GEMS',
+      setting:p.highJewelrySettings||[],stones:p.resolvedMineralVolumes};
   }
   return result;
 }

@@ -760,9 +760,9 @@ const MineralTopologyGrammar=(()=>{
       structuralRole:i===0?'mineral-event':'mineral-support-event'
     }));
     return Object.freeze({
-      version:'11.0.0',enabled:true,regime,family,interface:iface,formalRelation:relation,count,
+      version:'STRUCTURAL_GEMS_1',enabled:true,regime,family,interface:iface,formalRelation:relation,count,
       events:Object.freeze(events),sizeRangeMm:range,primaryWidthMm:Math.round(primary*2)/2,
-      hierarchy:Object.freeze(['mineral-event','setting-interface','metal-load-path','body','mechanism']),
+      hierarchy:Object.freeze(['mineral-event','body-influence-field','shape-matched-setting','retention','body','mechanism']),
       standards:Object.freeze({channelWallMm:1.0,paveBorderMm:.50,meleeNominalGapMm:.10}),
       designPolicy:Object.freeze({statementBias:true,saturationCap:policy.maxStones,metalMustRespondToMineral:true}),
       graphSeed:graph.seed

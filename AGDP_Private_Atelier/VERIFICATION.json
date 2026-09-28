@@ -1,52 +1,37 @@
 {
-  "artifact": "AGDP_ATELIER_PRIVATE_V2",
-  "checks": {
-    "javascript_syntax": "passed via node --check for every .js file",
-    "production_api_removed_from_ui": "passed: no AGDP_PRODUCTION_API, /upload, /quote, orderToken in configurator.ui.js",
-    "obj_export": "static-checked: metal and gemstone named objects/groups emitted; companion MTL emitted",
-    "runtime_webgl": "not tested in a real browser in this environment",
-    "gem_setting_boolean_geometry": "not implemented in this iteration"
-  },
-  "files": {
-    "README_GEMSTONES_V1.txt": {
-      "bytes": 1104,
-      "sha256": "0838840d082d5c285f55b704eeb9ebe5cb9ff269e4f362db1b3a30bafbe76cd8"
-    },
-    "README_PRIVATE_V2.txt": {
-      "bytes": 1485,
-      "sha256": "ff00586ee43bec9194b3688e1fd2485a9b289a41aa5e6798659c340e064bddcd"
-    },
-    "agdp-site.css": {
-      "bytes": 453,
-      "sha256": "92552bd1360bc02ce616cf4d12dc63bab006429dde81b6641cd55784228762fd"
-    },
+  "jsSyntax": {
     "configurator.engine.js": {
-      "bytes": 36471,
-      "sha256": "a5085cf61620477458e77339fbf217da3166be9bc6cbb55d579932df260c06b5"
-    },
-    "configurator.gemstones.js": {
-      "bytes": 11057,
-      "sha256": "bbed991f70fe14ae99aa98423daae991029527a778be5f66e910b664f0acb7e8"
+      "ok": true,
+      "stderr": ""
     },
     "configurator.geometry.js": {
-      "bytes": 167355,
-      "sha256": "8ed9414668c0fba6b444a4bafcf8f7d09099be9234669e879d0720d698a851d9"
+      "ok": true,
+      "stderr": ""
     },
     "configurator.js": {
-      "bytes": 17426,
-      "sha256": "241d1b7ee4daeefb2c178c298d4659de8a9d351b05c1f48378f8aa0f7c234b58"
+      "ok": true,
+      "stderr": ""
     },
     "configurator.ui.js": {
-      "bytes": 30110,
-      "sha256": "eb16522f5303332f918582ce1f9457505920a29a00fa5292b301cb5dc11fcc08"
+      "ok": true,
+      "stderr": ""
     },
     "configurator.viewport.js": {
-      "bytes": 39932,
-      "sha256": "27de195ce268a19f96f1c1584d26ce16d74d398d6d3c1ede1ffe6e02bfc48944"
-    },
-    "index.html": {
-      "bytes": 11512,
-      "sha256": "7a41698ffa2cf867a15a679a5db166865b063679fbcf7b4791c846d286687032"
+      "ok": true,
+      "stderr": ""
     }
-  }
+  },
+  "gemMeshAudit": [
+    "pearl {\"V\":4514,\"F\":9024,\"deg\":0,\"boundary\":0,\"non2\":0,\"closed\":true}",
+    "cab {\"V\":2402,\"F\":4800,\"deg\":0,\"boundary\":0,\"non2\":0,\"closed\":true}",
+    "round {\"V\":322,\"F\":640,\"deg\":0,\"boundary\":0,\"non2\":0,\"closed\":true}",
+    "emerald {\"V\":50,\"F\":96,\"deg\":0,\"boundary\":0,\"non2\":0,\"closed\":true}",
+    "slab {\"V\":130,\"F\":256,\"deg\":0,\"boundary\":0,\"non2\":0,\"closed\":true}"
+  ],
+  "presentationFallbackActive": false,
+  "genericReceiverFunctionActive": false,
+  "resultOnlyFirstStonePattern": false,
+  "structuralIntegrationFunction": true,
+  "shapeMatchedSetting": true,
+  "indexedGemRenderer": true
 }
