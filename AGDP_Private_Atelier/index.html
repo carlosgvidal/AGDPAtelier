@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+<title>Private Atelier / A GROSS DOMESTIC PRODUCT.</title>
+<link rel="stylesheet" href="agdp-site.css"><link rel="stylesheet" href="atelier-private.css">
+</head>
+<body class="private-atelier-page">
+<main class="pa-shell">
+<header class="pa-header"><div><div class="pa-kicker">A GROSS DOMESTIC PRODUCT.</div><h1>PRIVATE ATELIER</h1></div><div class="pa-status">HIGH JEWELRY / DESIGN STUDIES</div></header>
+<section class="pa-intro"><p>Generative studies in metal, precious and ornamental stones. A seed fixes every decision; regenerate changes the occurrence.</p><p class="pa-warning">Private design instrument. Gem settings require bench review before production.</p></section>
+<section class="pa-workbench">
+<aside class="pa-controls">
+<label>TYPOLOGY<select id="type"><option value="ring">Ring</option><option value="pendant">Pendant</option><option value="brooch">Brooch</option><option value="earring">Earrings</option><option value="cuff">Cuff</option><option value="cufflinks">Cufflinks</option></select></label>
+<label>METAL<select id="metal"><option>18K Yellow Gold</option><option>18K White Gold</option><option>18K Rose Gold</option><option>Platinum</option><option>Sterling Silver .925</option></select></label>
+<label>STONE MODE<select id="stoneMode"><option value="auto">Auto / random</option><option value="center">Center stone</option><option value="cluster">Cluster</option><option value="pave">Pavé</option><option value="pearl">Pearl</option><option value="slab">Slab / laja</option><option value="cabochon">Cabochon</option></select></label>
+<label>STONE FAMILY<select id="stone"><option value="auto">Auto / random</option><option>Diamond</option><option>Ruby</option><option>Sapphire</option><option>Emerald</option><option>Spinel</option><option>Tourmaline</option><option>Aquamarine</option><option>Topaz</option><option>Amethyst</option><option>Citrine</option><option>Garnet</option><option>Peridot</option><option>Tanzanite</option><option>Opal</option><option>Rock Crystal</option><option>Jadeite</option><option>Onyx</option><option>Obsidian</option><option>Labradorite</option><option>Turquoise</option><option>Lapis Lazuli</option><option>Coral</option><option>Pearl</option></select></label>
+<label>CUT / FORMAT<select id="cut"><option value="auto">Auto / random</option><option>Round Brilliant</option><option>Oval</option><option>Emerald Cut</option><option>Asscher</option><option>Princess</option><option>Cushion</option><option>Pear</option><option>Marquise</option><option>Trillion</option><option>Rose Cut</option><option>Cabochon</option><option>Slab</option><option>Pavé</option><option>Pearl</option></select></label>
+<label>SEED<div class="pa-seed"><input id="seed" value="AGDP-000001"><button id="randomSeed" title="New seed">↻</button></div></label>
+<div class="pa-actions"><button id="generate" class="primary">GENERATE OCCURRENCE</button><button id="download">DOWNLOAD STUDY</button></div>
+</aside>
+<div class="pa-stage"><canvas id="canvas"></canvas><div class="pa-overlay"><div id="occurrence">OCCURRENCE —</div><div>DRAG TO ROTATE · WHEEL TO ZOOM</div></div></div>
+<aside class="pa-spec"><div class="pa-kicker">GENERATED PARAMETERS</div><div id="spec"></div></aside>
+</section>
+<footer class="pa-footer"><span>PRIVATE / NOT FOR PUBLIC NAVIGATION</span><span>NO CATALOGUE. NO EDITION. ONE OCCURRENCE.</span></footer>
+</main>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="atelier-private.js"></script>
+</body></html>
