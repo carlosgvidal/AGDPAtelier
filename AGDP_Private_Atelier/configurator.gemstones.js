@@ -1,7 +1,7 @@
 'use strict';
 /* AGDP Gemstone Layer v1.0 — deterministic, geometry-aware, non-destructive stone bodies. */
 (function(){
-  const VERSION='2.0.0';
+  const VERSION='4.0.0';
   const FACETED=[
     ['diamond',0xffffff,2.417],['ruby',0x9b111e,1.77],['sapphire',0x174a8b,1.77],['emerald',0x168f5b,1.58],
     ['spinel',0xc43b66,1.72],['paraiba-tourmaline',0x24d8cf,1.62],['tourmaline',0x3a9d72,1.62],['aquamarine',0x8ed7e8,1.58],
@@ -53,40 +53,80 @@
     for(const q of scored){if(out.every(o=>Math.hypot(...vsub(q.p,o.p))>minSep)){out.push(q);if(out.length>=count)break;}}
     return out;
   }
-  function plan(mesh,params){
-    const type=(mesh.audit&&mesh.audit.type)||params.type;
-    if(!SUPPORTED.has(type))return {version:VERSION,enabled:false,reason:'typology-not-yet-supported',stones:[]};
-    const seed=String(params.seed||'AGDP'),rng=window.SeededVariation.createGenerator(seed+'|gemstones-v2-high-jewelry');
-    if(rng()<.12)return {version:VERSION,enabled:false,reason:'seed-selected-no-stone',stones:[]};
-    const cp=mesh.compiledParams||params||{}, hasVoids=(Number(cp.holes)||0)>0||(Number(cp.frames)||0)>.18;
+  function highJewelryProgram(params){
+    const seed=String(params.seed||'AGDP');
+    const rng=window.SeededVariation.createGenerator(seed+'|agdp-high-jewelry-v4-focal-mass');
+    const type=params.type;
+    if(!SUPPORTED.has(type)||rng()<.10)return {enabled:false,reason:'metal-only',seed};
+    const hasVoids=(Number(params.holes)||0)>0||(Number(params.frames)||0)>.18;
     const regime=pickWeighted(rng,hasVoids?
-      [['slab-inlay',.35],['block',.34],['cabochon',.17],['pearl',.08],['satellite',.06]]:
-      [['block',.47],['cabochon',.25],['slab-inlay',.13],['pearl',.10],['satellite',.05]]);
-    const family=regime==='block'||regime==='satellite'?'faceted':regime==='cabochon'?'cabochon':regime==='pearl'?'pearl':'slab';
-    const mode=regime==='satellite'?'monolith-satellite':regime;
-    const count=mode==='monolith-satellite'?2:1;
-    const b=bounds(mesh.V), minDim=Math.min(...b.dim.filter(x=>x>0)), diag=Math.hypot(...b.dim)||1;
-    const preferVoid=hasVoids&&(family==='slab'||family==='faceted')&&rng()<.86;
-    const sites=candidateSites(mesh.V,mesh.F,type,count,rng,preferVoid);
-    if(!sites.length)return {version:VERSION,enabled:false,reason:'no-structural-candidate',stones:[]};
-    const mat=materialChoice(rng,family),stones=[];
-    for(let i=0;i<Math.min(count,sites.length);i++){
-      const primary=i===0;
-      let size;
-      if(family==='slab') size=clamp(minDim*(.50+rng()*.34),5.5,15.5);
-      else if(family==='cabochon') size=clamp(minDim*(.42+rng()*.34),4.5,14.0);
-      else if(family==='pearl') size=clamp(minDim*(.38+rng()*.28),4.0,11.0);
-      else size=clamp(minDim*(primary?.38+rng()*.30:.15+rng()*.13),primary?3.8:1.4,primary?12.5:4.0);
-      const cut=family==='faceted'?pickWeighted(rng,CUT_WEIGHTS):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
-      let mounting;
-      if(family==='pearl') mounting='post-cup';
-      else if(family==='slab') mounting=preferVoid?'inlay-window':'inlay';
-      else if(family==='cabochon') mounting=pickWeighted(rng,[['inlay',.42],['prong',.30],['partial-bezel',.20],['full-bezel',.08]]);
-      else mounting=preferVoid?pickWeighted(rng,[['invisible-window',.58],['prong',.28],['channel-capture',.14]]):pickWeighted(rng,[['prong',.50],['invisible',.28],['channel-capture',.17],['partial-bezel',.05]]);
-      const aspect=cut==='emerald'?1.42:cut==='baguette'?1.72:family==='slab'?1.42:1;
-      stones.push({id:i+1,family,material:mat[0],color:mat[1],ior:family==='faceted'?mat[2]:1.52,cut,mounting,sizeMm:+size.toFixed(2),position:sites[i].p,normal:sites[i].n,aspect,structuralRole:preferVoid?'void-occupation':primary?'primary-mass':'satellite',voidAffinity:+(sites[i].voidAffinity||0).toFixed(3)});
+      [['block',.42],['slab-inlay',.30],['cabochon',.20],['pearl',.08]]:
+      [['block',.52],['cabochon',.27],['slab-inlay',.13],['pearl',.08]]);
+    const family=regime==='block'?'faceted':regime==='cabochon'?'cabochon':regime==='pearl'?'pearl':'slab';
+    const material=materialChoice(rng,family);
+    const cut=family==='faceted'?pickWeighted(rng,CUT_WEIGHTS):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
+    const mounting=family==='pearl'?'post-cup':family==='slab'?(hasVoids?'inlay-window':'inlay'):
+      family==='cabochon'?pickWeighted(rng,[['inlay',.48],['prong',.34],['partial-bezel',.18]]):
+      (hasVoids?pickWeighted(rng,[['invisible-window',.60],['prong',.28],['channel-capture',.12]]):pickWeighted(rng,[['prong',.54],['invisible',.31],['channel-capture',.15]]));
+    return {enabled:true,seed:seed+'|agdp-high-jewelry-v4-focal-mass',regime,family,material,cut,mounting,hasVoids,
+      grammar:'AGDP_HIGH_JEWELRY_V4_FOCAL_MASS',replaceMetalFocus:true};
+  }
+  function prepareGeometry(p){
+    const program=highJewelryProgram(p);
+    p.highJewelryProgram=program;
+    if(!program.enabled)return p;
+    // The mineral becomes the focal event: do not also build bead/node/rivet/screw masses competing for that role.
+    p.highJewelryOriginalFocus={nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
+    p.nodes=0; p.rivets=0; p.screws=0;
+    // Keep rails/frames/holes: they are structural vocabulary and may become mineral windows rather than decoration.
+    return p;
+  }
+  function semanticAnchor(V,F,p){
+    const program=p&&p.highJewelryProgram;
+    if(!program||!program.enabled||!V||!V.length)return null;
+    const b=bounds(V),type=p.type;
+    let pos,normal,scaleRef,role;
+    if(type==='ring'||type==='bangle'||type==='earCuff'||type==='cuffBracelet'){
+      // Exterior radial focal zone, never the bore/body-contact surface.
+      let best=null,bestScore=-Infinity;
+      for(const v of V){
+        const radial=Math.hypot(v[0],v[1]);
+        const zPenalty=Math.abs(v[2]-b.center[2])/(b.dim[2]||1);
+        const score=radial-zPenalty*Math.max(1,b.dim[2])*.22;
+        if(score>bestScore){bestScore=score;best=v;}
+      }
+      const r=Math.hypot(best[0],best[1])||1; normal=[best[0]/r,best[1]/r,0]; pos=best.slice();
+      scaleRef=Math.max(p.bandWidth||b.dim[2],Math.min(b.dim[0],b.dim[1])*.32); role='replaced-exterior-focus';
+    }else if(type==='brooch'){
+      // Brooch mechanism lives posteriorly. Mineral mass is forced to the front face (+Z), near its visual centre.
+      const z=b.max[2]; pos=[b.center[0],b.center[1],z]; normal=[0,0,1];
+      scaleRef=Math.min(b.dim[0],b.dim[1]); role='front-focal-mass-protected-from-clip';
+    }else{
+      // Pendant and other face-like bodies: use the presentation front, not an arbitrary side vertex.
+      const z=b.max[2]; pos=[b.center[0],b.center[1],z]; normal=[0,0,1];
+      scaleRef=Math.min(b.dim[0],b.dim[1]); role='front-focal-mass';
     }
-    return {version:VERSION,enabled:true,seed:seed+'|gemstones-v2-high-jewelry',family,mode,regime,hasVoids,preferVoid,grammar:'AGDP_HIGH_JEWELRY_V1',stones};
+    return {position:pos,normal,scaleRef,role,bounds:b};
+  }
+  function plan(mesh,params){
+    const cp=mesh.compiledParams||params||{};
+    const program=cp.highJewelryProgram||highJewelryProgram(cp);
+    if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'metal-only',stones:[]};
+    const anchor=mesh.gemstoneAnchor||semanticAnchor(mesh.V,mesh.F,cp);
+    if(!anchor)return {version:VERSION,enabled:false,reason:'no-semantic-focal-anchor',stones:[]};
+    const rng=window.SeededVariation.createGenerator(program.seed+'|dimensions');
+    const family=program.family,cut=program.cut;
+    // Focal mass is deliberately large. Face-like pieces use 36–58% of the minor envelope;
+    // band pieces use a multiple of band width so the mineral visibly replaces a node/event mass.
+    const faceLike=cp.type==='brooch'||cp.type==='pendant';
+    let size=faceLike?anchor.scaleRef*(.36+rng()*.22):anchor.scaleRef*(1.18+rng()*.72);
+    size=clamp(size, family==='pearl'?5.5:6.0, faceLike?22.0:16.0);
+    const aspect=cut==='emerald'?1.42:cut==='baguette'?1.72:family==='slab'?1.38:cut==='cushion'?1.08:1;
+    const stone={id:1,family,material:program.material[0],color:program.material[1],ior:family==='faceted'?program.material[2]:1.52,
+      cut,mounting:program.mounting,sizeMm:+size.toFixed(2),position:anchor.position,normal:anchor.normal,aspect,
+      structuralRole:anchor.role,replaceMetalFocus:true};
+    return {version:VERSION,enabled:true,seed:program.seed,family,mode:'FOCAL_MASS',regime:program.regime,
+      hasVoids:program.hasVoids,grammar:program.grammar,replaceMetalFocus:true,stones:[stone]};
   }
   function basisFromNormal(n){const z=norm(n),ref=Math.abs(z[2])>.86?[1,0,0]:[0,0,1],x=norm(cross(ref,z)),y=norm(cross(z,x));return {x,y,z};}
   function threeGroup(THREE,plan,center){
@@ -104,7 +144,9 @@
       else material=new THREE.MeshPhysicalMaterial({color:s.color,roughness:s.material==='mother-of-pearl'?.22:.30,metalness:0,clearcoat:.22,ior:1.5,envMapIntensity:.9});
       const m=new THREE.Mesh(geo,material);m.name='AGDP_Gem_'+s.id+'_'+s.material;
       const n=new THREE.Vector3(...s.normal).normalize(); const pos=vsub(s.position,center||[0,0,0]);
-      m.position.set(pos[0]+n.x*radius*.20,pos[1]+n.y*radius*.20,pos[2]+n.z*radius*.20);
+      // V4: the focal stone is seated through the metal surface instead of floating above it.
+      // Its centre is the semantic replacement anchor; roughly half the proxy volume therefore intersects the receiving mass.
+      m.position.set(pos[0],pos[1],pos[2]);
       m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),n);m.castShadow=true;group.add(m);
     }
     return group;
@@ -145,5 +187,5 @@
     return {V,F};
   }
   function objParts(plan){if(!plan||!plan.enabled)return [];return plan.stones.map(stone=>{const m=cutPart(stone);return {name:'GEM_'+stone.id+'_'+stone.material,material:'GEM_'+stone.material,V:m.V,F:m.F};});}
-  window.AGDP_Gemstones=Object.freeze({VERSION,FACETED,CABOCHON,SLAB,PEARL,CUTS,CUT_WEIGHTS,SPECIFIC_GRAVITY,plan,threeGroup,basisFromNormal,weightSummary,objParts});
+  window.AGDP_Gemstones=Object.freeze({VERSION,FACETED,CABOCHON,SLAB,PEARL,CUTS,CUT_WEIGHTS,SPECIFIC_GRAVITY,prepareGeometry,semanticAnchor,plan,threeGroup,basisFromNormal,weightSummary,objParts});
 })();

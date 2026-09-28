@@ -3241,6 +3241,11 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     throw new Error('AGDP typology removed from catalog: ' + inputParams.type);
   }
   const p = window.GenerationLayers.compile(Object.assign({}, inputParams));
+  // HIGH JEWELRY V4: gemstone program participates before metal morphology is built.
+  // It may suppress metal focal nodes so mineral mass replaces them rather than being pasted on later.
+  if (window.AGDP_Gemstones && typeof window.AGDP_Gemstones.prepareGeometry === 'function') {
+    window.AGDP_Gemstones.prepareGeometry(p);
+  }
   if (removedTypes.has(p.type)) {
     throw new Error('AGDP typology removed from catalog: ' + p.type);
   }
@@ -3359,7 +3364,9 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   // {V,F,audit,bandW,innerR} were returned, so none of those fields were
   // ever actually reachable by ui.js (which only ever had its OWN
   // pre-compile params object) -- silently broken for brooch and hoopEarring without this fix.
-  return { V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p };
+  const gemstoneAnchor=(window.AGDP_Gemstones&&typeof window.AGDP_Gemstones.semanticAnchor==='function')
+    ? window.AGDP_Gemstones.semanticAnchor(V,F,p) : null;
+  return { V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p, gemstoneAnchor };
 }
 function manifoldToMeshHelper(manifoldObj){
   const out = manifoldObj.getMesh();
