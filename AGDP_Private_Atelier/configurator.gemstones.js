@@ -1,7 +1,7 @@
 'use strict';
 /* AGDP Gemstone Layer v1.0 — deterministic, geometry-aware, non-destructive stone bodies. */
 (function(){
-  const VERSION='4.0.0';
+  const VERSION='5.0.0';
   const FACETED=[
     ['diamond',0xffffff,2.417],['ruby',0x9b111e,1.77],['sapphire',0x174a8b,1.77],['emerald',0x168f5b,1.58],
     ['spinel',0xc43b66,1.72],['paraiba-tourmaline',0x24d8cf,1.62],['tourmaline',0x3a9d72,1.62],['aquamarine',0x8ed7e8,1.58],
@@ -112,6 +112,9 @@
     const cp=mesh.compiledParams||params||{};
     const program=cp.highJewelryProgram||highJewelryProgram(cp);
     if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'metal-only',stones:[]};
+    if(cp.highJewelryResolvedStone){
+      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'FOCAL_MASS_BOOLEAN_SET',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_HIGH_JEWELRY_V5_BOOLEAN_SETTING',replaceMetalFocus:true,setting:cp.highJewelrySettingV5||null,stones:[cp.highJewelryResolvedStone]};
+    }
     const anchor=mesh.gemstoneAnchor||semanticAnchor(mesh.V,mesh.F,cp);
     if(!anchor)return {version:VERSION,enabled:false,reason:'no-semantic-focal-anchor',stones:[]};
     const rng=window.SeededVariation.createGenerator(program.seed+'|dimensions');
