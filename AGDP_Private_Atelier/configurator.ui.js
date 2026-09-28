@@ -295,7 +295,7 @@ generateBtn:'Generate piece', orderBtn:'Download OBJ',
   }
 
   let generationSerial=0;
-  const AGDP_MAX_GEOMETRY_ATTEMPTS=16;
+  const AGDP_MAX_GEOMETRY_ATTEMPTS=7;
   const AGDP_REFRESH_AFTER_N_GENERATIONS=6;
   function agdpGenerationCount(){ return Number(sessionStorage.getItem('agdp_gen_count')||'0'); }
   function agdpBumpGenerationCount(){

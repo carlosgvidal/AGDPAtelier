@@ -113,7 +113,7 @@
     const program=cp.highJewelryProgram||highJewelryProgram(cp);
     if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'metal-only',stones:[]};
     if(cp.highJewelryResolvedStone){
-      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'FOCAL_MASS_BOOLEAN_SET',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_HIGH_JEWELRY_V5_BOOLEAN_SETTING',replaceMetalFocus:true,setting:cp.highJewelrySettingV5||null,stones:[cp.highJewelryResolvedStone]};
+      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'FOCAL_MASS_BOOLEAN_SET',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_HIGH_JEWELRY_V5_BOOLEAN_SETTING',replaceMetalFocus:true,setting:cp.highJewelrySettingV6||cp.highJewelrySettingV5||null,stones:[cp.highJewelryResolvedStone]};
     }
     const anchor=mesh.gemstoneAnchor||semanticAnchor(mesh.V,mesh.F,cp);
     if(!anchor)return {version:VERSION,enabled:false,reason:'no-semantic-focal-anchor',stones:[]};
