@@ -7,6 +7,7 @@
   const VERSION='1.0.0';
   const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const CUTS=Object.freeze({
+    round:{family:'brilliant',lw:[1.00,1.00],depthPct:[0.58,0.64],tablePct:[0.54,0.62],crownPct:[0.12,0.17],girdlePct:[0.025,0.05],cornerCut:[0,0],sourceClass:'AGDP_DESIGN_RANGE'},
     asscher:{family:'step',lw:[1.00,1.06],depthPct:[0.62,0.72],tablePct:[0.54,0.66],crownPct:[0.12,0.18],girdlePct:[0.025,0.055],cornerCut:[0.16,0.22],keel:true,sourceClass:'AGDP_DESIGN_RANGE'},
     emerald:{family:'step',lw:[1.35,1.65],depthPct:[0.60,0.70],tablePct:[0.56,0.70],crownPct:[0.10,0.16],girdlePct:[0.025,0.055],cornerCut:[0.10,0.16],keel:true,sourceClass:'AGDP_DESIGN_RANGE'},
     baguette:{family:'step',lw:[1.55,2.20],depthPct:[0.55,0.68],tablePct:[0.58,0.76],crownPct:[0.08,0.14],girdlePct:[0.025,0.05],cornerCut:[0,0.04],keel:true,sourceClass:'AGDP_DESIGN_RANGE'},
@@ -69,8 +70,8 @@
     ['freshwater-baroque',0xf0e8dc],['freshwater-round',0xf4eee5],['akoya',0xf4efe8],['south-sea-white',0xf2eee3],
     ['south-sea-golden',0xd9bd78],['tahitian-black',0x343b3b],['tahitian-grey',0x697071]
   ];
-  const CUTS=['asscher','cushion','emerald','princess','baguette'];
-  const CUT_WEIGHTS=[['asscher',.26],['cushion',.25],['emerald',.23],['princess',.17],['baguette',.09]];
+  const CUTS=['round','asscher','cushion','emerald','princess','baguette'];
+  const CUT_WEIGHTS=[['round',.28],['asscher',.16],['cushion',.19],['emerald',.17],['princess',.12],['baguette',.08]];
   const SUPPORTED=new Set(['ring','pendant','bangle','cuffBracelet','brooch','earCuff','hoopEarring','cufflinks']);
   const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const vadd=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -103,57 +104,34 @@
     return out;
   }
   function highJewelryProgram(params){
-    const seed=String(params.seed||'AGDP');
-    const type=params.type;
+    const seed=String(params.seed||'AGDP'),type=params.type;
     if(!SUPPORTED.has(type))return {enabled:false,reason:'unsupported-typology',seed};
-    const ms=params.mineralSystem;
-    if(ms&&ms.enabled){
-      const rng=window.SeededVariation.createGenerator(seed+'|mineral-material-v11');
-      const family=ms.family;
-      const material=materialChoice(rng,family);
-      const cut=family==='faceted'?pickWeighted(rng,CUT_WEIGHTS):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
-      return {enabled:true,seed:seed+'|mineral-topology-v11',regime:ms.regime,family,material,cut,
-        mounting:ms.interface,hasVoids:(Number(params.holes)||0)>0||(Number(params.frames)||0)>.18,
-        grammar:'AGDP_STRUCTURAL_GEMS',replaceMetalFocus:true,mineralSystem:ms};
-    }
-    return {enabled:false,reason:'no-mineral-topology',seed};
+    const ms=params.mineralSystem;if(!ms||!ms.enabled)return {enabled:false,reason:'no-mineral-topology',seed};
+    return {enabled:true,seed:seed+'|mineral-topology-v12',regime:ms.regime,family:ms.family,material:null,cut:null,mounting:ms.interface,settingSystem:ms.settingSystem,hasVoids:(Number(params.holes)||0)>0||(Number(params.frames)||0)>.18,grammar:'AGDP_STRUCTURAL_GEMS_2',replaceMetalFocus:true,mineralSystem:ms};
   }
   function prepareGeometry(p){
-    const program=highJewelryProgram(p);
-    p.highJewelryProgram=program;
-    if(!program.enabled)return p;
+    const program=highJewelryProgram(p);p.highJewelryProgram=program;if(!program.enabled)return p;
     if(!window.AGDP_Lapidary)throw new Error('AGDP: lapidary specification is not loaded');
-    const ms=program.mineralSystem;
-    const rng=window.SeededVariation.createGenerator(program.seed+'|volumes');
-    const family=program.family,cut=program.cut;
-    const material=program.material;
-    const volumes=[];
+    const ms=program.mineralSystem,rng=window.SeededVariation.createGenerator(program.seed+'|volumes'),volumes=[];
     for(let i=0;i<ms.events.length;i++){
-      const ev=ms.events[i];
-      const w=Math.max(ms.sizeRangeMm[0],Math.min(ms.sizeRangeMm[1],ms.primaryWidthMm*ev.scale));
-      const widthMm=Math.round(w*2)/2;
-      const lapidary=window.AGDP_Lapidary.build(family,cut,widthMm,rng);
-      let policy=window.AGDP_Lapidary.settingPolicy(material[0],lapidary);
-      // The structural grammar owns the interface choice; durability policy can veto it.
-      let mounting=ms.interface;
-      if(!policy.allowed.includes(mounting)) mounting=policy.preferred;
-      // Multi-stone channel/bar regimes require calibrated faceted stones.
-      if((mounting==='channel'||mounting==='bar')&&family!=='faceted') mounting=policy.preferred;
-      volumes.push({id:i+1,family,material:material[0],color:material[1],ior:family==='faceted'?material[2]:1.52,
-        cut,mounting,sizeMm:lapidary.widthMm,aspect:lapidary.lengthMm/lapidary.widthMm,
-        lengthMm:lapidary.lengthMm,widthMm:lapidary.widthMm,depthMm:lapidary.depthMm,
-        lapidary,settingPolicy:policy,seed:program.seed+'|volume|'+i,primaryVolume:i===0,stoneFirst:true,
-        mineralEvent:ev,compositionRegime:ms.regime,formalRelation:ms.formalRelation});
+      const ev=ms.events[i],family=ev.family||ms.family;
+      const material=materialChoice(rng,family);
+      const cut=family==='faceted'?(ev.cutRole==='melee'?'round':pickWeighted(rng,CUT_WEIGHTS)):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
+      const range=(window.MineralTopologyGrammar.SIZE_MM[family]&&window.MineralTopologyGrammar.SIZE_MM[family][p.type])||ms.sizeRangeMm||[3,9];
+      let w;
+      if(ev.cutRole==='melee') w=Math.max(1.15,Math.min(2.6,ms.primaryWidthMm*(ev.scale||.25)));
+      else w=Math.max(range[0],Math.min(range[1],ms.primaryWidthMm*(ev.scale||1)));
+      const widthMm=Math.round(w*20)/20,lapidary=window.AGDP_Lapidary.build(family,cut,widthMm,rng),policy=window.AGDP_Lapidary.settingPolicy(material[0],lapidary);
+      let mounting=ev.interface||ms.interface;
+      const grammarMounts=new Set(['shared-prong','bead-pave','halo-prong']);
+      if(!grammarMounts.has(mounting)&&!policy.allowed.includes(mounting))mounting=policy.preferred;
+      if((mounting==='channel'||mounting==='bar'||mounting==='shared-prong'||mounting==='bead-pave'||mounting==='halo-prong')&&family!=='faceted')mounting=policy.preferred;
+      volumes.push({id:i+1,family,material:material[0],color:material[1],ior:family==='faceted'?material[2]:1.52,cut,mounting,sizeMm:lapidary.widthMm,aspect:lapidary.lengthMm/lapidary.widthMm,lengthMm:lapidary.lengthMm,widthMm:lapidary.widthMm,depthMm:lapidary.depthMm,lapidary,settingPolicy:policy,seed:program.seed+'|volume|'+i,primaryVolume:i===0,stoneFirst:true,mineralEvent:ev,compositionRegime:ms.regime,formalRelation:ms.formalRelation,settingSystem:ms.settingSystem});
     }
-    p.gemVolumes=volumes;
-    p.primaryGemVolume=volumes[0]||null;
-    p.highJewelryOriginalFocus={nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
-    // Mineral events replace only the equivalent number of mass events; other
-    // AGDP nodes remain available to carry the setting and the body's grammar.
-    p.nodes=Math.max(0,(p.nodes||0)-volumes.length);
-    p.rivets=Math.max(0,(p.rivets||0)-Math.floor(volumes.length/2));
-    p.screws=Math.max(0,(p.screws||0)-Math.floor(volumes.length/2));
-    p.mineralInfluenceEvents=ms.events.map((e,i)=>({u:e.u,scale:e.scale,widthMm:volumes[i].widthMm,depthMm:volumes[i].depthMm,rank:e.rank}));
+    p.gemVolumes=volumes;p.primaryGemVolume=volumes[0]||null;p.highJewelryOriginalFocus={nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
+    p.nodes=Math.max(0,(p.nodes||0)-Math.min(3,volumes.length));p.rivets=Math.max(0,(p.rivets||0)-Math.floor(Math.min(4,volumes.length)/2));p.screws=Math.max(0,(p.screws||0)-Math.floor(Math.min(4,volumes.length)/2));
+    p.mineralInfluenceEvents=ms.events.map((e,i)=>({u:e.u,scale:e.scale,widthMm:volumes[i].widthMm,depthMm:volumes[i].depthMm,rank:e.rank,family:e.family,interface:e.interface,parentId:e.parentId||null,localAngle:e.localAngle,orbitFactor:e.orbitFactor,settingSystem:ms.settingSystem}));
+    p.settingTopologyGraph={version:'SETTING_GRAPH_2',system:ms.settingSystem,formalRelation:ms.formalRelation,events:p.mineralInfluenceEvents};
     return p;
   }
   function semanticAnchor(V,F,p){
@@ -189,7 +167,7 @@
     if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'disabled',stones:[]};
     const stones=Array.isArray(cp.resolvedMineralVolumes)?cp.resolvedMineralVolumes:[];
     if(!stones.length)return {version:VERSION,enabled:false,reason:'no-structurally-accepted-mineral-volumes',stones:[]};
-    return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'STRUCTURAL_MINERAL_SYSTEM',architecture:'STRUCTURAL_GEMS',regime:program.regime,grammar:'AGDP_STRUCTURAL_GEMS',replaceMetalFocus:true,setting:cp.highJewelrySettings||null,stones};
+    return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'STRUCTURAL_MINERAL_SYSTEM',architecture:'STRUCTURAL_GEMS_TOPOLOGICAL_SETTINGS',regime:program.regime,grammar:'AGDP_STRUCTURAL_GEMS',replaceMetalFocus:true,setting:cp.highJewelrySettings||null,stones};
   }
   function basisFromNormal(n){const z=norm(n),ref=Math.abs(z[2])>.86?[1,0,0]:[0,0,1],x=norm(cross(ref,z)),y=norm(cross(z,x));return {x,y,z};}
   function threeGroup(THREE,plan,center){
@@ -1540,9 +1518,12 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const refR=Math.max(4,innerR+baseWall);
     for(const ev of mineralEvents){
       const centerT=-arcRad/2+arcRad*Math.max(.02,Math.min(.98,ev.u));
-      const sigma=Math.max(.10,Math.min(.48,(ev.widthMm||5)/refR*.72));
+      const sys=ev.settingSystem||'';
+      const sigmaBase=(ev.widthMm||5)/refR*.72;
+      const sigma=Math.max(.10,Math.min(sys==='halo'||sys==='pave'||sys==='shared-prong-field'?.62:.48,sigmaBase*(sys==='halo'?1.65:sys==='pave'?1.35:1)));
       const d=wrap(t-centerT);
-      m=Math.max(m,Math.exp(-(d*d)/(2*sigma*sigma))*(.72+.28*(ev.scale||1)));
+      const amp=(sys==='halo'?1.12:sys==='pave'?.78:.72)+.28*(ev.scale||1);
+      m=Math.max(m,Math.exp(-(d*d)/(2*sigma*sigma))*amp);
     }
     return Math.min(1,m);
   }
@@ -3649,6 +3630,16 @@ function agdpSurfaceFrames(manifold,p){
     }else{
       best=bestXY(t,false);const r=Math.hypot(best[0],best[1])||1;normal=[best[0]/r,best[1]/r,0];
     }
+    if(ev.parentId&&Number.isFinite(ev.localAngle)){
+      const parentIndex=events.findIndex(x=>x.id===ev.parentId);
+      const parentFrame=frames.find(x=>x.sourceIndex===parentIndex);
+      if(parentFrame){
+        const bb=agdpGemBasis(parentFrame.normal),parentStone=vols[parentIndex],orbit=((parentStone&&parentStone.widthMm)||6)*(.58+(ev.orbitFactor||.72));
+        const target=[parentFrame.position[0]+bb.x[0]*Math.cos(ev.localAngle)*orbit+bb.y[0]*Math.sin(ev.localAngle)*orbit,parentFrame.position[1]+bb.x[1]*Math.cos(ev.localAngle)*orbit+bb.y[1]*Math.sin(ev.localAngle)*orbit,parentFrame.position[2]+bb.x[2]*Math.cos(ev.localAngle)*orbit+bb.y[2]*Math.sin(ev.localAngle)*orbit];
+        let near=best,ds=Infinity;for(const vv of V){const dd=(vv[0]-target[0])**2+(vv[1]-target[1])**2+(vv[2]-target[2])**2;if(dd<ds){ds=dd;near=vv;}}
+        best=near;normal=parentFrame.normal.slice();
+      }
+    }
     frames.push({sourceIndex:i,position:best.slice(),normal,event:ev});
   }
   return frames;
@@ -3663,12 +3654,15 @@ function agdpStoneAtFrame(base,frame){
   stone.position=[p0[0]+n[0]*lift,p0[1]+n[1]*lift,p0[2]+n[2]*lift];stone.normal=n.slice();stone.surfaceAnchor=p0.slice();
   stone.structuralRole=frame.sourceIndex===0?'primary-mineral-volume':'secondary-mineral-volume';stone.replaceMetalFocus=true;return stone;
 }
-function agdpSettingForStone(wasm,body,stone,expectedComponents=1){
+function agdpSettingForStone(wasm,body,stone,expectedComponents=1,p=null){
   const n=stone.normal,b=agdpGemBasis(n),surface=stone.surfaceAnchor,w=stone.widthMm||stone.sizeMm,L=stone.lengthMm||w,d=stone.depthMm||w*.55;
-  const minWall=Math.max(.65,Math.min(1.05,w*.095));
+  const morph=p||{},faceting=Math.max(0,Math.min(1,Number(morph.faceting)||0)),organic=Math.max(0,Math.min(1,Number(morph.organic)||0)),relief=Math.max(0,Math.min(1,Number(morph.surfaceRelief)||0));
+  const minWall=Math.max(.58,Math.min(1.05,w*(.082+.020*faceting)));
   let metal=body,parts=[];
-  // A shape-matched structural saddle is the transition between body and setting.
-  const saddle=agdpGemPrism(wasm,stone,surface,n,1.16,-1.25,.72);
+  // The transition inherits the same morphology parameters as the body: it is
+  // wider/deeper under organic/relief load and therefore deforms the body's silhouette.
+  const saddleScale=1.10+organic*.10+relief*.08;
+  const saddle=agdpGemPrism(wasm,stone,surface,n,saddleScale,-1.15-relief*.35,.62+organic*.30);
   try{const merged=wasm.Manifold.union(metal,saddle);try{metal.delete();saddle.delete();}catch(e){}metal=merged;}catch(e){try{saddle.delete();}catch(_){}throw new Error('AGDP_SETTING_SADDLE_UNION_FAILED');}
   const sp=stone.position;
   if(stone.mounting==='bezel'||stone.mounting==='partial-bezel'||stone.mounting==='flush'||stone.mounting==='inlay'||stone.mounting==='channel-frame'){
@@ -3677,8 +3671,8 @@ function agdpSettingForStone(wasm,body,stone,expectedComponents=1){
       parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,-ey,z),agdpGemWorld(b,sp,ex,-ey,z),minWall,32));
       parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,-ex,ey,z),agdpGemWorld(b,sp,ex,ey,z),minWall,32));
     }else{
-      const inner=stone.mounting==='inlay'||stone.mounting==='flush'?1.015:1.025,outer=inner+Math.max(.13,(minWall*2)/Math.max(3,w));
-      parts.push(agdpGemFrame(wasm,stone,sp,n,inner,outer,-.28,stone.mounting==='inlay'?.34:.78));
+      const inner=stone.mounting==='inlay'||stone.mounting==='flush'?1.015:1.025,outer=inner+Math.max(.13,(minWall*2)/Math.max(3,w))*(1+faceting*.10+organic*.08);
+      parts.push(agdpGemFrame(wasm,stone,sp,n,inner,outer,-.28-relief*.08,(stone.mounting==='inlay'?.34:.78)+organic*.16));
     }
   }else if(stone.mounting==='post-cup'||stone.mounting==='cup-cage'){
     const r=w*.5,post0=agdpGemWorld(b,sp,0,0,-r*.82),post1=agdpGemWorld(b,sp,0,0,-r*.10);
@@ -3689,6 +3683,13 @@ function agdpSettingForStone(wasm,body,stone,expectedComponents=1){
         const u=Math.cos(a)*r*.43,v=Math.sin(a)*r*.43;
         parts.push(cylinderBetween(wasm,agdpGemWorld(b,sp,u,v,-r*.62),agdpGemWorld(b,sp,u*.82,v*.82,-r*.08),Math.max(.38,minWall*.55),24));
       }
+    }
+  }else if(stone.mounting==='shared-prong'||stone.mounting==='halo-prong'||stone.mounting==='bead-pave'){
+    const pts=agdpGemOutline(stone,.93),count=stone.mounting==='bead-pave'?4:(stone.mounting==='halo-prong'?3:4);
+    for(let k=0;k<count;k++){
+      const idx=Math.floor((k/count)*pts.length)%pts.length,q=pts[idx],twist=(faceting>.35?((k%2?1:-1)*faceting*.08):0);
+      const base=agdpGemWorld(b,sp,q[0]*(1.02+twist),q[1]*(1.02-twist),-.34-relief*.12),tip=agdpGemWorld(b,sp,q[0]*.91,q[1]*.91,.34+Math.min(.42,d*.10));
+      parts.push(cylinderBetween(wasm,base,tip,Math.max(.30,minWall*(stone.mounting==='bead-pave'?.42:.50)),24));
     }
   }else if(stone.mounting==='channel'||stone.mounting==='bar'){
     const ex=L*.56,ey=w*.56,z=-.08,rr=Math.max(.48,minWall*.62);
@@ -3721,7 +3722,7 @@ function agdpIntegrateMineralSystem(wasm,manifold,p){
     const stone=agdpStoneAtFrame(base,frame);
     // At this stage cufflinks are already a two-solid object; hoop earrings are still one unit and are duplicated later.
     const expectedSettingComponents=(p.type==='cufflinks')?2:1;
-    const built=agdpSettingForStone(wasm,current,stone,expectedSettingComponents);current=built.manifold;
+    const built=agdpSettingForStone(wasm,current,stone,expectedSettingComponents,p);current=built.manifold;
     stone.id=k+1;resolved.push(stone);settings.push(Object.assign({stoneId:k+1},built.setting));
   }
   p.resolvedMineralVolumes=resolved;p.highJewelryResolvedStone=resolved[0]||null;p.highJewelrySettings=settings;
