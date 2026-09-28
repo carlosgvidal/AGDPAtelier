@@ -93,5 +93,41 @@
     }
     return group;
   }
-  window.AGDP_Gemstones=Object.freeze({VERSION,FACETED,CABOCHON,SLAB,PEARL,CUTS,plan,threeGroup,basisFromNormal});
+  const SPECIFIC_GRAVITY=Object.freeze({
+    diamond:3.52,ruby:4.00,sapphire:4.00,emerald:2.76,spinel:3.60,'paraiba-tourmaline':3.06,tourmaline:3.06,aquamarine:2.72,topaz:3.53,morganite:2.80,garnet:3.90,amethyst:2.65,citrine:2.65,peridot:3.34,tanzanite:3.35,
+    opal:2.15,carnelian:2.61,onyx:2.65,jadeite:3.34,turquoise:2.70,moonstone:2.58,labradorite:2.70,chalcedony:2.60,malachite:3.90,'lapis-lazuli':2.75,'mother-of-pearl':2.75,'rock-crystal':2.65,
+    'freshwater-baroque':2.70,'freshwater-round':2.70,akoya:2.70,'south-sea-white':2.70,'south-sea-golden':2.70,'tahitian-black':2.70,'tahitian-grey':2.70
+  });
+  function stoneVolumeMm3(stone){
+    const d=stone.sizeMm||1,a=stone.aspect||1;
+    if(stone.family==='pearl')return Math.PI/6*d*d*d*a;
+    if(stone.family==='slab')return Math.PI*(d*.5)*(d*.5*a)*Math.max(.7,d*.16);
+    if(stone.family==='cabochon')return (2/3)*Math.PI*(d*.5)*(d*.5*a)*(d*.34);
+    const cutFactor=stone.cut==='rose-cut'?.30:stone.cut==='emerald'||stone.cut==='asscher'||stone.cut==='baguette'?.40:.43;
+    return Math.PI*(d*.5)*(d*.5*a)*(d*cutFactor)/3;
+  }
+  function weightSummary(plan){
+    let grams=0;
+    for(const stone of ((plan&&plan.stones)||[])){const sg=SPECIFIC_GRAVITY[stone.material]||2.70;grams+=stoneVolumeMm3(stone)*sg/1000;}
+    return {grams,carats:grams/0.2};
+  }
+  function localToWorld(local,stone){const b=basisFromNormal(stone.normal),p=stone.position;return [p[0]+b.x[0]*local[0]+b.y[0]*local[1]+b.z[0]*local[2],p[1]+b.x[1]*local[0]+b.y[1]*local[1]+b.z[1]*local[2],p[2]+b.x[2]*local[0]+b.y[2]*local[1]+b.z[2]*local[2]];}
+  function ellipsoidPart(stone){
+    const V=[],F=[],nu=24,nv=12,r=stone.sizeMm*.5,asp=stone.aspect||1;
+    for(let j=0;j<=nv;j++){const phi=Math.PI*j/nv;for(let i=0;i<nu;i++){const th=2*Math.PI*i/nu;const q=[r*asp*Math.sin(phi)*Math.cos(th),r*Math.sin(phi)*Math.sin(th),r*Math.cos(phi)];V.push(localToWorld(q,stone));}}
+    for(let j=0;j<nv;j++)for(let i=0;i<nu;i++){const k=(i+1)%nu,a=j*nu+i,b=j*nu+k,c=(j+1)*nu+k,d=(j+1)*nu+i;F.push([a,b,c],[a,c,d]);}
+    return {V,F};
+  }
+  function cutPart(stone){
+    if(stone.family==='pearl')return ellipsoidPart(stone);
+    const V=[],F=[],seg=(stone.cut==='trillion'?3:(stone.cut==='princess'||stone.cut==='asscher'?4:stone.cut==='slab'?10:16)),r=stone.sizeMm*.5,asp=stone.aspect||1;
+    const depth=stone.family==='slab'?Math.max(.7,r*.32):stone.family==='cabochon'?r*.55:r*.72;
+    const top=stone.family==='cabochon'?depth*.7:depth*.35,bot=-depth*.35;
+    for(let i=0;i<seg;i++){const a=2*Math.PI*i/seg;V.push(localToWorld([r*asp*Math.cos(a),r*Math.sin(a),0],stone));}
+    const ti=V.length;V.push(localToWorld([0,0,top],stone));const bi=V.length;V.push(localToWorld([0,0,bot],stone));
+    for(let i=0;i<seg;i++){const j=(i+1)%seg;F.push([i,j,ti],[bi,j,i]);}
+    return {V,F};
+  }
+  function objParts(plan){if(!plan||!plan.enabled)return [];return plan.stones.map(stone=>{const m=cutPart(stone);return {name:'GEM_'+stone.id+'_'+stone.material,material:'GEM_'+stone.material,V:m.V,F:m.F};});}
+  window.AGDP_Gemstones=Object.freeze({VERSION,FACETED,CABOCHON,SLAB,PEARL,CUTS,SPECIFIC_GRAVITY,plan,threeGroup,basisFromNormal,weightSummary,objParts});
 })();

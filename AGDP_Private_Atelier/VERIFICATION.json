@@ -1,34 +1,52 @@
 {
-  "configurator.engine.js": {
-    "unchanged": true,
-    "sha256": "a5085cf61620477458e77339fbf217da3166be9bc6cbb55d579932df260c06b5"
+  "artifact": "AGDP_ATELIER_PRIVATE_V2",
+  "checks": {
+    "javascript_syntax": "passed via node --check for every .js file",
+    "production_api_removed_from_ui": "passed: no AGDP_PRODUCTION_API, /upload, /quote, orderToken in configurator.ui.js",
+    "obj_export": "static-checked: metal and gemstone named objects/groups emitted; companion MTL emitted",
+    "runtime_webgl": "not tested in a real browser in this environment",
+    "gem_setting_boolean_geometry": "not implemented in this iteration"
   },
-  "configurator.geometry.js": {
-    "unchanged": true,
-    "sha256": "8ed9414668c0fba6b444a4bafcf8f7d09099be9234669e879d0720d698a851d9"
-  },
-  "index.html": {
-    "unchanged": true,
-    "sha256": "7a41698ffa2cf867a15a679a5db166865b063679fbcf7b4791c846d286687032"
-  },
-  "agdp-site.css": {
-    "unchanged": true,
-    "sha256": "92552bd1360bc02ce616cf4d12dc63bab006429dde81b6641cd55784228762fd"
-  },
-  "configurator.js": {
-    "sha256": "4bab3a2da471a2ef383072e179d9583c6ab0cc73066435f6744c943da39b7b54",
-    "bytes": 18187
-  },
-  "configurator.ui.js": {
-    "sha256": "bf11cca0b91d57aae3dad060840627f473bf4674066b6a390e94b019fb8b0807",
-    "bytes": 40513
-  },
-  "configurator.viewport.js": {
-    "sha256": "935e4537cac8274fbe0822a4750fcb2168e0ef56f6c7bd04cab51d86379ba6e0",
-    "bytes": 39338
-  },
-  "configurator.gemstones.js": {
-    "sha256": "75117599fda80bb425c808742cd39f2f07b58a482be71897610e35aaafce12a4",
-    "bytes": 7998
+  "files": {
+    "README_GEMSTONES_V1.txt": {
+      "bytes": 1104,
+      "sha256": "0838840d082d5c285f55b704eeb9ebe5cb9ff269e4f362db1b3a30bafbe76cd8"
+    },
+    "README_PRIVATE_V2.txt": {
+      "bytes": 1485,
+      "sha256": "ff00586ee43bec9194b3688e1fd2485a9b289a41aa5e6798659c340e064bddcd"
+    },
+    "agdp-site.css": {
+      "bytes": 453,
+      "sha256": "92552bd1360bc02ce616cf4d12dc63bab006429dde81b6641cd55784228762fd"
+    },
+    "configurator.engine.js": {
+      "bytes": 36471,
+      "sha256": "a5085cf61620477458e77339fbf217da3166be9bc6cbb55d579932df260c06b5"
+    },
+    "configurator.gemstones.js": {
+      "bytes": 11057,
+      "sha256": "bbed991f70fe14ae99aa98423daae991029527a778be5f66e910b664f0acb7e8"
+    },
+    "configurator.geometry.js": {
+      "bytes": 167355,
+      "sha256": "8ed9414668c0fba6b444a4bafcf8f7d09099be9234669e879d0720d698a851d9"
+    },
+    "configurator.js": {
+      "bytes": 17426,
+      "sha256": "241d1b7ee4daeefb2c178c298d4659de8a9d351b05c1f48378f8aa0f7c234b58"
+    },
+    "configurator.ui.js": {
+      "bytes": 30110,
+      "sha256": "eb16522f5303332f918582ce1f9457505920a29a00fa5292b301cb5dc11fcc08"
+    },
+    "configurator.viewport.js": {
+      "bytes": 39932,
+      "sha256": "27de195ce268a19f96f1c1584d26ce16d74d398d6d3c1ede1ffe6e02bfc48944"
+    },
+    "index.html": {
+      "bytes": 11512,
+      "sha256": "7a41698ffa2cf867a15a679a5db166865b063679fbcf7b4791c846d286687032"
+    }
   }
 }

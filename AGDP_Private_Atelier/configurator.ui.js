@@ -92,19 +92,16 @@
   const statusBadge=document.getElementById('agdpStatusBadge');
   const atelierMount=document.getElementById('agdp-configurator-mount');
   const legacyCanvas=document.getElementById('view');
-  let productionRequestSerial=0;
-  let productionPhase='quote';
-
-  function resetProductionState(){
-    productionRequestSerial++;
-    productionPhase='quote';
-    window.AGDP_currentProductionModelId=null;
-    window.AGDP_currentProductionUpload=null;
-    window.AGDP_currentProductionQuote=null;
-    if(atelierMount)atelierMount.classList.remove('agdp-quote-ready');
-    orderBtn.disabled=true;
-    orderBtn.textContent=t('orderBtn');
-  }
+  const metalSelect=document.getElementById('agdpMetalSelect');
+  const metalLabel=document.getElementById('agdpMetalLabel');
+  const METALS=Object.freeze({
+    'gold18-yellow':{es:'Oro amarillo 18K',en:'18K Yellow Gold',density:15.6,mtl:[0.78,0.52,0.16]},
+    'gold18-white':{es:'Oro blanco 18K',en:'18K White Gold',density:15.8,mtl:[0.82,0.82,0.78]},
+    'gold18-rose':{es:'Oro rosado 18K',en:'18K Rose Gold',density:15.2,mtl:[0.72,0.42,0.34]},
+    platinum:{es:'Platino',en:'Platinum',density:21.45,mtl:[0.78,0.78,0.76]}
+  });
+  let selectedMetal=(metalSelect&&metalSelect.value)||'gold18-yellow';
+  function resetProductionState(){ orderBtn.disabled=true; orderBtn.textContent=t('orderBtn'); }
 
   function mountLegacyVisualization(){
     if(!legacyCanvas) return;
@@ -124,7 +121,7 @@
     es:{
       typeRing:'Anillo', typePendant:'Colgante', typeBangle:'Brazalete rígido', typeCuffBracelet:'Brazalete abierto',
       typeBrooch:'Broche', typeHoopEarring:'Aretes', typeCufflinks:'Mancuernillas', typeEarCuff:'Ear cuff',
-generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
+generateBtn:'Generar pieza', orderBtn:'Descargar OBJ',
       variantLabel:'Variación', newSeedBtn:'Generar otra variante', variantHint:'Explora otra configuración formal de la pieza.',
       emptyState:'Elige un tipo de pieza para generar tu diseño aquí.',
       statusGenerating:'El motor está pensando la pieza…', statusReady:'Lista para producción', statusAdjusting:'Explorando forma y validando impresión…', statusUnavailable:'Generando una nueva configuración…', statusFailedAfterRetries:'Ajustando la configuración — genera otra variante.', statusReinitializing:'Reiniciando el motor 3D…', statusLoadingEngine:'Cargando motor 3D (solo la primera vez)…', statusEngineError:'No se pudo cargar el motor 3D — revisa tu conexión e intenta de nuevo', statusValidationFailed:'No pasó la auditoría geométrica — no apta para producción. Genera otra variante.',
@@ -140,7 +137,7 @@ generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
       dimBroochFace:'Frente', dimClipLength:'Longitud del clip', dimClipClearance:'Apertura útil', dimClipConstruction:'Construcción',
       dimHoopBodySpan:'Diámetro del cuerpo', dimHoopBodyDepth:'Profundidad del cuerpo',
       dimHookInsertionLength:'Longitud de inserción del gancho', dimHookTipDiameter:'Grosor de punta del gancho',
-      dimOverall:'Dimensión total', dimPlate:'Placa', dimWeight:'Peso aprox. en plata',
+      dimOverall:'Dimensión total', dimPlate:'Placa', dimWeight:'Peso estimado del metal', dimGemWeight:'Peso estimado de gemas', dimTotalWeight:'Peso estimado total',
       dimNominal:'Talla solicitada', dimDesign:'Diámetro de diseño (con compensación)',
       weightLight:'Colgante ligero', weightMedium:'Colgante medio', weightHeavy:'Colgante pesado — considerar mecanismo reforzado',
       tagType:{ring:'Anillo',bangle:'Brazalete rígido',cuffBracelet:'Brazalete abierto',brooch:'Broche',hoopEarring:'Aretes',pendant:'Colgante',cufflinks:'Mancuernillas',earCuff:'Ear cuff'},
@@ -148,7 +145,7 @@ generateBtn:'Generar pieza', orderBtn:'Cotizar en plata pulida',
     en:{
       typeRing:'Ring', typePendant:'Pendant', typeBangle:'Bangle', typeCuffBracelet:'Cuff',
       typeBrooch:'Brooch', typeHoopEarring:'Hoop earrings', typeCufflinks:'Cufflinks', typeEarCuff:'Ear cuff',
-generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
+generateBtn:'Generate piece', orderBtn:'Download OBJ',
       variantLabel:'Variation', newSeedBtn:'Generate another variant', variantHint:'Explores another formal configuration of the piece.',
       emptyState:'Choose a piece type to generate your design here.',
       statusGenerating:'The engine is thinking through the piece…', statusReady:'Ready for production', statusAdjusting:'Exploring form and validating production…', statusUnavailable:'Generating a new configuration…', statusFailedAfterRetries:'Adjusting the configuration — generate another variant.', statusReinitializing:'Reinitializing the 3D engine…', statusLoadingEngine:'Loading 3D engine (first time only)…', statusEngineError:'Could not load the 3D engine — check your connection and try again', statusValidationFailed:'Failed geometric audit — not production-ready. Generate another variant.',
@@ -164,7 +161,7 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       dimBroochFace:'Face', dimClipLength:'Clip length', dimClipClearance:'Usable opening', dimClipConstruction:'Construction',
       dimHoopBodySpan:'Body diameter', dimHoopBodyDepth:'Body depth',
       dimHookInsertionLength:'Hook insertion length', dimHookTipDiameter:'Hook tip thickness',
-      dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Approx. silver weight',
+      dimOverall:'Overall size', dimPlate:'Plate', dimWeight:'Estimated metal weight', dimGemWeight:'Estimated gemstone weight', dimTotalWeight:'Estimated total weight',
       dimNominal:'Requested size', dimDesign:'Design diameter (with compensation)',
       weightLight:'Light pendant', weightMedium:'Medium pendant', weightHeavy:'Heavy pendant — consider reinforced mechanism',
       tagType:{ring:'Ring',bangle:'Rigid bangle',cuffBracelet:'Open cuff',brooch:'Brooch',hoopEarring:'Hoop earrings',pendant:'Pendant',cufflinks:'Cufflinks',earCuff:'Ear cuff'},
@@ -176,12 +173,9 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
   function applyStaticTexts(){
     document.querySelectorAll('[data-i18n]').forEach(el=>{ const label=el.querySelector&&el.querySelector('.agdp-type-label'); if(label)label.textContent=t(el.getAttribute('data-i18n')); else el.textContent=t(el.getAttribute('data-i18n')); });
     renderSizeOptions();
-    if(productionPhase==='ready'&&window.AGDP_currentProductionQuote){
-      const q=window.AGDP_currentProductionQuote;
-      const p=formatQuotePrice(q.price,q.currency);
-      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza':'Order this piece';
-      statusBadge.innerHTML='<span class="agdp-quote-meta">'+(currentLang==='es'?'Plata pulida · Precio final':'Polished Silver · Final price')+'</span><strong class="agdp-quote-price">'+p+'</strong>';
-      statusBadge.className='agdp-status-badge quote-ready';
+    if(metalLabel)metalLabel.textContent=currentLang==='es'?'Metal':'Metal';
+    if(metalSelect){
+      for(const opt of metalSelect.options){const spec=METALS[opt.value];if(spec)opt.textContent=spec[currentLang]||spec.es;}
     }
   }
 
@@ -285,9 +279,14 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
       rows.push([t('dimPlate'), params.mainSize.toFixed(1)+' mm']);
     }
     rows.push([t('dimOverall'), overallStr]);
-    rows.push([t('dimWeight'), result.audit.silverG.toFixed(1)+' g']);
+    const metalSpec=METALS[selectedMetal]||METALS['gold18-yellow'];
+    const metalG=result.audit.volumeMm3*metalSpec.density/1000;
+    const gemSummary=(window.AGDP_Gemstones&&window.AGDP_Gemstones.weightSummary)?window.AGDP_Gemstones.weightSummary(result.gemstones):{grams:0,carats:0};
+    rows.push([t('dimWeight')+' · '+(metalSpec[currentLang]||metalSpec.es), metalG.toFixed(2)+' g']);
+    if(gemSummary.grams>0)rows.push([t('dimGemWeight'),gemSummary.grams.toFixed(3)+' g · '+gemSummary.carats.toFixed(2)+' ct']);
+    rows.push([t('dimTotalWeight'),(metalG+gemSummary.grams).toFixed(2)+' g']);
     if(params.type==='pendant'){
-      const cat=pendantWeightCategory(result.audit.silverG);
+      const cat=pendantWeightCategory(metalG+gemSummary.grams);
       rows.push(['', t(cat==='light'?'weightLight':(cat==='medium'?'weightMedium':'weightHeavy'))]);
     }
     dimsPanel.innerHTML = '<div class="dims-title">'+t('dimsTitle')+'</div>'+
@@ -487,279 +486,44 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
   }
   generateBtn.addEventListener('click',runGenerate);
 
-  function buildSTLBinaryBlob(V,F){
-    const triCount=F.length;
-    const bufferSize=84+triCount*50;
-    const buffer=new ArrayBuffer(bufferSize);
-    const dv=new DataView(buffer);
-    for(let i=0;i<80;i++) dv.setUint8(i,0);
-    dv.setUint32(80,triCount,true);
-    let offset=84;
-    function normalOf(a,b,c){
-      const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2];
-      const vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
-      let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
-      const len=Math.hypot(nx,ny,nz)||1;
-      return [nx/len,ny/len,nz/len];
+  function safeName(v){return String(v||'part').replace(/[^A-Za-z0-9_.-]+/g,'_');}
+  function buildOBJ(mesh){
+    const lines=['# A GROSS DOMESTIC PRODUCT. private atelier','# Units: millimeters','# Seed: '+(currentSeed||''),'mtllib '+safeName(window.AGDP_currentPieceName||'AGDP_piece')+'.mtl'];
+    let offset=1;
+    lines.push('o METAL_'+safeName(selectedMetal),'g METAL','usemtl METAL_'+safeName(selectedMetal));
+    for(const v of mesh.V)lines.push('v '+v[0]+' '+v[1]+' '+v[2]);
+    for(const f of mesh.F)lines.push('f '+(f[0]+offset)+' '+(f[1]+offset)+' '+(f[2]+offset));
+    offset+=mesh.V.length;
+    const parts=(window.AGDP_Gemstones&&window.AGDP_Gemstones.objParts)?window.AGDP_Gemstones.objParts(mesh.gemstones):[];
+    for(const part of parts){
+      lines.push('o '+safeName(part.name),'g GEMSTONES','usemtl '+safeName(part.material));
+      for(const v of part.V)lines.push('v '+v[0]+' '+v[1]+' '+v[2]);
+      for(const f of part.F)lines.push('f '+(f[0]+offset)+' '+(f[1]+offset)+' '+(f[2]+offset));
+      offset+=part.V.length;
     }
-    for(let i=0;i<triCount;i++){
-      const f=F[i], a=V[f[0]], b=V[f[1]], c=V[f[2]];
-      const n=normalOf(a,b,c);
-      dv.setFloat32(offset,n[0],true); dv.setFloat32(offset+4,n[1],true); dv.setFloat32(offset+8,n[2],true);
-      dv.setFloat32(offset+12,a[0],true); dv.setFloat32(offset+16,a[1],true); dv.setFloat32(offset+20,a[2],true);
-      dv.setFloat32(offset+24,b[0],true); dv.setFloat32(offset+28,b[1],true); dv.setFloat32(offset+32,b[2],true);
-      dv.setFloat32(offset+36,c[0],true); dv.setFloat32(offset+40,c[1],true); dv.setFloat32(offset+44,c[2],true);
-      dv.setUint16(offset+48,0,true);
-      offset+=50;
+    return lines.join('\n')+'\n';
+  }
+  function buildMTL(mesh){
+    const metal=METALS[selectedMetal]||METALS['gold18-yellow'], lines=['# AGDP material references'];
+    lines.push('newmtl METAL_'+safeName(selectedMetal),'Kd '+metal.mtl.join(' '),'Ks 0.9 0.9 0.9','Ns 500','illum 2','');
+    const seen=new Set();
+    for(const stone of ((mesh.gemstones&&mesh.gemstones.stones)||[])){
+      const name=safeName('GEM_'+stone.material); if(seen.has(name))continue; seen.add(name);
+      const hex=Number(stone.color||0xffffff),r=((hex>>16)&255)/255,g=((hex>>8)&255)/255,b=(hex&255)/255;
+      lines.push('newmtl '+name,'Kd '+r.toFixed(4)+' '+g.toFixed(4)+' '+b.toFixed(4),'Ks 0.75 0.75 0.75','Ns 350','illum 2','');
     }
-    return new Blob([buffer],{type:'model/stl'});
+    return lines.join('\n')+'\n';
   }
-
-  const AGDP_PRODUCTION_API='https://agdp-shapeways-api.carlosgvidal.workers.dev';
-
-  function wait(ms){
-    return new Promise(resolve=>setTimeout(resolve,ms));
+  function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);}
+  function downloadCurrentOBJ(){
+    const mesh=window.AGDP_currentMesh;if(!mesh||!mesh.V||!mesh.V.length)return;
+    const base=safeName(window.AGDP_currentPieceName||'AGDP_piece');
+    downloadBlob(new Blob([buildOBJ(mesh)],{type:'text/plain;charset=utf-8'}),base+'.obj');
+    setTimeout(()=>downloadBlob(new Blob([buildMTL(mesh)],{type:'text/plain;charset=utf-8'}),base+'.mtl'),180);
   }
+  orderBtn.addEventListener('click',downloadCurrentOBJ);
+  if(metalSelect){metalSelect.addEventListener('change',()=>{selectedMetal=metalSelect.value;if(window.AGDP_setMetalMaterial)window.AGDP_setMetalMaterial(selectedMetal);if(window.AGDP_currentMesh)showDimensions(window.AGDP_currentMesh,window.AGDP_currentMesh.compiledParams||{});});}
 
-  function formatQuotePrice(price,currency){
-    try{
-      return new Intl.NumberFormat(currentLang==='es'?'es-MX':'en-US',{
-        style:'currency',
-        currency:currency||'USD',
-        minimumFractionDigits:2,
-        maximumFractionDigits:2
-      }).format(price);
-    }catch(e){
-      return (currency||'USD')+' '+Number(price).toFixed(2);
-    }
-  }
-
-  async function requestPolishedSilverQuote(modelId){
-    const response=await fetch(AGDP_PRODUCTION_API+'/quote',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({modelId})
-    });
-    const payload=await response.json().catch(()=>null);
-
-    if(!response.ok||!payload||payload.ok!==true){
-      const message=payload&&payload.error&&payload.error.message
-        ?payload.error.message
-        :'Quote request failed';
-      throw new Error(message);
-    }
-
-    return payload.quote;
-  }
-
-  async function waitForPolishedSilverQuote(modelId){
-    const maxAttempts=30;
-    for(let attempt=0;attempt<maxAttempts;attempt++){
-      const quote=await requestPolishedSilverQuote(modelId);
-
-      if(quote&&quote.status==='ready')return quote;
-      if(quote&&quote.status==='unavailable'){
-        throw new Error('Polished Silver is unavailable for this model');
-      }
-      if(quote&&quote.status==='material_not_found'){
-        throw new Error('Polished Silver is not available');
-      }
-
-      await wait(4000);
-    }
-
-    throw new Error('The model is still being analyzed');
-  }
-
-  function ensureOrderDialog(){
-    let overlay=document.getElementById('agdpOrderOverlay');
-    if(overlay)return overlay;
-
-    const style=document.createElement('style');
-    style.textContent=`
-      .agdp-order-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
-      .agdp-order-overlay.open{display:flex}
-      .agdp-order-dialog{width:min(680px,100%);max-height:92vh;overflow:auto;background:#fbf9fa;color:#000;padding:28px;box-sizing:border-box;font-family:Helvetica,Arial,sans-serif}
-      .agdp-order-dialog h2{font-size:21px;margin:0 0 8px;font-weight:500}
-      .agdp-order-dialog p{font-size:14px;line-height:1.45;margin:0 0 20px}
-      .agdp-order-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-      .agdp-order-field{display:flex;flex-direction:column;gap:5px}
-      .agdp-order-field.full{grid-column:1/-1}
-      .agdp-order-field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-      .agdp-order-field input{font:inherit;border:1px solid #777;background:#fff;padding:11px;box-sizing:border-box;width:100%}
-      .agdp-order-confirm{display:flex;gap:10px;align-items:flex-start;margin:20px 0;font-size:13px;line-height:1.4}
-      .agdp-order-actions{display:flex;gap:10px;justify-content:flex-end}
-      .agdp-order-actions button{font:inherit;padding:11px 18px;cursor:pointer}
-      .agdp-order-message{min-height:20px;margin-top:14px;font-size:13px}
-      @media(max-width:600px){.agdp-order-grid{grid-template-columns:1fr}.agdp-order-field.full{grid-column:auto}.agdp-order-dialog{padding:20px}}
-    `;
-    document.head.appendChild(style);
-
-    overlay=document.createElement('div');
-    overlay.id='agdpOrderOverlay';
-    overlay.className='agdp-order-overlay';
-    overlay.innerHTML=`
-      <div class="agdp-order-dialog" role="dialog" aria-modal="true" aria-labelledby="agdpOrderTitle">
-        <h2 id="agdpOrderTitle"></h2>
-        <p id="agdpOrderSummary"></p>
-        <form id="agdpOrderForm">
-          <div class="agdp-order-grid">
-            <div class="agdp-order-field"><label for="agdpFirstName">First name</label><input id="agdpFirstName" name="firstName" autocomplete="given-name" required></div>
-            <div class="agdp-order-field"><label for="agdpLastName">Last name</label><input id="agdpLastName" name="lastName" autocomplete="family-name" required></div>
-            <div class="agdp-order-field"><label for="agdpCountry">Country (2-letter code)</label><input id="agdpCountry" name="country" value="MX" maxlength="2" autocomplete="country" required></div>
-            <div class="agdp-order-field"><label for="agdpState">State / Province / Region</label><input id="agdpState" name="state" autocomplete="address-level1" required></div>
-            <div class="agdp-order-field"><label for="agdpCity">City</label><input id="agdpCity" name="city" autocomplete="address-level2" required></div>
-            <div class="agdp-order-field"><label for="agdpZip">Postal code</label><input id="agdpZip" name="zipCode" autocomplete="postal-code" required></div>
-            <div class="agdp-order-field full"><label for="agdpAddress1">Address line 1</label><input id="agdpAddress1" name="address1" autocomplete="address-line1" required></div>
-            <div class="agdp-order-field full"><label for="agdpAddress2">Address line 2 (optional)</label><input id="agdpAddress2" name="address2" autocomplete="address-line2"></div>
-            <div class="agdp-order-field full"><label for="agdpPhone">Phone number</label><input id="agdpPhone" name="phoneNumber" autocomplete="tel" required></div>
-          </div>
-          <label class="agdp-order-confirm"><input type="checkbox" name="confirmed" required><span id="agdpConfirmText"></span></label>
-          <div class="agdp-order-actions">
-            <button type="button" id="agdpOrderCancel">Cancel</button>
-            <button type="submit" id="agdpOrderSubmit">Confirm order</button>
-          </div>
-          <div id="agdpOrderMessage" class="agdp-order-message" aria-live="polite"></div>
-        </form>
-      </div>`;
-    document.body.appendChild(overlay);
-    overlay.querySelector('#agdpOrderCancel').addEventListener('click',()=>overlay.classList.remove('open'));
-    overlay.addEventListener('click',event=>{if(event.target===overlay)overlay.classList.remove('open');});
-    overlay.querySelector('#agdpOrderForm').addEventListener('submit',submitProductionOrder);
-    return overlay;
-  }
-
-  function openOrderDialog(){
-    const quote=window.AGDP_currentProductionQuote;
-    if(!quote||!quote.orderToken)return;
-    const overlay=ensureOrderDialog();
-    const priceText=formatQuotePrice(quote.price,quote.currency);
-    overlay.querySelector('#agdpOrderTitle').textContent='Order unique piece';
-    overlay.querySelector('#agdpOrderSummary').textContent='Polished Silver · Final price '+priceText+' · Shipping calculated by production.';
-    overlay.querySelector('#agdpConfirmText').textContent='I confirm the details are correct and authorize this unique piece to be sent to production immediately.';
-    overlay.querySelector('#agdpOrderSubmit').textContent='Confirm order';
-    overlay.querySelector('#agdpOrderCancel').textContent='Cancel';
-    overlay.querySelector('#agdpOrderMessage').textContent='';
-    overlay.classList.add('open');
-  }
-
-  async function submitProductionOrder(event){
-    event.preventDefault();
-    const form=event.currentTarget;
-    const quote=window.AGDP_currentProductionQuote;
-    if(!quote||!quote.orderToken)return;
-    const submit=form.querySelector('#agdpOrderSubmit');
-    const cancel=form.querySelector('#agdpOrderCancel');
-    const message=form.querySelector('#agdpOrderMessage');
-    const data=new FormData(form);
-    submit.disabled=true; cancel.disabled=true;
-    message.textContent='Sending order to production…';
-    try{
-      const response=await fetch(AGDP_PRODUCTION_API+'/order',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          orderToken:quote.orderToken,
-          confirmed:data.get('confirmed')==='on',
-          shipping:{
-            firstName:data.get('firstName'),lastName:data.get('lastName'),country:data.get('country'),
-            state:data.get('state'),city:data.get('city'),address1:data.get('address1'),address2:data.get('address2'),
-            zipCode:data.get('zipCode'),phoneNumber:data.get('phoneNumber')
-          }
-        })
-      });
-      const payload=await response.json().catch(()=>null);
-      if(!response.ok||!payload||payload.ok!==true){
-        throw new Error(payload&&payload.error&&payload.error.message?payload.error.message:'Order failed');
-      }
-      productionPhase='ordered';
-      window.AGDP_currentProductionOrder=payload.order;
-      message.textContent='Order confirmed. AGDP reference '+payload.order.orderId+'.';
-      statusBadge.textContent='Order confirmed · Reference '+payload.order.orderId;
-      orderBtn.textContent='Order confirmed';
-      orderBtn.disabled=true;
-      submit.style.display='none';
-      cancel.disabled=false;
-      cancel.textContent='Close';
-    }catch(error){
-      console.error('AGDP: order failed',error);
-      message.textContent='The order could not be confirmed: '+error.message;
-      submit.disabled=false; cancel.disabled=false;
-    }
-  }
-
-  async function uploadCurrentSTL(){
-    if(productionPhase==='ready'){
-      openOrderDialog();
-      return;
-    }
-    if(productionPhase!=='quote')return;
-    if(!window.AGDP_currentMesh||!window.AGDP_currentMesh.V||!window.AGDP_currentMesh.V.length)return;
-
-    const requestSerial=++productionRequestSerial;
-    const originalText=orderBtn.textContent;
-    productionPhase='working';
-    orderBtn.disabled=true;
-    orderBtn.textContent=currentLang==='es'?'Enviando modelo…':'Uploading model…';
-
-    const fileBase=(window.AGDP_currentPieceName||'AGDP_pieza').replace(/\.stl$/i,'');
-    const fileName=fileBase+'.stl';
-    const blob=buildSTLBinaryBlob(window.AGDP_currentMesh.V,window.AGDP_currentMesh.F);
-    const form=new FormData();
-    form.append('file',blob,fileName);
-    form.append('fileName',fileName);
-    form.append('type',selectedType||'piece');
-    form.append('seed',currentSeed||window.AGDP_currentSeed||'');
-
-    try{
-      const response=await fetch(AGDP_PRODUCTION_API+'/upload',{method:'POST',body:form});
-      const payload=await response.json().catch(()=>null);
-      if(requestSerial!==productionRequestSerial)return;
-      if(!response.ok||!payload||payload.ok!==true){
-        throw new Error(payload&&payload.error&&payload.error.message?payload.error.message:'Model upload failed');
-      }
-
-      const modelId=payload.modelId||null;
-      if(!modelId)throw new Error('The production service did not return a model identifier');
-      window.AGDP_currentProductionModelId=modelId;
-      window.AGDP_currentProductionUpload=payload;
-
-      orderBtn.textContent=currentLang==='es'?'Calculando precio…':'Calculating price…';
-      statusBadge.textContent=currentLang==='es'?'Analizando la pieza en plata pulida…':'Analyzing the piece in Polished Silver…';
-      statusBadge.className='agdp-status-badge';
-
-      const quote=await waitForPolishedSilverQuote(modelId);
-      if(requestSerial!==productionRequestSerial)return;
-      const finalPrice=Number(quote&&quote.price);
-      if(!Number.isFinite(finalPrice)||finalPrice<=0||!quote.orderToken)throw new Error('Invalid production quote');
-
-      window.AGDP_currentProductionQuote=quote;
-      productionPhase='ready';
-      const priceText=formatQuotePrice(finalPrice,quote.currency);
-      statusBadge.innerHTML='<span class="agdp-quote-meta">'+(currentLang==='es'?'Plata pulida · Precio final':'Polished Silver · Final price')+'</span><strong class="agdp-quote-price">'+priceText+'</strong>';
-      statusBadge.className='agdp-status-badge quote-ready';
-      orderBtn.textContent=currentLang==='es'?'Pedir esta pieza':'Order this piece';
-      if(atelierMount)atelierMount.classList.add('agdp-quote-ready');
-      orderBtn.disabled=false;
-      generateBtn.disabled=false;
-      newSeedBtn.disabled=false;
-    }catch(error){
-      if(requestSerial!==productionRequestSerial)return;
-      console.error('AGDP: production upload/quote failed',error);
-      productionPhase='quote';
-      if(atelierMount)atelierMount.classList.remove('agdp-quote-ready');
-      orderBtn.disabled=false;
-      orderBtn.textContent=originalText;
-      statusBadge.textContent=currentLang==='es'
-        ?'No fue posible obtener la cotización. Intenta de nuevo.'
-        :'The quote could not be obtained. Try again.';
-      statusBadge.className='agdp-status-badge';
-      generateBtn.disabled=false;
-      newSeedBtn.disabled=false;
-    }
-  }
-
-  orderBtn.addEventListener('click',uploadCurrentSTL);
 
   if(legacyCanvas) legacyCanvas.style.display='none';
   applyStaticTexts();

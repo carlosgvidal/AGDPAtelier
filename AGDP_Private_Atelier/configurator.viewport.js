@@ -297,6 +297,18 @@ const _material = new THREE.MeshPhysicalMaterial({
 let _mesh3d = null;
 let _gemstoneGroup = null;
 let _presentationAccessory = null;
+const AGDP_METAL_VISUALS=Object.freeze({
+  'gold18-yellow':{color:0xd6ad4f,metalness:1,roughness:.115},
+  'gold18-white':{color:0xe2e0d8,metalness:1,roughness:.105},
+  'gold18-rose':{color:0xc98f7b,metalness:1,roughness:.12},
+  platinum:{color:0xd9d9d6,metalness:1,roughness:.095}
+});
+window.AGDP_setMetalMaterial=function(key){
+  const spec=AGDP_METAL_VISUALS[key]||AGDP_METAL_VISUALS['gold18-yellow'];
+  _material.color.setHex(spec.color); _material.metalness=spec.metalness; _material.roughness=spec.roughness;
+  _material.needsUpdate=true;
+};
+window.AGDP_setMetalMaterial('gold18-yellow');
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
   ring:Object.freeze({

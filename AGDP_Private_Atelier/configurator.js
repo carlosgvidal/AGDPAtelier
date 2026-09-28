@@ -95,17 +95,10 @@
 @keyframes agdpThink{to{transform:rotate(360deg)}}
 #${MOUNT_ID} .agdp-status-badge.ready{background:transparent;border:0;padding:0;color:var(--agdp-dark);font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;opacity:.72;}
 #${MOUNT_ID} .agdp-status-badge.ready::before{content:'✓';display:inline-block;margin-right:8px;font-size:11px;letter-spacing:0;}
-#${MOUNT_ID} .agdp-status-badge.quote-ready{background:rgba(250,246,241,.93);border:0;border-top:1px solid rgba(79,58,39,.2);padding:14px 0 0;min-width:250px;backdrop-filter:blur(8px);}
-#${MOUNT_ID} .agdp-quote-meta{display:block;font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--agdp-taupe);margin-bottom:5px;}
-#${MOUNT_ID} .agdp-quote-price{display:block;font-family:var(--font-display);font-size:31px;line-height:1;color:var(--agdp-dark);letter-spacing:-.025em;}
 #${MOUNT_ID} .agdp-dims-panel{margin-top:15px;background:transparent;border:0;border-top:1px solid rgba(79,58,39,.2);border-radius:0;padding:17px 0 0;font-family:var(--font-sans);font-size:11px;line-height:1.55;color:var(--agdp-dark);}
 #${MOUNT_ID} .agdp-dims-panel .dims-title{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--agdp-taupe);font-weight:700;margin-bottom:8px;}
 #${MOUNT_ID} .agdp-dims-panel .dims-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:5px 0;border-bottom:1px solid rgba(79,58,39,.08);color:var(--agdp-taupe);}
 #${MOUNT_ID} .agdp-dims-panel .dims-val{font-family:var(--font-display);font-size:17px;line-height:1.1;font-weight:400;color:var(--agdp-dark);letter-spacing:-.01em;text-align:right;}
-#${MOUNT_ID}.agdp-quote-ready .agdp-order-btn{background:var(--agdp-dark);color:var(--agdp-cream);border-color:var(--agdp-dark);padding:17px;box-shadow:0 9px 24px rgba(79,58,39,.16);}
-#${MOUNT_ID}.agdp-quote-ready .agdp-order-btn:hover{background:#3f2e20;box-shadow:0 12px 28px rgba(79,58,39,.22);}
-#${MOUNT_ID}.agdp-quote-ready .agdp-variant-btn{border:0;background:transparent;padding:5px 0;min-height:0;width:auto;text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--agdp-taupe);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px;}
-#${MOUNT_ID}.agdp-quote-ready .agdp-variant-btn:hover{color:var(--agdp-dark);background:transparent;}
 #${MOUNT_ID} .agdp-empty-state{font-family:var(--font-sans);color:var(--agdp-taupe);text-align:center;padding:40px;max-width:340px;font-size:14px;line-height:1.5;}
 @media(max-width:820px){
   #${MOUNT_ID} .agdp-body{grid-template-columns:1fr;grid-template-rows:auto auto;min-height:auto;height:100%;overflow-y:auto;}
@@ -162,12 +155,21 @@
         <div class="agdp-step-label" id="agdpChainFitLabel">Grosor de cadena</div>
         <select class="agdp-select" id="agdpChainFitSelect"></select>
       </div>
+      <div id="agdpMetalWrap" style="margin-top:14px">
+        <div class="agdp-step-label" id="agdpMetalLabel">Metal</div>
+        <select class="agdp-select" id="agdpMetalSelect">
+          <option value="gold18-yellow">Oro amarillo 18K</option>
+          <option value="gold18-white">Oro blanco 18K</option>
+          <option value="gold18-rose">Oro rosado 18K</option>
+          <option value="platinum">Platino</option>
+        </select>
+      </div>
       <button class="agdp-generate-btn" id="agdpGenerateBtn" disabled data-i18n="generateBtn">Generar pieza</button>
       <div>
         <button class="agdp-seed-btn agdp-variant-btn" id="agdpNewSeedBtn" type="button" data-i18n="newSeedBtn">Generar otra variante</button>
         <div class="agdp-hint" data-i18n="variantHint" style="margin-top:6px">Explora otra configuración formal de la pieza.</div>
       </div>
-      <button class="agdp-order-btn" id="agdpOrderBtn" disabled data-i18n="orderBtn">Descargar STL para impresión</button>
+      <button class="agdp-order-btn" id="agdpOrderBtn" disabled data-i18n="orderBtn">Descargar OBJ</button>
       <div class="agdp-dims-panel" id="agdpDimsPanel" style="display:none"></div>
     </div>
     <div class="agdp-stage-wrap">
