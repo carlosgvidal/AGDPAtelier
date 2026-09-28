@@ -3255,88 +3255,99 @@ function agdpHJ5OrientedBox(wasm,center,normal,sx,sy,sz){
   const F=[[0,1,3],[0,3,2],[4,6,7],[4,7,5],[0,4,5],[0,5,1],[2,3,7],[2,7,6],[0,2,6],[0,6,4],[1,5,7],[1,7,3]];
   return meshToManifold(wasm,V,F);
 }
-function agdpHJ5ResolvedStone(p,anchor){
-  const program=p.highJewelryProgram;if(!program||!program.enabled||!anchor)return null;
-  const rng=window.SeededVariation.createGenerator(program.seed+'|v5-setting');
-  const faceLike=p.type==='brooch'||p.type==='pendant';
-  let size=faceLike?anchor.scaleRef*(.40+rng()*.20):anchor.scaleRef*(1.30+rng()*.55);
-  size=clamp(size,6,faceLike?21:15.5);
-  const aspect=program.cut==='emerald'?1.42:program.cut==='baguette'?1.72:program.family==='slab'?1.38:program.cut==='cushion'?1.08:1;
-  let mounting=program.mounting;
-  // V5 only advertises settings that are physically represented in the metal.
-  if(program.family==='slab') mounting='inlay';
-  else if(program.family==='pearl') mounting='prong';
-  else if(mounting==='invisible'||mounting==='invisible-window') mounting='channel-capture';
-  else if(mounting==='partial-bezel') mounting='prong';
-  return {id:1,family:program.family,material:program.material[0],color:program.material[1],ior:program.family==='faceted'?program.material[2]:1.52,cut:program.cut,mounting,sizeMm:+size.toFixed(2),position:anchor.position.slice(),normal:anchor.normal.slice(),aspect,structuralRole:anchor.role,replaceMetalFocus:true};
+function agdpHJ8ResolvedStone(p,anchor){
+  const program=p.highJewelryProgram, primary=p.primaryGemVolume;
+  if(!program||!program.enabled||!primary||!anchor)return null;
+  return Object.assign({},primary,{
+    position:anchor.position.slice(), normal:anchor.normal.slice(),
+    structuralRole:'primary-mineral-volume', replaceMetalFocus:true
+  });
 }
-function agdpHJ6ApplySetting(wasm,manifold,p){
-  const program=p.highJewelryProgram;if(!program||!program.enabled)return manifold;
-  const pre=manifoldToMeshHelper(manifold),anchor=window.AGDP_Gemstones.semanticAnchor(pre.V,pre.F,p);
-  const stone=agdpHJ5ResolvedStone(p,anchor);if(!stone)return manifold;
-  const b=agdpHJ5Basis(stone.normal),r=stone.sizeMm*.5,asp=stone.aspect||1;
+function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
+  const program=p.highJewelryProgram,primary=p.primaryGemVolume;
+  if(!program||!program.enabled)return manifold;
+  if(!primary)throw new Error('AGDP V7: high-jewelry seed has no primary mineral volume');
+
+  // The mineral dimensions were frozen before the typology constructor ran.
+  // We only query the completed base skin for the exact contact point/orientation.
+  const pre=manifoldToMeshHelper(manifold);
+  const anchor=window.AGDP_Gemstones.semanticAnchor(pre.V,pre.F,p);
+  const stone=agdpHJ8ResolvedStone(p,anchor);
+  if(!stone)throw new Error('AGDP V7: no structural anchor for primary mineral volume');
+
+  const b=agdpHJ5Basis(stone.normal), r=(stone.widthMm||stone.sizeMm)*.5, asp=(stone.lengthMm&&stone.widthMm)?stone.lengthMm/stone.widthMm:(stone.aspect||1);
+  const gemDepth=Math.max(1,stone.depthMm||stone.sizeMm*.55), gemLength=stone.lengthMm||stone.sizeMm*asp, gemWidth=stone.widthMm||stone.sizeMm;
   const smallBody=['ring','earCuff','hoopEarring','cufflinks'].includes(p.type);
-  // V6: small typologies receive a structural shoulder/bridge first. The seat is cut
-  // into that receiver rather than through the load-bearing ring/cuff body.
-  const receiverDepth=smallBody?Math.max(2.0,Math.min(3.4,(p.bandWidth||3.6)*.72)):Math.max(1.5,Math.min(3.2,r*.42));
-  const receiverX=Math.max(3.8,r*2*asp*.82), receiverY=Math.max(3.4,r*2*.82);
-  const receiverCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth*.38);
+  const bandLike=['ring','bangle','cuffBracelet','earCuff','hoopEarring'].includes(p.type);
+
+  // HEAD / SADDLE: dimensions derive from the stone. It overlaps the original body
+  // substantially, so the metal is constructed as shoulders around the mineral volume.
+  const receiverDepth=smallBody?Math.max(3.0,Math.min(5.6,gemDepth*.72)):Math.max(3.2,Math.min(7.2,gemDepth*.78));
+  const receiverX=Math.max(5.2,gemLength+Math.max(1.4,gemWidth*.18));
+  const receiverY=Math.max(5.0,gemWidth+Math.max(1.4,gemWidth*.18));
+  const inwardOverlap=Math.max(1.15,receiverDepth*.42);
+  const receiverCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth*.5-inwardOverlap);
   let receiver=agdpHJ5OrientedBox(wasm,receiverCenter,stone.normal,receiverX,receiverY,receiverDepth);
-  let supported=wasm.Manifold.union(manifold,receiver);
+  let supported;
+  try{supported=wasm.Manifold.union(manifold,receiver);}catch(e){try{receiver.delete();}catch(_e){};throw new Error('AGDP V7: primary-volume saddle union failed');}
   try{receiver.delete();}catch(e){}
-  const seatDepth=Math.max(.65,Math.min(smallBody?1.45:2.2,receiverDepth*.48));
-  // Seat centre is biased outward. It keys into the receiver but does not bore through
-  // the original load-bearing body.
-  const seatCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth*.50-seatDepth*.32);
+
+  // Seat is deliberately shallow relative to the new head: it keys the stone without
+  // severing the load-bearing band beneath it.
+  const seatDepth=Math.max(.70,Math.min(receiverDepth*.62,gemDepth*.46));
+  const clearance=Math.max(.08,Math.min(.18,gemWidth*.012));
+  const seatW=gemLength+clearance*2, seatH=gemWidth+clearance*2;
+  const seatCenter=agdpHJ5Local(b,stone.position,0,0,receiverDepth-inwardOverlap-seatDepth*.46);
+  // V8: the actual lapidary body is the boolean tool. This is no longer a bounding-box seat.
+  // Position the primary gem first, then cut the receiving metal with the same mesh later rendered/exported.
+  stone.position=seatCenter.slice();
   let cutter;
-  if(stone.family==='cabochon'||stone.family==='pearl'){
-    cutter=wasm.Manifold.sphere(r*1.012,32).scale([asp,1,.58]).translate(seatCenter);
-  }else{
-    cutter=agdpHJ5OrientedBox(wasm,seatCenter,stone.normal,r*2*asp*1.012,r*2*1.012,seatDepth*1.28);
-  }
+  try{
+    const gemMesh=window.AGDP_Gemstones.meshPart(stone);
+    cutter=meshToManifold(wasm,gemMesh.V,gemMesh.F);
+  }catch(e){throw new Error('AGDP V8: lapidary-volume cutter construction failed: '+(e&&e.message?e.message:e));}
   let metal;
-  try{metal=wasm.Manifold.difference(supported,cutter);}catch(e){
-    try{supported.delete();}catch(_e){} try{cutter.delete();}catch(_e){}
-    p.highJewelryProgram=Object.assign({},program,{enabled:false,reason:'setting-boolean-failed'});
-    return manifold;
-  }
+  try{metal=wasm.Manifold.difference(supported,cutter);}catch(e){try{supported.delete();}catch(_e){}try{cutter.delete();}catch(_e){};throw new Error('AGDP V7: primary-volume seat boolean failed');}
   try{supported.delete();}catch(e){} try{cutter.delete();}catch(e){}
+
   const retain=[];
-  const zBase=receiverDepth*.22;
-  if(stone.mounting==='prong'){
-    const offsets=[[-.72,-.72],[.72,-.72],[.72,.72],[-.72,.72]],pr=smallBody?.48:.55;
-    for(const [u0,v0] of offsets){
-      const u=u0*r*asp,v=v0*r;
-      const base=agdpHJ5Local(b,stone.position,u,v,zBase-seatDepth*.22);
-      const tip=agdpHJ5Local(b,stone.position,u*.86,v*.86,receiverDepth*.54+Math.max(.55,r*.14));
-      retain.push(cylinderBetween(wasm,base,tip,pr,14));
+  const pr=smallBody?.52:.62;
+  if(stone.mounting==='prong'||stone.mounting==='corner-prong'||stone.mounting==='v-prong'){
+    const ux=gemLength*.5*(stone.mounting==='v-prong'?.96:.88), vy=gemWidth*.5*(stone.mounting==='v-prong'?.96:.88);
+    for(const [u,v] of [[-ux,-vy],[ux,-vy],[ux,vy],[-ux,vy]]){
+      const base=agdpHJ5Local(b,stone.position,u,v,-seatDepth*.52);
+      const tip=agdpHJ5Local(b,stone.position,u*.91,v*.91,Math.max(.75,r*.18));
+      retain.push(cylinderBetween(wasm,base,tip,pr,16));
     }
+  }else if(stone.mounting==='partial-bezel'){
+    const rr=smallBody?.48:.56, ex=gemLength*.48, ey=gemWidth*.52, z=-seatDepth*.12;
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,18));
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,18));
+  }else if(stone.mounting==='post-cup'){
+    const postBase=agdpHJ5Local(b,stone.position,0,0,-seatDepth*.9), postTip=agdpHJ5Local(b,stone.position,0,0,Math.min(gemDepth*.28,2.0));
+    retain.push(cylinderBetween(wasm,postBase,postTip,smallBody?.55:.65,18));
   }else if(stone.mounting==='channel-capture'){
-    const railR=smallBody?.48:.55, ext=r*asp*.96, z=receiverDepth*.36;
-    for(const v of [-r*.91,r*.91]) retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ext,v,z),agdpHJ5Local(b,stone.position,ext,v,z),railR,14));
+    const railR=Math.max(.50,smallBody?.52:.60), ex=gemLength*.51, ey=gemWidth*.5;
+    for(const v of [-ey,ey]) retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,v,-seatDepth*.22),agdpHJ5Local(b,stone.position,ex,v,-seatDepth*.22),railR,16));
   }else if(stone.mounting==='inlay'){
-    const rr=smallBody?.38:.42, ex=r*asp*.96, ey=r*.96, z=receiverDepth*.30;
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,12));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,12));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,-ex,ey,z),rr,12));
-    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,-ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,12));
+    // Low capture frame; no raised bezel wall.
+    const rr=smallBody?.40:.48, ex=r*asp*1.01, ey=r*1.01, z=-seatDepth*.28;
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,14));
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,14));
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,-ex,ey,z),rr,14));
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,-ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,14));
   }
   if(retain.length){
-    try{const assembly=unionAll(wasm,retain),merged=wasm.Manifold.union(metal,assembly);try{metal.delete();}catch(e){}try{assembly.delete();}catch(e){}metal=merged;}
-    catch(e){try{metal.delete();}catch(_e){} p.highJewelryProgram=Object.assign({},program,{enabled:false,reason:'retention-union-failed'});return manifold;}
+    let assembly;
+    try{assembly=unionAll(wasm,retain);const merged=wasm.Manifold.union(metal,assembly);try{metal.delete();}catch(e){}try{assembly.delete();}catch(e){}metal=merged;}
+    catch(e){try{metal.delete();}catch(_e){}try{assembly&&assembly.delete();}catch(_e){};throw new Error('AGDP V7: primary-volume retention union failed');}
   }
-  // Fast local gate: reject the setting itself without forcing the UI to regenerate a
-  // completely different morphology. This is the main V6 performance correction.
-  const probe=manifoldToMeshHelper(metal),diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'high-jewelry-v6-setting');
-  if(!diag.ok){
-    try{metal.delete();}catch(e){}
-    p.highJewelryProgram=Object.assign({},program,{enabled:false,reason:'setting-local-audit-failed'});
-    p.highJewelrySettingV6={accepted:false,reason:topologyFailureReasons(diag),receiver:true};
-    return manifold;
-  }
-  try{manifold.delete();}catch(e){}
+
+  const probe=manifoldToMeshHelper(metal),diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'high-jewelry-v8-lapidary-primary-volume');
+  if(!diag.ok){try{metal.delete();}catch(e){};throw new Error('AGDP V7: primary-volume assembly failed local topology audit: '+topologyFailureReasons(diag).join(','));}
+
   p.highJewelryResolvedStone=stone;
-  p.highJewelrySettingV6={accepted:true,booleanSeat:true,receiver:true,receiverDepthMm:+receiverDepth.toFixed(2),seatDepthMm:+seatDepth.toFixed(2),mounting:stone.mounting,retentionGeometry:stone.mounting==='prong'?'4-prong':stone.mounting==='channel-capture'?'2-channel-rails':'4-low-inlay-rails'};
+  p.highJewelrySettingV8={accepted:true,primaryVolume:true,stoneFirst:true,lapidaryDriven:true,booleanSeat:true,receiver:true,receiverDepthMm:+receiverDepth.toFixed(2),seatDepthMm:+seatDepth.toFixed(2),seatClearanceMm:+clearance.toFixed(2),mounting:stone.mounting,bandLike,gemDimensionsMm:[gemLength,gemWidth,gemDepth]};
   return metal;
 }
 async function makeMeshManifoldEntry(wasm, inputParams){
@@ -3385,9 +3396,10 @@ async function makeMeshManifoldEntry(wasm, inputParams){
       closed: topology.closed, opening: topology.closed?0:topology.opening
     }));
   }
-  // V5: cut the gemstone seat and union the retaining metal BEFORE final mesh audit.
-  manifold=agdpHJ6ApplySetting(wasm,manifold,p);
+  // V8: finish any conservative body hollowing BEFORE the lapidary interface.
+  // The gemstone receiver/seat/retention is therefore never hollowed or perforated afterward.
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
+  manifold=agdpHJ8ApplyPrimaryVolume(wasm,manifold,p);
 
   let V, F;
   if(p.type==='hoopEarring') {
