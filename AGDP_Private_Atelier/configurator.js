@@ -201,8 +201,6 @@
   (async function boot(){
     try{
       await loadScript('configurator.engine.js');
-      await loadScript('configurator.lapidary.js');
-      await loadScript('configurator.gemstones.js');
       await loadScript('configurator.ui.js');
       await loadScript('configurator.geometry.js', 'module');
       await loadScript('configurator.viewport.js', 'module');
