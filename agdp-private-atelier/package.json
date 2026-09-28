@@ -1,0 +1,9 @@
+{
+  "name": "agdp-private-atelier",
+  "version": "0.210.0-private.0",
+  "private": true,
+  "description": "Private generative jewelry geometry workspace for A GROSS DOMESTIC PRODUCT.",
+  "scripts": {
+    "test": "node tests/static-consistency.mjs"
+  }
+}

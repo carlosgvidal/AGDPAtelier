@@ -1,0 +1,40 @@
+:root{
+  color-scheme:light;
+  font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  background:#fff;
+  color:#000;
+}
+
+*{box-sizing:border-box}
+
+html,body{
+  margin:0;
+  min-width:320px;
+  min-height:100%;
+  background:#fff;
+}
+
+body.agdp-private-page{min-height:100vh}
+
+#agdp-header-mount:empty,
+#agdp-footer-mount:empty{display:none}
+
+#agdp-private-main,
+#agdp-configurator-mount{
+  width:100%;
+  min-height:100vh;
+}
+
+#agdp-configurator-mount{height:100vh;min-height:720px}
+
+noscript{
+  display:block;
+  max-width:42rem;
+  margin:4rem auto;
+  padding:1.25rem;
+  border:1px solid #4f3a27;
+}
+
+@media (max-width:820px){
+  #agdp-configurator-mount{height:auto;min-height:100vh}
+}

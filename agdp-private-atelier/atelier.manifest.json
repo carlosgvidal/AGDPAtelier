@@ -1,0 +1,28 @@
+{
+  "name": "A GROSS DOMESTIC PRODUCT. Private Atelier",
+  "version": "0.210-private-alpha",
+  "visibility": "private",
+  "entry": "index.html",
+  "status": "technical-review-required",
+  "canonicalFiles": [
+    "index.html",
+    "agdp-site.css",
+    "configurator.js",
+    "configurator.engine.js",
+    "configurator.geometry.js",
+    "configurator.viewport.js",
+    "configurator.ui.js"
+  ],
+  "runtimeDependencies": {
+    "manifold-3d": "3.5.2",
+    "three": "0.160.0"
+  },
+  "notIncluded": [
+    "site authentication",
+    "header and footer fragments",
+    "order backend",
+    "manufacturing approval",
+    "legacy compatibility runtime",
+    "duplicate private prototypes"
+  ]
+}
