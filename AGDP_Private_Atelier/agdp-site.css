@@ -1,6 +1,0 @@
-/* Temporary base-test shell only. Atelier styling is embedded in configurator.js. */
-html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Helvetica Neue,Helvetica,Arial,sans-serif}
-#agdp-header-mount,#agdp-footer-mount{display:none}
-.hero,.hero-strip,.color-strip,.editorial-section{display:none}
-.configurator-section,.configurator-inner{margin:0;padding:0;width:100%}
-#agdp-configurator-mount{width:100%;height:100vh;min-height:720px}
