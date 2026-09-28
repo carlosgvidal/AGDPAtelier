@@ -1145,7 +1145,7 @@ function canonicalizeMeshForValidation(V,F,tolerance){
 // Detailed topology audit used by the geometry diagnostic pipeline. This is
 // intentionally independent from window.validate so a failing intermediate
 // CSG stage can be identified before the final product audit is reached.
-function diagnoseClosedTriangleMesh(V,F,label){
+function diagnoseClosedTriangleMesh(V,F,label,expectedComponents=1){
   const report={
     label:String(label||'mesh'), vertices:Array.isArray(V)?V.length:0,
     triangles:Array.isArray(F)?F.length:0, finite:true, invalidIndices:0,
@@ -1181,7 +1181,8 @@ function diagnoseClosedTriangleMesh(V,F,label){
   for(let i=0;i<F.length;i++) roots.add(find(i));
   report.connectedComponents=roots.size;
   report.signedVolumeMm3=signed6/6;
-  report.ok=report.finite&&report.invalidIndices===0&&report.degenerateTriangles===0&&report.boundaryEdges===0&&report.nonManifoldEdges===0&&report.connectedComponents===1&&Math.abs(report.signedVolumeMm3)>1e-8;
+  report.expectedComponents=Math.max(1,expectedComponents||1);
+  report.ok=report.finite&&report.invalidIndices===0&&report.degenerateTriangles===0&&report.boundaryEdges===0&&report.nonManifoldEdges===0&&report.connectedComponents===report.expectedComponents&&Math.abs(report.signedVolumeMm3)>1e-8;
   return report;
 }
 function topologyFailureReasons(report){
@@ -1192,15 +1193,15 @@ function topologyFailureReasons(report){
   if(report.degenerateTriangles) reasons.push('degenerate-triangles:'+report.degenerateTriangles);
   if(report.boundaryEdges) reasons.push('boundary-edges:'+report.boundaryEdges);
   if(report.nonManifoldEdges) reasons.push('non-manifold-edges:'+report.nonManifoldEdges);
-  if(report.connectedComponents!==1) reasons.push('connected-components:'+report.connectedComponents);
+  if(report.connectedComponents!==(report.expectedComponents||1)) reasons.push('connected-components:'+report.connectedComponents+' expected:'+(report.expectedComponents||1));
   if(!(Math.abs(report.signedVolumeMm3)>1e-8)) reasons.push('near-zero-volume');
   if(report.exception) reasons.push('exception:'+report.exception);
   return reasons;
 }
-function diagnoseManifoldStage(manifold,label){
+function diagnoseManifoldStage(manifold,label,expectedComponents=1){
   try{
     const mesh=manifoldToMesh(manifold);
-    const raw=diagnoseClosedTriangleMesh(mesh.V,mesh.F,label);
+    const raw=diagnoseClosedTriangleMesh(mesh.V,mesh.F,label,expectedComponents);
     let report=raw;
     // Manifold CSG can retain sub-micron duplicate vertices at otherwise
     // closed seams. Audit a canonicalized copy before classifying the stage as
@@ -1208,7 +1209,7 @@ function diagnoseManifoldStage(manifold,label){
     // or disconnected solid.
     if(!raw.ok){
       const canonical=canonicalizeMeshForValidation(mesh.V,mesh.F,1e-5);
-      const normalized=diagnoseClosedTriangleMesh(canonical.V,canonical.F,label+'-canonical');
+      const normalized=diagnoseClosedTriangleMesh(canonical.V,canonical.F,label+'-canonical',expectedComponents);
       report=Object.assign({},normalized,{
         label:String(label||'manifold'),
         raw,
@@ -3662,7 +3663,7 @@ function agdpStoneAtFrame(base,frame){
   stone.position=[p0[0]+n[0]*lift,p0[1]+n[1]*lift,p0[2]+n[2]*lift];stone.normal=n.slice();stone.surfaceAnchor=p0.slice();
   stone.structuralRole=frame.sourceIndex===0?'primary-mineral-volume':'secondary-mineral-volume';stone.replaceMetalFocus=true;return stone;
 }
-function agdpSettingForStone(wasm,body,stone){
+function agdpSettingForStone(wasm,body,stone,expectedComponents=1){
   const n=stone.normal,b=agdpGemBasis(n),surface=stone.surfaceAnchor,w=stone.widthMm||stone.sizeMm,L=stone.lengthMm||w,d=stone.depthMm||w*.55;
   const minWall=Math.max(.65,Math.min(1.05,w*.095));
   let metal=body,parts=[];
@@ -3707,7 +3708,7 @@ function agdpSettingForStone(wasm,body,stone){
   // Exact high-resolution lapidary volume cuts the seat. No generic box cutter.
   const gm=window.AGDP_Gemstones.meshPart(stone),cutter=meshToManifold(wasm,gm.V,gm.F);
   const seated=wasm.Manifold.difference(metal,cutter);try{metal.delete();cutter.delete();}catch(e){}metal=seated;
-  const probe=manifoldToMeshHelper(metal),diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'structural-gem-setting');
+  const diag=diagnoseManifoldStage(metal,'structural-gem-setting',expectedComponents);
   if(!diag.ok){try{metal.delete();}catch(e){}throw new Error('AGDP_SETTING_NON_MANIFOLD:'+topologyFailureReasons(diag).join(','));}
   return {manifold:metal,setting:{accepted:true,mounting:stone.mounting,shapeMatchedSaddle:true,exactLapidarySeat:true,renderFallback:false,gemDimensionsMm:[L,w,d]}};
 }
@@ -3717,7 +3718,10 @@ function agdpIntegrateMineralSystem(wasm,manifold,p){
   let current=manifold;const resolved=[],settings=[];
   for(let k=0;k<frames.length;k++){
     const frame=frames[k],base=vols[frame.sourceIndex];if(!base)throw new Error('AGDP_MINERAL_SOURCE_MISSING');
-    const stone=agdpStoneAtFrame(base,frame);const built=agdpSettingForStone(wasm,current,stone);current=built.manifold;
+    const stone=agdpStoneAtFrame(base,frame);
+    // At this stage cufflinks are already a two-solid object; hoop earrings are still one unit and are duplicated later.
+    const expectedSettingComponents=(p.type==='cufflinks')?2:1;
+    const built=agdpSettingForStone(wasm,current,stone,expectedSettingComponents);current=built.manifold;
     stone.id=k+1;resolved.push(stone);settings.push(Object.assign({stoneId:k+1},built.setting));
   }
   p.resolvedMineralVolumes=resolved;p.highJewelryResolvedStone=resolved[0]||null;p.highJewelrySettings=settings;
@@ -3801,6 +3805,12 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   }
 
   const expectedComponents = (p.type==='cufflinks'||p.type==='hoopEarring') ? 2 : 1;
+  // Canonicalize only the representation used for the final product. Manifold CSG may emit
+  // coincident seam vertices with distinct indices; welding them at 1e-5 mm preserves geometry
+  // while preventing index duplication from masquerading as open/non-manifold topology.
+  const canonicalFinal=canonicalizeMeshForValidation(V,F,1e-5);
+  V=canonicalFinal.V; F=canonicalFinal.F;
+  p.finalCanonicalization={weldedVertices:canonicalFinal.weldedVertices,removedDegenerate:canonicalFinal.removedDegenerate,removedDuplicate:canonicalFinal.removedDuplicate};
   // Never repair topology by deleting triangles or connected components.
   // That strategy can turn a defective boolean result into a visibly open
   // mesh. Preserve the generated mesh intact and reject it instead, so a
