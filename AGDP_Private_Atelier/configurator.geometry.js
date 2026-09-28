@@ -3272,18 +3272,27 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
   // never invalidate an otherwise valid base-metal manifold. On any HJ failure we
   // dispose only temporary/intermediate solids, mark the setting rejected, and return
   // the original manifold untouched, restoring the recoverable behavior proven in V6.
-  const reject=(reason,error)=>{
-    p.highJewelryResolvedStone=null;
+  const reject=(reason,error,stoneForPresentation=null)=>{
+    // V8.5: roll back only the constructive metal/setting transaction.
+    // Do NOT disable the gemstone program: presentation and export still need a
+    // gemstone even when its boolean seat/retention could not be accepted.
+    p.highJewelryResolvedStone=stoneForPresentation||null;
     p.highJewelrySettingV8={
       accepted:false,
       primaryVolume:true,
       stoneFirst:true,
       lapidaryDriven:true,
+      booleanSeat:false,
+      presentationFallback:!!stoneForPresentation,
       reason,
       error:error&&error.message?String(error.message):undefined
     };
-    p.highJewelryProgram=Object.assign({},program,{enabled:false,reason});
-    console.warn('AGDP V8.4: High Jewelry transaction rolled back:',reason,error||'');
+    p.highJewelryProgram=Object.assign({},program,{
+      enabled:true,
+      settingAccepted:false,
+      settingFailureReason:reason
+    });
+    console.warn('AGDP V8.5: High Jewelry CAD setting rolled back; gemstone presentation preserved:',reason,error||'');
     return manifold;
   };
 
@@ -3312,7 +3321,7 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
   }catch(e){
     try{receiver&&receiver.delete();}catch(_e){}
     try{supported&&supported.delete();}catch(_e){}
-    return reject('saddle-union-failed',e);
+    return reject('saddle-union-failed',e,stone);
   }
   try{receiver&&receiver.delete();}catch(e){}
   receiver=null;
@@ -3327,7 +3336,7 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
     cutter=meshToManifold(wasm,gemMesh.V,gemMesh.F);
   }catch(e){
     try{supported&&supported.delete();}catch(_e){}
-    return reject('lapidary-cutter-construction-failed',e);
+    return reject('lapidary-cutter-construction-failed',e,stone);
   }
 
   try{
@@ -3335,7 +3344,7 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
   }catch(e){
     try{supported&&supported.delete();}catch(_e){}
     try{cutter&&cutter.delete();}catch(_e){}
-    return reject('seat-boolean-failed',e);
+    return reject('seat-boolean-failed',e,stone);
   }
   try{supported&&supported.delete();}catch(e){}
   try{cutter&&cutter.delete();}catch(e){}
@@ -3378,7 +3387,7 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
     }catch(e){
       try{metal&&metal.delete();}catch(_e){}
       try{assembly&&assembly.delete();}catch(_e){}
-      return reject('retention-union-failed',e);
+      return reject('retention-union-failed',e,stone);
     }
   }
 
@@ -3388,12 +3397,12 @@ function agdpHJ8ApplyPrimaryVolume(wasm,manifold,p){
     diag=diagnoseClosedTriangleMesh(probe.V,probe.F,'high-jewelry-v8.4-lapidary-primary-volume');
   }catch(e){
     try{metal&&metal.delete();}catch(_e){}
-    return reject('local-topology-audit-error',e);
+    return reject('local-topology-audit-error',e,stone);
   }
   if(!diag.ok){
     const reasons=topologyFailureReasons(diag);
     try{metal&&metal.delete();}catch(e){}
-    return reject('local-topology-audit-failed:'+reasons.join(','));
+    return reject('local-topology-audit-failed:'+reasons.join(','),null,stone);
   }
 
   p.highJewelryResolvedStone=stone;
