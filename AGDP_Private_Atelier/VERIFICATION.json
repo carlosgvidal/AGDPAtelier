@@ -1,0 +1,34 @@
+{
+  "configurator.engine.js": {
+    "unchanged": true,
+    "sha256": "a5085cf61620477458e77339fbf217da3166be9bc6cbb55d579932df260c06b5"
+  },
+  "configurator.geometry.js": {
+    "unchanged": true,
+    "sha256": "8ed9414668c0fba6b444a4bafcf8f7d09099be9234669e879d0720d698a851d9"
+  },
+  "index.html": {
+    "unchanged": true,
+    "sha256": "7a41698ffa2cf867a15a679a5db166865b063679fbcf7b4791c846d286687032"
+  },
+  "agdp-site.css": {
+    "unchanged": true,
+    "sha256": "92552bd1360bc02ce616cf4d12dc63bab006429dde81b6641cd55784228762fd"
+  },
+  "configurator.js": {
+    "sha256": "4bab3a2da471a2ef383072e179d9583c6ab0cc73066435f6744c943da39b7b54",
+    "bytes": 18187
+  },
+  "configurator.ui.js": {
+    "sha256": "bf11cca0b91d57aae3dad060840627f473bf4674066b6a390e94b019fb8b0807",
+    "bytes": 40513
+  },
+  "configurator.viewport.js": {
+    "sha256": "935e4537cac8274fbe0822a4750fcb2168e0ef56f6c7bd04cab51d86379ba6e0",
+    "bytes": 39338
+  },
+  "configurator.gemstones.js": {
+    "sha256": "75117599fda80bb425c808742cd39f2f07b58a482be71897610e35aaafce12a4",
+    "bytes": 7998
+  }
+}

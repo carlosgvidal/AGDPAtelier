@@ -295,6 +295,7 @@ const _material = new THREE.MeshPhysicalMaterial({
   roughnessMap: buildBrushedRoughnessMap(),
 });
 let _mesh3d = null;
+let _gemstoneGroup = null;
 let _presentationAccessory = null;
 
 const AGDP_PRESENTATION_VIEWS=Object.freeze({
@@ -835,6 +836,7 @@ function _normalizedPresentationType(nextMesh){
 
 window.AGDP_setRenderMesh = function(nextMesh){
   if(_mesh3d){ _scene.remove(_mesh3d); _mesh3d.geometry.dispose(); _mesh3d=null; }
+  if(_gemstoneGroup){ _scene.remove(_gemstoneGroup); _disposeObject3D(_gemstoneGroup); _gemstoneGroup=null; }
   if(_presentationAccessory){
     _scene.remove(_presentationAccessory);
     _disposeObject3D(_presentationAccessory);
@@ -897,6 +899,23 @@ window.AGDP_setRenderMesh = function(nextMesh){
     _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
   }
   _scene.add(_mesh3d);
+
+  if(window.AGDP_Gemstones&&nextMesh.gemstones&&nextMesh.gemstones.enabled){
+    const rawBox=new THREE.Box3().setFromBufferAttribute(geometry.getAttribute('position'));
+    // geometry.center() has already translated the metal vertices by -rawCenter.
+    // Stone coordinates are stored in the original production coordinate system,
+    // so apply the same centering translation before inheriting presentation pose.
+    const originalCenter=new THREE.Vector3();
+    // After center(), geometry's bbox center is zero. Recover the original mesh center
+    // directly from the untouched V array rather than from the centered BufferGeometry.
+    const mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];
+    for(const v of nextMesh.V){for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],v[k]);mx[k]=Math.max(mx[k],v[k]);}}
+    originalCenter.set((mn[0]+mx[0])*.5,(mn[1]+mx[1])*.5,(mn[2]+mx[2])*.5);
+    _gemstoneGroup=window.AGDP_Gemstones.threeGroup(THREE,nextMesh.gemstones,[originalCenter.x,originalCenter.y,originalCenter.z]);
+    _gemstoneGroup.rotation.copy(_mesh3d.rotation);
+    _gemstoneGroup.scale.copy(_mesh3d.scale);
+    _scene.add(_gemstoneGroup);
+  }
 
   if(!strictNativeEarring&&type==='pendant'&&presentation.displayChain){
     _presentationAccessory=_createPendantDisplayChain(geometry,presentation);

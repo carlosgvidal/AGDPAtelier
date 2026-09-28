@@ -464,6 +464,15 @@ generateBtn:'Generate piece', orderBtn:'Quote in Polished Silver',
 
     currentSeed=acceptedSeed;
     window.AGDP_currentSeed=currentSeed;
+    if(window.AGDP_Gemstones){
+      try{
+        acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams);
+        window.AGDP_currentGemstonePlan=acceptedMesh.gemstones;
+      }catch(gemError){
+        console.warn('AGDP gemstones: plan omitted after planner error',gemError);
+        acceptedMesh.gemstones={enabled:false,reason:'planner-error',stones:[]};
+      }
+    }
     window.AGDP_currentMesh=acceptedMesh;
     window.AGDP_currentPieceName=(selectedType||'pieza')+'_'+(currentSeed||'agdp');
     setRenderMesh(acceptedMesh);
