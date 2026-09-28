@@ -1,7 +1,7 @@
 'use strict';
 /* AGDP Gemstone Layer v1.0 — deterministic, geometry-aware, non-destructive stone bodies. */
 (function(){
-  const VERSION='8.2.0';
+  const VERSION='8.3.0';
   const FACETED=[
     ['diamond',0xffffff,2.417],['ruby',0x9b111e,1.77],['sapphire',0x174a8b,1.77],['emerald',0x168f5b,1.58],
     ['spinel',0xc43b66,1.72],['paraiba-tourmaline',0x24d8cf,1.62],['tourmaline',0x3a9d72,1.62],['aquamarine',0x8ed7e8,1.58],

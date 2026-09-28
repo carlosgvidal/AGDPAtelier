@@ -464,14 +464,13 @@ generateBtn:'Generate piece', orderBtn:'Download OBJ',
     currentSeed=acceptedSeed;
     window.AGDP_currentSeed=currentSeed;
     if(window.AGDP_Gemstones){
-      // V8.2: presentation consumes the geometry transaction; it never rejects it.
-      // Normal high-jewelry output already contains gemstones. The fallback exists
-      // only for legacy/non-high-jewelry meshes and is deliberately non-fatal.
-      if(!acceptedMesh.gemstones){
-        try{ acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams); }
-        catch(gemError){ console.warn('AGDP gemstones: legacy presentation fallback failed',gemError); }
+      try{
+        acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams);
+        window.AGDP_currentGemstonePlan=acceptedMesh.gemstones;
+      }catch(gemError){
+        console.warn('AGDP gemstones: plan omitted after planner error',gemError);
+        acceptedMesh.gemstones={enabled:false,reason:'planner-error',stones:[]};
       }
-      window.AGDP_currentGemstonePlan=acceptedMesh.gemstones||null;
     }
     window.AGDP_currentMesh=acceptedMesh;
     window.AGDP_currentPieceName=(selectedType||'pieza')+'_'+(currentSeed||'agdp');
