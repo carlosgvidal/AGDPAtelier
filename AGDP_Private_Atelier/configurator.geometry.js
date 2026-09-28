@@ -36,13 +36,13 @@
   function build(family,cut,widthMm,rng){return family==='faceted'?facetSpec(cut,widthMm,rng):family==='cabochon'?cabochonSpec(widthMm,rng):family==='slab'?slabSpec(widthMm,rng):pearlSpec(widthMm,rng);}
   function settingPolicy(material,lap){
     const m=MATERIALS[material]||{settingRisk:'medium'};
-    if(lap.family==='slab')return {preferred:'inlay',allowed:['inlay'],protectGirdle:true};
-    if(lap.family==='pearl')return {preferred:'post-cup',allowed:['post-cup'],protectGirdle:false};
-    if(lap.family==='cabochon')return {preferred:m.settingRisk==='high'?'partial-bezel':'inlay',allowed:['partial-bezel','inlay','prong'],protectGirdle:m.settingRisk==='high'};
-    if(lap.pointedCorners)return {preferred:'v-prong',allowed:['v-prong','channel-capture'],protectCorners:true,protectGirdle:m.settingRisk==='high'};
-    if(m.settingRisk==='high')return {preferred:'partial-bezel',allowed:['partial-bezel','channel-capture'],protectGirdle:true};
-    if(lap.family==='step')return {preferred:'corner-prong',allowed:['corner-prong','channel-capture','partial-bezel'],protectGirdle:false};
-    return {preferred:'prong',allowed:['prong','partial-bezel'],protectGirdle:false};
+    if(lap.family==='slab')return {preferred:'inlay',allowed:['inlay','bezel','channel-frame'],protectGirdle:true};
+    if(lap.family==='pearl')return {preferred:'post-cup',allowed:['post-cup','cup-cage'],protectGirdle:false};
+    if(lap.family==='cabochon')return {preferred:m.settingRisk==='high'?'bezel':'partial-bezel',allowed:m.settingRisk==='high'?['bezel','partial-bezel']:['bezel','partial-bezel','prong','inlay'],protectGirdle:m.settingRisk==='high'};
+    if(lap.pointedCorners)return {preferred:'v-prong',allowed:m.settingRisk==='low'?['v-prong','bezel','partial-bezel','channel','bar']:['v-prong','bezel','partial-bezel'],protectCorners:true,protectGirdle:m.settingRisk==='high'};
+    if(m.settingRisk==='high')return {preferred:'bezel',allowed:['bezel','partial-bezel','prong'],protectGirdle:true};
+    if(lap.family==='step')return {preferred:'corner-prong',allowed:['corner-prong','basket','bezel','partial-bezel','channel','bar'],protectGirdle:false};
+    return {preferred:'prong',allowed:['prong','basket','bezel','partial-bezel','channel','bar','flush','tension'],protectGirdle:false};
   }
   window.AGDP_Lapidary=Object.freeze({VERSION,CUTS,MATERIALS,build,settingPolicy});
 })();
@@ -104,49 +104,56 @@
   }
   function highJewelryProgram(params){
     const seed=String(params.seed||'AGDP');
-    const rng=window.SeededVariation.createGenerator(seed+'|agdp-high-jewelry-v4-focal-mass');
     const type=params.type;
     if(!SUPPORTED.has(type))return {enabled:false,reason:'unsupported-typology',seed};
-    const hasVoids=(Number(params.holes)||0)>0||(Number(params.frames)||0)>.18;
-    const regime=pickWeighted(rng,hasVoids?
-      [['block',.42],['slab-inlay',.30],['cabochon',.20],['pearl',.08]]:
-      [['block',.52],['cabochon',.27],['slab-inlay',.13],['pearl',.08]]);
-    const family=regime==='block'?'faceted':regime==='cabochon'?'cabochon':regime==='pearl'?'pearl':'slab';
-    const material=materialChoice(rng,family);
-    const cut=family==='faceted'?pickWeighted(rng,CUT_WEIGHTS):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
-    const mounting=family==='pearl'?'post-cup':family==='slab'?(hasVoids?'inlay-window':'inlay'):
-      family==='cabochon'?pickWeighted(rng,[['inlay',.48],['prong',.34],['partial-bezel',.18]]):
-      (hasVoids?pickWeighted(rng,[['invisible-window',.60],['prong',.28],['channel-capture',.12]]):pickWeighted(rng,[['prong',.54],['invisible',.31],['channel-capture',.15]]));
-    return {enabled:true,seed:seed+'|agdp-high-jewelry-v4-focal-mass',regime,family,material,cut,mounting,hasVoids,
-      grammar:'AGDP_HIGH_JEWELRY_V4_FOCAL_MASS',replaceMetalFocus:true};
+    const ms=params.mineralSystem;
+    if(ms&&ms.enabled){
+      const rng=window.SeededVariation.createGenerator(seed+'|mineral-material-v11');
+      const family=ms.family;
+      const material=materialChoice(rng,family);
+      const cut=family==='faceted'?pickWeighted(rng,CUT_WEIGHTS):family==='cabochon'?'cabochon':family==='slab'?'slab':'pearl';
+      return {enabled:true,seed:seed+'|mineral-topology-v11',regime:ms.regime,family,material,cut,
+        mounting:ms.interface,hasVoids:(Number(params.holes)||0)>0||(Number(params.frames)||0)>.18,
+        grammar:'AGDP_MINERAL_TOPOLOGY_V11',replaceMetalFocus:true,mineralSystem:ms};
+    }
+    return {enabled:false,reason:'no-mineral-topology',seed};
   }
   function prepareGeometry(p){
     const program=highJewelryProgram(p);
     p.highJewelryProgram=program;
     if(!program.enabled)return p;
-    if(!window.AGDP_Lapidary)throw new Error('AGDP V8: lapidary specification is not loaded');
-    const rng=window.SeededVariation.createGenerator(program.seed+'|primary-volume-v8-lapidary');
-    const family=program.family, cut=program.cut;
-    const bandLike=['ring','bangle','cuffBracelet','earCuff','hoopEarring'].includes(p.type);
-    const small=p.type==='ring'||p.type==='earCuff'||p.type==='hoopEarring'||p.type==='cufflinks';
-    const bw=Math.max(2.2,Number(p.bandWidth)||3.6);
-    const sizePolicy={
-      faceted:{ring:[4,9],bangle:[5,10],cuffBracelet:[5,10],pendant:[5,11],brooch:[6,12],hoopEarring:[4,8],earCuff:[4,8],cufflinks:[4,8]},
-      cabochon:{ring:[5,10],bangle:[6,12],cuffBracelet:[6,12],pendant:[6,13],brooch:[7,14],hoopEarring:[5,9],earCuff:[5,9],cufflinks:[5,9]},
-      slab:{ring:[5,10],bangle:[6,12],cuffBracelet:[6,12],pendant:[6,13],brooch:[7,14],hoopEarring:[5,9],earCuff:[5,9],cufflinks:[5,9]},
-      pearl:{ring:[6,11],bangle:[7,12],cuffBracelet:[7,12],pendant:[7,13],brooch:[8,14],hoopEarring:[6,10],earCuff:[6,10],cufflinks:[6,9]}
-    };
-    const sizeRange=(sizePolicy[family]&&sizePolicy[family][p.type])||[5,10];
-    const t=.18+rng()*.64;
-    let widthMm=Math.round((sizeRange[0]+(sizeRange[1]-sizeRange[0])*t)*2)/2;
-    const lapidary=window.AGDP_Lapidary.build(family,cut,widthMm,rng);
-    const policy=window.AGDP_Lapidary.settingPolicy(program.material[0],lapidary);
-    const mounting=policy.preferred;
-    p.primaryGemVolume={id:1,family,material:program.material[0],color:program.material[1],ior:family==='faceted'?program.material[2]:1.52,
-      cut,mounting,sizeMm:lapidary.widthMm,aspect:lapidary.lengthMm/lapidary.widthMm,lengthMm:lapidary.lengthMm,widthMm:lapidary.widthMm,depthMm:lapidary.depthMm,
-      lapidary,settingPolicy:policy,seed:program.seed+'|primary-volume-v8-lapidary',primaryVolume:true,stoneFirst:true};
+    if(!window.AGDP_Lapidary)throw new Error('AGDP V11: lapidary specification is not loaded');
+    const ms=program.mineralSystem;
+    const rng=window.SeededVariation.createGenerator(program.seed+'|volumes');
+    const family=program.family,cut=program.cut;
+    const material=program.material;
+    const volumes=[];
+    for(let i=0;i<ms.events.length;i++){
+      const ev=ms.events[i];
+      const w=Math.max(ms.sizeRangeMm[0],Math.min(ms.sizeRangeMm[1],ms.primaryWidthMm*ev.scale));
+      const widthMm=Math.round(w*2)/2;
+      const lapidary=window.AGDP_Lapidary.build(family,cut,widthMm,rng);
+      let policy=window.AGDP_Lapidary.settingPolicy(material[0],lapidary);
+      // The structural grammar owns the interface choice; durability policy can veto it.
+      let mounting=ms.interface;
+      if(!policy.allowed.includes(mounting)) mounting=policy.preferred;
+      // Multi-stone channel/bar regimes require calibrated faceted stones.
+      if((mounting==='channel'||mounting==='bar')&&family!=='faceted') mounting=policy.preferred;
+      volumes.push({id:i+1,family,material:material[0],color:material[1],ior:family==='faceted'?material[2]:1.52,
+        cut,mounting,sizeMm:lapidary.widthMm,aspect:lapidary.lengthMm/lapidary.widthMm,
+        lengthMm:lapidary.lengthMm,widthMm:lapidary.widthMm,depthMm:lapidary.depthMm,
+        lapidary,settingPolicy:policy,seed:program.seed+'|volume|'+i,primaryVolume:i===0,stoneFirst:true,
+        mineralEvent:ev,compositionRegime:ms.regime,formalRelation:ms.formalRelation});
+    }
+    p.gemVolumes=volumes;
+    p.primaryGemVolume=volumes[0]||null;
     p.highJewelryOriginalFocus={nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
-    p.nodes=0; p.rivets=0; p.screws=0;
+    // Mineral events replace only the equivalent number of mass events; other
+    // AGDP nodes remain available to carry the setting and the body's grammar.
+    p.nodes=Math.max(0,(p.nodes||0)-volumes.length);
+    p.rivets=Math.max(0,(p.rivets||0)-Math.floor(volumes.length/2));
+    p.screws=Math.max(0,(p.screws||0)-Math.floor(volumes.length/2));
+    p.mineralInfluenceEvents=ms.events.map((e,i)=>({u:e.u,scale:e.scale,widthMm:volumes[i].widthMm,depthMm:volumes[i].depthMm,rank:e.rank}));
     return p;
   }
   function semanticAnchor(V,F,p){
@@ -180,8 +187,11 @@
     const cp=mesh.compiledParams||params||{};
     const program=cp.highJewelryProgram||highJewelryProgram(cp);
     if(!program.enabled)return {version:VERSION,enabled:false,reason:program.reason||'metal-only',stones:[]};
+    if(Array.isArray(cp.resolvedMineralVolumes)&&cp.resolvedMineralVolumes.length){
+      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'MINERAL_TOPOLOGY_SYSTEM',architecture:'V11_LOAD_GRAPH_MINERAL',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_MINERAL_TOPOLOGY_V11',replaceMetalFocus:true,setting:cp.highJewelrySettingsV11||null,stones:cp.resolvedMineralVolumes};
+    }
     if(cp.highJewelryResolvedStone){
-      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'GEOMETRY_PRIMARY_VOLUME',architecture:'V10_UNIFIED_TOPOLOGY',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_HIGH_JEWELRY_V8_LAPIDARY_PRIMARY_VOLUME',replaceMetalFocus:true,setting:cp.highJewelrySettingV8||cp.highJewelrySettingV7||cp.highJewelrySettingV6||cp.highJewelrySettingV5||null,stones:[cp.highJewelryResolvedStone]};
+      return {version:VERSION,enabled:true,seed:program.seed,family:program.family,mode:'GEOMETRY_PRIMARY_VOLUME',architecture:'V11_LOAD_GRAPH_MINERAL',regime:program.regime,hasVoids:program.hasVoids,grammar:'AGDP_MINERAL_TOPOLOGY_V11',replaceMetalFocus:true,setting:cp.highJewelrySettingV8||null,stones:[cp.highJewelryResolvedStone]};
     }
     const anchor=mesh.gemstoneAnchor||semanticAnchor(mesh.V,mesh.F,cp);
     if(!anchor)return {version:VERSION,enabled:false,reason:'no-semantic-focal-anchor',stones:[]};
@@ -1536,6 +1546,23 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const lobeB = Math.exp(-(d2*d2)/(2*zoneWidthB*zoneWidthB))*0.60;
     return Math.min(1.25, lobeA+lobeB);
   }
+  // V11: mineral events deform the body BEFORE settings are constructed.
+  // This is the shoulder/load-path field: removing the stone later leaves a
+  // structurally legible absence instead of a complete metal piece.
+  const mineralEvents=Array.isArray(p.mineralInfluenceEvents)?p.mineralInfluenceEvents:[];
+  function mineralSupportMask(t){
+    if(!mineralEvents.length)return 0;
+    let m=0;
+    const refR=Math.max(4,innerR+baseWall);
+    for(const ev of mineralEvents){
+      const centerT=-arcRad/2+arcRad*Math.max(.02,Math.min(.98,ev.u));
+      const sigma=Math.max(.10,Math.min(.48,(ev.widthMm||5)/refR*.72));
+      const d=wrap(t-centerT);
+      m=Math.max(m,Math.exp(-(d*d)/(2*sigma*sigma))*(.72+.28*(ev.scale||1)));
+    }
+    return Math.min(1,m);
+  }
+  const mineralSupportDepth=mineralEvents.length?Math.max(baseWall*.75,Math.min(baseWall*2.2,(p.primaryReservedEnvelopeMm||6)*.20)):0;
   const comfortActive = opts.type==='ring';
   const comfortDepth = comfortActive ? Math.min(baseWall*0.28, 0.30) : 0;
 
@@ -1548,7 +1575,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   function outerOperationField(t,z){
     const rFaceBase = facetedRadius(t, nominalOuterRadius, facetCount, facetDepth*coverageMask(t));
     const axialTaper = 1-Math.pow(Math.abs(z/Math.max(.001,half)),1.4)*0.55;
-    return rFaceBase - grooveDepth*grooveMask(z) + zoneMassDepth*zoneMassMask(t)*axialTaper - nominalOuterRadius;
+    return rFaceBase - grooveDepth*grooveMask(z) + zoneMassDepth*zoneMassMask(t)*axialTaper + mineralSupportDepth*mineralSupportMask(t)*axialTaper - nominalOuterRadius;
   }
   for (let i=0;i<thetaN;i++) {
     outer[i]=[]; inner[i]=[];
@@ -1558,7 +1585,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     for (let j=0;j<=zSeg;j++) {
       const z = -half+bandW*j/zSeg;
       const axialTaper = 1-Math.pow(Math.abs(z/Math.max(.001,half)),1.4)*0.55;
-      let rFace = rFaceBase - grooveDepth*grooveMask(z) + zoneMassDepth*massHere*axialTaper;
+      let rFace = rFaceBase - grooveDepth*grooveMask(z) + zoneMassDepth*massHere*axialTaper + mineralSupportDepth*mineralSupportMask(t)*axialTaper;
       const baseInnerRadius = innerR + comfortDepth*(z/Math.max(.001,half))*(z/Math.max(.001,half));
       const radialField = rFace - nominalOuterRadius;
       const ri = opts.type==='pendantAnnularCore'
@@ -1627,8 +1654,10 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     for (let i=0;i<seg;i++) {
       const inSlotCol = (i%slotPeriod)<slotWidth;
       if (!inSlotCol) continue;
+      const tMineral = -arcRad/2+arcRad*(i/seg);
+      if(mineralSupportMask(tMineral)>.12) continue;
       if (p.crown) {
-        const t = -arcRad/2+arcRad*(i/seg);
+        const t = tMineral;
         if (coverageMask(t)>0.35) continue;
       }
       for (let j=0;j<zSeg;j++) {
@@ -1708,11 +1737,11 @@ async function buildBandGeometryManifold(wasm, p, opts) {
 
   const surfaceR = innerR+baseWall;
   const localSurfaceBase = t => facetedRadius(t, surfaceR, facetCount, facetDepth);
-  const localSurfaceR = t => localSurfaceBase(t)+zoneMassDepth*zoneMassMask(t);
+  const localSurfaceR = t => localSurfaceBase(t)+zoneMassDepth*zoneMassMask(t)+mineralSupportDepth*mineralSupportMask(t);
   const localSurfaceRZ = (t,z) => {
     const axialTaper = 1-Math.pow(Math.abs(z/Math.max(.001,half)),1.4)*0.55;
     const riHere = innerR+comfortDepth*(z/Math.max(.001,half))*(z/Math.max(.001,half));
-    const raw = localSurfaceBase(t)-grooveDepth*grooveMask(z)+zoneMassDepth*zoneMassMask(t)*axialTaper;
+    const raw = localSurfaceBase(t)-grooveDepth*grooveMask(z)+zoneMassDepth*zoneMassMask(t)*axialTaper+mineralSupportDepth*mineralSupportMask(t)*axialTaper;
     return Math.max(raw, riHere+AGDP_STRUCTURAL_WALL_MM);
   };
   const embedAt = t => { const w=localSurfaceR(t)-innerR; return Math.max(0.18, w*0.98); };
@@ -3652,23 +3681,46 @@ function agdpV9IntegratePrimaryVolume(wasm,manifold,p){
 
   const retain=[];
   const pr=smallBody?.52:.62;
-  if(stone.mounting==='prong'||stone.mounting==='corner-prong'||stone.mounting==='v-prong'){
+  if(stone.mounting==='prong'||stone.mounting==='corner-prong'||stone.mounting==='v-prong'||stone.mounting==='basket'||stone.mounting==='cup-cage'){
     const ux=gemLength*.5*(stone.mounting==='v-prong'?.96:.88), vy=gemWidth*.5*(stone.mounting==='v-prong'?.96:.88);
     for(const [u,v] of [[-ux,-vy],[ux,-vy],[ux,vy],[-ux,vy]]){
       const base=agdpHJ5Local(b,stone.position,u,v,-seatDepth*.52);
       const tip=agdpHJ5Local(b,stone.position,u*.91,v*.91,Math.max(.75,r*.18));
       retain.push(cylinderBetween(wasm,base,tip,pr,16));
     }
-  }else if(stone.mounting==='partial-bezel'){
+    if(stone.mounting==='basket'||stone.mounting==='cup-cage'){
+      const z=-seatDepth*.55, rr=smallBody?.42:.50, ex=gemLength*.44, ey=gemWidth*.44;
+      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,16));
+      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,-ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,16));
+      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,ey,z),agdpHJ5Local(b,stone.position,-ex,ey,z),rr,16));
+      retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,-ex,-ey,z),rr,16));
+    }
+    if(stone.mounting==='cup-cage'){
+      const postBase=agdpHJ5Local(b,stone.position,0,0,-seatDepth*.95),postTip=agdpHJ5Local(b,stone.position,0,0,Math.min(gemDepth*.22,1.6));
+      retain.push(cylinderBetween(wasm,postBase,postTip,smallBody?.50:.60,18));
+    }
+  }else if(stone.mounting==='bezel'||stone.mounting==='flush'){
+    const segs=16,rr=stone.mounting==='flush'?(smallBody?.34:.40):(smallBody?.44:.52),z=-seatDepth*.12;
+    for(let i=0;i<segs;i++){
+      const a=2*Math.PI*i/segs,c=2*Math.PI*(i+1)/segs;
+      const p0=agdpHJ5Local(b,stone.position,Math.cos(a)*gemLength*.51,Math.sin(a)*gemWidth*.51,z);
+      const p1=agdpHJ5Local(b,stone.position,Math.cos(c)*gemLength*.51,Math.sin(c)*gemWidth*.51,z);
+      retain.push(cylinderBetween(wasm,p0,p1,rr,14));
+    }
+  }else if(stone.mounting==='partial-bezel'||stone.mounting==='bar'){
     const rr=smallBody?.48:.56, ex=gemLength*.48, ey=gemWidth*.52, z=-seatDepth*.12;
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,18));
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,ey,z),agdpHJ5Local(b,stone.position,ex,ey,z),rr,18));
   }else if(stone.mounting==='post-cup'){
     const postBase=agdpHJ5Local(b,stone.position,0,0,-seatDepth*.9), postTip=agdpHJ5Local(b,stone.position,0,0,Math.min(gemDepth*.28,2.0));
     retain.push(cylinderBetween(wasm,postBase,postTip,smallBody?.55:.65,18));
-  }else if(stone.mounting==='channel-capture'){
+  }else if(stone.mounting==='channel-capture'||stone.mounting==='channel'||stone.mounting==='channel-frame'){
     const railR=Math.max(.50,smallBody?.52:.60), ex=gemLength*.51, ey=gemWidth*.5;
     for(const v of [-ey,ey]) retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,v,-seatDepth*.22),agdpHJ5Local(b,stone.position,ex,v,-seatDepth*.22),railR,16));
+  }else if(stone.mounting==='tension'){
+    const rr=Math.max(.65,smallBody?.72:.82),ex=gemLength*.62,ey=gemWidth*.18,z=-seatDepth*.18;
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,0,z),agdpHJ5Local(b,stone.position,-gemLength*.46,0,z),rr,18));
+    retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,ex,0,z),agdpHJ5Local(b,stone.position,gemLength*.46,0,z),rr,18));
   }else if(stone.mounting==='inlay'){
     const rr=smallBody?.40:.48, ex=r*asp*1.01, ey=r*1.01, z=-seatDepth*.28;
     retain.push(cylinderBetween(wasm,agdpHJ5Local(b,stone.position,-ex,-ey,z),agdpHJ5Local(b,stone.position,ex,-ey,z),rr,14));
@@ -3735,57 +3787,73 @@ function agdpV10CompileTopologicalFamily(p){
 // Geometry reserves the dominant mineral envelope first. Metal is then built
 // around that envelope and the exact same lapidary mesh is used for the seat.
 // =============================================================================
-function agdpV9PrimaryVolumeFrame(p){
-  const primary=p.primaryGemVolume,program=p.highJewelryProgram;
-  if(!program||!program.enabled||!primary)return null;
-  const L=primary.lengthMm||primary.sizeMm*(primary.aspect||1);
-  const W=primary.widthMm||primary.sizeMm;
-  const D=primary.depthMm||primary.sizeMm*.55;
-  const type=p.type;
-  let position,normal;
-  if(type==='ring'){
-    const innerR=(p.mainSize||18)*.5, radial=innerR+Math.max(2.2,(p.bandWidth||3.6)*.72);
-    position=[0,radial+D*.18,0]; normal=[0,1,0];
-  }else if(type==='bangle'||type==='cuffBracelet'||type==='earCuff'||type==='hoopEarring'){
-    const outer=(p.mainSize||26)*.5;
-    position=[0,outer+Math.max(1.4,(p.bandWidth||4)*.28),0]; normal=[0,1,0];
-  }else if(type==='cufflinks'){
-    position=[0,0,Math.max(1.8,(p.bandWidth||4.8)*.52)]; normal=[0,0,1];
-  }else{
-    // Pendant/brooch and other face-like bodies reserve their dominant volume
-    // on the presentation face, at the compositional centre.
-    position=[0,0,Math.max(1.8,(p.bandWidth||4.8)*.52)]; normal=[0,0,1];
+function agdpV11MineralFrames(p){
+  const volumes=Array.isArray(p.gemVolumes)?p.gemVolumes:[];
+  const ms=p.mineralSystem;
+  if(!ms||!ms.enabled||!volumes.length)return [];
+  const type=p.type,frames=[];
+  const bandLike=['ring','bangle','cuffBracelet','earCuff','hoopEarring'].includes(type);
+  for(let i=0;i<volumes.length;i++){
+    const stone=volumes[i],ev=ms.events[i]||{u:.5,scale:1};
+    const L=stone.lengthMm||stone.sizeMm*(stone.aspect||1),W=stone.widthMm||stone.sizeMm,D=stone.depthMm||stone.sizeMm*.55;
+    let position,normal;
+    if(bandLike){
+      const t=-Math.PI+2*Math.PI*ev.u;
+      const innerR=(p.mainSize||26)*.5;
+      const support=Math.max(2.0,(p.minFeature||.8)*2.4)+(p.primaryReservedEnvelopeMm||W)*.10;
+      const radial=innerR+support+D*.12;
+      position=[radial*Math.cos(t),radial*Math.sin(t),0];
+      normal=[Math.cos(t),Math.sin(t),0];
+    }else{
+      // Face-like typologies use the graph event coordinate as a compositional
+      // axis. Secondary events alternate vertically so constellations are not
+      // arbitrary scatter.
+      const span=Math.max(12,Math.min(34,(p.clipFaceWidthMm||p.mainSize||28)*.62));
+      const x=(ev.u-.5)*span;
+      const y=i===0?0:((i%2?1:-1)*Math.min(6,W*.55)*Math.ceil(i/2));
+      const z=Math.max(1.8,(p.bandWidth||4.8)*.52);
+      position=[x,y,z]; normal=[0,0,1];
+    }
+    frames.push({position,normal,lengthMm:L,widthMm:W,depthMm:D,dominantEnvelopeMm:Math.max(L,W,D),
+      family:stone.family,cut:stone.cut,structuralRole:i===0?'primary-mineral-volume':'secondary-mineral-volume',
+      replaceMetalFocus:true,mineralEvent:ev});
   }
-  return {
-    position,normal,lengthMm:L,widthMm:W,depthMm:D,
-    dominantEnvelopeMm:Math.max(L,W,D),
-    family:primary.family,cut:primary.cut,
-    structuralRole:'primary-mineral-volume',
-    replaceMetalFocus:true
-  };
+  return frames;
 }
 function agdpV9ReservePrimaryVolume(p){
-  const frame=agdpV9PrimaryVolumeFrame(p);
-  p.highJewelryPrimaryFrame=frame;
-  if(!frame)return p;
-  // The typology constructors already consume nodes/rivets/screws as focal metal.
-  // Reserve that compositional role for the mineral before any metal is built.
+  const frames=agdpV11MineralFrames(p);
+  p.mineralFrames=frames;
+  p.highJewelryPrimaryFrame=frames[0]||null;
+  if(!frames.length)return p;
   p.highJewelryOriginalFocus=p.highJewelryOriginalFocus||{nodes:p.nodes||0,nodeVolume:p.nodeVolume||0,rivets:p.rivets||0,screws:p.screws||0};
-  p.nodes=0;p.rivets=0;p.screws=0;
-  p.primaryReservedEnvelopeMm=frame.dominantEnvelopeMm;
+  p.primaryReservedEnvelopeMm=Math.max(...frames.map(f=>f.dominantEnvelopeMm));
   return p;
 }
 function agdpV9ResolvedStoneFromFrame(p){
   const frame=p.highJewelryPrimaryFrame,primary=p.primaryGemVolume;
   if(!frame||!primary)return null;
-  return Object.assign({},primary,{
-    position:frame.position.slice(),
-    normal:frame.normal.slice(),
-    structuralRole:'primary-mineral-volume',
-    replaceMetalFocus:true
-  });
+  return Object.assign({},primary,{position:frame.position.slice(),normal:frame.normal.slice(),
+    structuralRole:frame.structuralRole||'primary-mineral-volume',replaceMetalFocus:true});
 }
-
+function agdpV11IntegrateMineralSystem(wasm,manifold,p){
+  const volumes=Array.isArray(p.gemVolumes)?p.gemVolumes:[];
+  const frames=Array.isArray(p.mineralFrames)?p.mineralFrames:[];
+  if(!volumes.length||!frames.length)return manifold;
+  const originalPrimary=p.primaryGemVolume,originalFrame=p.highJewelryPrimaryFrame;
+  let current=manifold;
+  const resolved=[],settings=[];
+  for(let i=0;i<Math.min(volumes.length,frames.length);i++){
+    p.primaryGemVolume=volumes[i];p.highJewelryPrimaryFrame=frames[i];
+    current=agdpV9IntegratePrimaryVolume(wasm,current,p);
+    if(p.highJewelryResolvedStone)resolved.push(Object.assign({},p.highJewelryResolvedStone,{id:i+1}));
+    if(p.highJewelrySettingV8)settings.push(Object.assign({stoneId:i+1},p.highJewelrySettingV8));
+  }
+  p.primaryGemVolume=originalPrimary;p.highJewelryPrimaryFrame=originalFrame;
+  p.resolvedMineralVolumes=resolved;
+  p.highJewelryResolvedStone=resolved[0]||null;
+  p.highJewelrySettingsV11=settings;
+  return current;
+}
 async function makeMeshManifoldEntry(wasm, inputParams){
   const removedTypes = new Set(['choker', 'headpiece', 'comb', 'moneyClip']);
   if (removedTypes.has(inputParams?.type)) {
@@ -3837,7 +3905,7 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   // V8: finish any conservative body hollowing BEFORE the lapidary interface.
   // The gemstone receiver/seat/retention is therefore never hollowed or perforated afterward.
   manifold=applyConservativeSilverHollowing(wasm,manifold,p);
-  manifold=agdpV9IntegratePrimaryVolume(wasm,manifold,p);
+  manifold=agdpV11IntegrateMineralSystem(wasm,manifold,p);
 
   let V, F;
   if(p.type==='hoopEarring') {

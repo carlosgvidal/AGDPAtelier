@@ -667,6 +667,112 @@ const LoadGraphEngine = (()=>{
 window.LoadGraphEngine = LoadGraphEngine;
 
 
+/* =========================================================================
+   AGDP MINERAL TOPOLOGY GRAMMAR v11
+   Mineral composition is compiled from the same structural load graph that
+   drives the metal. Stones are events in the topology, not decorations.
+   ========================================================================= */
+const MineralTopologyGrammar=(()=>{
+  const REGIMES=['monolith','dyad','constellation','field','composite','sign'];
+  const FAMILIES=['faceted','cabochon','slab','pearl'];
+  const TYPE_POLICY=Object.freeze({
+    ring:{maxStones:5,regimes:['monolith','dyad','constellation','composite','sign']},
+    pendant:{maxStones:5,regimes:['monolith','dyad','constellation','composite','sign']},
+    bangle:{maxStones:7,regimes:['monolith','dyad','constellation','field','sign']},
+    cuffBracelet:{maxStones:7,regimes:['monolith','dyad','constellation','field','sign']},
+    brooch:{maxStones:7,regimes:['monolith','dyad','constellation','field','composite','sign']},
+    hoopEarring:{maxStones:4,regimes:['monolith','dyad','constellation','sign']},
+    cufflinks:{maxStones:3,regimes:['monolith','dyad','sign']},
+    earCuff:{maxStones:4,regimes:['monolith','dyad','constellation','sign']}
+  });
+  const SIZE_MM=Object.freeze({
+    faceted:{ring:[4,9],pendant:[5,11],bangle:[4,9],cuffBracelet:[4,10],brooch:[5,12],hoopEarring:[3.5,7],cufflinks:[3.5,7],earCuff:[3.5,7]},
+    cabochon:{ring:[5,10],pendant:[6,13],bangle:[5,11],cuffBracelet:[5,12],brooch:[6,14],hoopEarring:[4,8],cufflinks:[4,8],earCuff:[4,8]},
+    slab:{ring:[5,10],pendant:[6,13],bangle:[5,11],cuffBracelet:[5,12],brooch:[6,14],hoopEarring:[4,8],cufflinks:[4,8],earCuff:[4,8]},
+    pearl:{ring:[6,11],pendant:[7,13],bangle:[7,12],cuffBracelet:[7,12],brooch:[8,14],hoopEarring:[6,10],cufflinks:[6,9],earCuff:[6,10]}
+  });
+  const INTERFACES=Object.freeze({
+    faceted:['prong','bezel','partial-bezel','basket','channel','bar','flush','tension'],
+    cabochon:['bezel','partial-bezel','prong','inlay'],
+    slab:['inlay','bezel','channel-frame'],
+    pearl:['post-cup','cup-cage']
+  });
+  function rngFor(seed){return SeededVariation.createGenerator(String(seed||'AGDP')+'|mineral-topology-v11');}
+  function pickWeighted(rng,items){let t=items.reduce((a,x)=>a+x[1],0),r=rng()*t;for(const x of items){r-=x[1];if(r<=0)return x[0];}return items[items.length-1][0];}
+  function regimeFor(rng,type,I){
+    const allowed=(TYPE_POLICY[type]||TYPE_POLICY.ring).regimes;
+    const w={monolith:.34,dyad:.18,constellation:.20,field:.06,composite:.09,sign:.13};
+    w.monolith+=I.node*.18; w.dyad+=I.bridge*.12; w.constellation+=(I.bridge+I.organism)*.08;
+    w.field+=I.continuity*.06; w.composite+=I.void*.08; w.sign+=(1-I.node)*.06;
+    return pickWeighted(rng,allowed.map(k=>[k,w[k]||.05]));
+  }
+  function countFor(regime,rng,max){
+    if(regime==='monolith'||regime==='sign'||regime==='composite')return 1;
+    if(regime==='dyad')return 2;
+    if(regime==='constellation')return Math.min(max,3+Math.floor(rng()*3));
+    return Math.min(max,4+Math.floor(rng()*4));
+  }
+  function familyFor(rng,regime,I){
+    const weights=[['faceted',.34],['cabochon',.29],['slab',.23],['pearl',.14]];
+    if(regime==='field')weights[0][1]+=.25;
+    if(regime==='composite')weights[2][1]+=.30;
+    if(I.organism>.68)weights[1][1]+=.12;
+    return pickWeighted(rng,weights);
+  }
+  function interfaceFor(rng,family,regime,I){
+    if(family==='pearl')return I.bridge>.55?'cup-cage':'post-cup';
+    if(family==='slab')return regime==='field'?'channel-frame':'inlay';
+    if(family==='cabochon')return I.suspension>.62?'prong':I.continuity>.58?'bezel':'partial-bezel';
+    if(regime==='field')return 'channel';
+    if(regime==='constellation'&&I.bridge>.52)return 'bar';
+    if(I.suspension>.72&&I.bridge>.45)return 'tension';
+    if(I.continuity>.72)return 'bezel';
+    if(I.bridge>.58)return 'basket';
+    return I.void>.55?'partial-bezel':'prong';
+  }
+  function relationFor(I){
+    if(I.continuity>=.68)return 'continuity';
+    if(I.organism>=.62||I.bridge>=.62)return 'counterpoint';
+    return 'friction';
+  }
+  function eventPositions(regime,count,graph,rng){
+    const event=graph.nodes.find(n=>n.isEvent)||graph.nodes.find(n=>n.role==='mass')||{u:.5};
+    const center=Number.isFinite(event.u)?event.u:.5;
+    if(count===1)return [center];
+    if(regime==='dyad'){const d=.10+.08*rng();return [Math.max(.06,center-d),Math.min(.94,center+d)];}
+    const span=regime==='field'?.62:.38, out=[];
+    for(let i=0;i<count;i++)out.push(Math.max(.04,Math.min(.96,center-span/2+span*(count===1?.5:i/(count-1)))));
+    return out;
+  }
+  function compile(params,graph){
+    const rng=rngFor(params.seed),I=graph.intensities||{bridge:.3,void:.2,node:.3,suspension:.2,continuity:.7,organism:.5};
+    const type=params.type,policy=TYPE_POLICY[type]||TYPE_POLICY.ring;
+    const regime=regimeFor(rng,type,I),count=countFor(regime,rng,policy.maxStones),family=familyFor(rng,regime,I);
+    const iface=interfaceFor(rng,family,regime,I),relation=relationFor(I),positions=eventPositions(regime,count,graph,rng);
+    const range=(SIZE_MM[family]&&SIZE_MM[family][type])||[5,10];
+    // Density/scale reciprocity: more mineral events means smaller individual
+    // stones. A field cannot accidentally become seven center-stone-scale gems.
+    const densityScale={monolith:1,dyad:.86,constellation:.68,field:.42,composite:.76,sign:.48}[regime]||.75;
+    const primaryT=(.28+.44*rng())*densityScale;
+    const primary=range[0]+(range[1]-range[0])*primaryT;
+    const events=positions.map((u,i)=>({
+      id:'mineral'+i,u,rank:i===0?'primary':'secondary',scale:i===0?1:Math.max(.46,.78-i*.07),
+      structuralRole:i===0?'mineral-event':'mineral-support-event'
+    }));
+    return Object.freeze({
+      version:'11.0.0',enabled:true,regime,family,interface:iface,formalRelation:relation,count,
+      events:Object.freeze(events),sizeRangeMm:range,primaryWidthMm:Math.round(primary*2)/2,
+      hierarchy:Object.freeze(['mineral-event','setting-interface','metal-load-path','body','mechanism']),
+      standards:Object.freeze({channelWallMm:1.0,paveBorderMm:.50,meleeNominalGapMm:.10}),
+      designPolicy:Object.freeze({statementBias:true,saturationCap:policy.maxStones,metalMustRespondToMineral:true}),
+      graphSeed:graph.seed
+    });
+  }
+  return Object.freeze({compile,REGIMES,FAMILIES,TYPE_POLICY,SIZE_MM,INTERFACES});
+})();
+window.MineralTopologyGrammar=MineralTopologyGrammar;
+
+
 window.AGDP_PACKAGING_POLICY=Object.freeze({
   optimizeOrientation:true,
   optimizeBeforeReject:true,

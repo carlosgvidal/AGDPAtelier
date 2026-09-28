@@ -398,6 +398,9 @@ generateBtn:'Generate piece', orderBtn:'Download OBJ',
       params.seed=candidateSeed;
       const loadGraph=window.LoadGraphEngine.buildLoadGraph(candidateSeed,selectedType);
       params=window.LoadGraphEngine.applyGraphToParams(params,loadGraph);
+      if(window.MineralTopologyGrammar){
+        params.mineralSystem=window.MineralTopologyGrammar.compile(params,loadGraph);
+      }
       params=window.ProportionEngine.apply(params);
 
       try{
