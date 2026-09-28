@@ -3484,16 +3484,19 @@ async function makeMeshManifoldEntry(wasm, inputParams){
   // pre-compile params object) -- silently broken for brooch and hoopEarring without this fix.
   const gemstoneAnchor=p.highJewelryResolvedStone?{position:p.highJewelryResolvedStone.position,normal:p.highJewelryResolvedStone.normal,scaleRef:p.highJewelryResolvedStone.sizeMm,role:p.highJewelryResolvedStone.structuralRole}:((window.AGDP_Gemstones&&typeof window.AGDP_Gemstones.semanticAnchor==='function')?window.AGDP_Gemstones.semanticAnchor(V,F,p):null);
   const result={ V, F, audit, bandW: extra.bandW||0, innerR:(extra.innerD||0)/2, compiledParams: p, gemstoneAnchor };
-  // V8.1: the gemstone plan is part of the geometry transaction. A high-jewelry
-  // mesh is not allowed to leave geometry.js without the same resolved stone
-  // that drove its receiver and boolean seat. This removes the former UI-stage
-  // failure path that silently converted planner errors into metal-only pieces.
-  if(p.highJewelryProgram&&p.highJewelryProgram.enabled){
-    if(!p.highJewelryResolvedStone)throw new Error('AGDP V8.1 invariant: audited high-jewelry metal has no resolved primary gemstone');
-    result.gemstones=window.AGDP_Gemstones.plan(result,p);
-    if(!result.gemstones||!result.gemstones.enabled||!result.gemstones.stones||result.gemstones.stones.length<1){
-      throw new Error('AGDP V8.1 invariant: high-jewelry geometry cannot be returned without a renderable gemstone plan');
-    }
+  // V8.2: geometry already owns the resolved primary stone. Do NOT call the
+  // presentation planner again here: doing so made a non-CAD presentation step
+  // capable of rejecting an otherwise valid manifold. Attach the resolved stone
+  // directly and deterministically to the geometry transaction.
+  if(p.highJewelryProgram&&p.highJewelryProgram.enabled&&p.highJewelryResolvedStone){
+    const hj=p.highJewelryProgram;
+    result.gemstones={
+      version:'8.2.0', enabled:true, seed:hj.seed, family:hj.family,
+      mode:'LAPIDARY_PRIMARY_VOLUME', regime:hj.regime, hasVoids:hj.hasVoids,
+      grammar:'AGDP_HIGH_JEWELRY_V8_LAPIDARY_PRIMARY_VOLUME', replaceMetalFocus:true,
+      setting:p.highJewelrySettingV8||null,
+      stones:[p.highJewelryResolvedStone]
+    };
   }
   return result;
 }

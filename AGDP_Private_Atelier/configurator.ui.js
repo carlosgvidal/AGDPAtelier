@@ -464,16 +464,14 @@ generateBtn:'Generate piece', orderBtn:'Download OBJ',
     currentSeed=acceptedSeed;
     window.AGDP_currentSeed=currentSeed;
     if(window.AGDP_Gemstones){
-      // V8.1: geometry.js owns the gemstone transaction. Never silently downgrade
-      // an audited high-jewelry piece to metal-only at presentation time.
+      // V8.2: presentation consumes the geometry transaction; it never rejects it.
+      // Normal high-jewelry output already contains gemstones. The fallback exists
+      // only for legacy/non-high-jewelry meshes and is deliberately non-fatal.
       if(!acceptedMesh.gemstones){
-        acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams);
+        try{ acceptedMesh.gemstones=window.AGDP_Gemstones.plan(acceptedMesh,acceptedMesh.compiledParams||acceptedParams); }
+        catch(gemError){ console.warn('AGDP gemstones: legacy presentation fallback failed',gemError); }
       }
-      const hj=acceptedMesh.compiledParams&&acceptedMesh.compiledParams.highJewelryProgram;
-      if(hj&&hj.enabled&&(!acceptedMesh.gemstones||!acceptedMesh.gemstones.enabled||!acceptedMesh.gemstones.stones||acceptedMesh.gemstones.stones.length<1)){
-        throw new Error('AGDP V8.1 invariant: accepted high-jewelry mesh has no gemstone plan');
-      }
-      window.AGDP_currentGemstonePlan=acceptedMesh.gemstones;
+      window.AGDP_currentGemstonePlan=acceptedMesh.gemstones||null;
     }
     window.AGDP_currentMesh=acceptedMesh;
     window.AGDP_currentPieceName=(selectedType||'pieza')+'_'+(currentSeed||'agdp');

@@ -1,0 +1,17 @@
+{
+  "version": "V8.2_RUNTIME_FIX",
+  "directly_verified": [
+    "V8-to-V8.1 source diff",
+    "all JavaScript syntax",
+    "normal high-jewelry geometry attaches resolved stone directly",
+    "V8.1 fatal presentation invariant removed"
+  ],
+  "regression_cause": "V8.1 introduced a second gemstone planner invocation inside geometry.js and a fatal UI invariant; presentation/planning was incorrectly allowed to reject CAD output.",
+  "retained_fixes": [
+    "closed cabochon mesh",
+    "closed pearl mesh",
+    "V8 lapidary primary-volume architecture"
+  ],
+  "runtime_manifold_wasm": "not_tested_in_this_environment",
+  "browser_runtime": "not_tested_in_this_environment"
+}
