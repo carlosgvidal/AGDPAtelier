@@ -1,1 +1,257 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><title>Private Atelier — A GROSS DOMESTIC PRODUCT.</title><script type="importmap">{"imports":{"manifold-3d":"https://unpkg.com/manifold-3d@3.5.1/manifold.js","three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script><link rel="stylesheet" href="agdp-site.css"><link rel="stylesheet" href="private.css"></head><body><main class="private"><header><div class="eyebrow">A GROSS DOMESTIC PRODUCT. / PRIVATE ATELIER</div><h1>High Jewelry Studies.</h1><p>Existing Atelier geometry. Additional material and gemstone systems. One seeded occurrence.</p></header><section class="work"><aside class="controls"><label>TYPOLOGY<select id="type"><option value="ring">Ring</option><option value="pendant">Pendant</option><option value="bangle">Bangle</option><option value="cuffBracelet">Cuff bracelet</option><option value="earCuff">Ear cuff</option><option value="brooch">Brooch</option><option value="cufflinks">Cufflinks</option><option value="hoopEarring">Hoop earrings</option></select></label><label>SCALE / MM<input id="size" type="number" value="18" step="0.5"></label><label>METAL<select id="metal"><option value="auto">Auto / seeded</option><option value="silver">Sterling silver .925</option><option value="platinum">Platinum</option><option value="yellowGold">Yellow gold</option><option value="roseGold">Rose gold</option><option value="whiteGold">White gold</option></select></label><label>STONE<select id="stone"><option value="auto">Auto / seeded</option></select></label><label>FORMAT<select id="format"><option value="auto">Auto / seeded</option><option value="faceted">Traditional faceted</option><option value="cabochon">Cabochon</option><option value="slab">Slab / laja</option><option value="pave">Pavé</option><option value="pearl">Pearl</option></select></label><label>CUT<select id="cut"><option value="auto">Auto / seeded</option></select></label><label>SEED<input id="seed" type="text"></label><button id="generate">GENERATE NEW OCCURRENCE</button><button id="replay">REPLAY SEED</button><div id="status">INITIALIZING…</div><div id="meta"></div></aside><div class="viewport"><canvas id="view"></canvas></div></section></main><script src="configurator.runtime.js"></script><script>const stones=['diamond','ruby','sapphire','emerald','aquamarine','tourmaline','amethyst','citrine','garnet','peridot','topaz','spinel','tanzanite','labradorite','moonstone','rockCrystal','obsidian','jadeite','opal','onyx','turquoise','lapis','coral','pearl'];for(const s of stones)stone.add(new Option(s.replace(/([A-Z])/g,' $1'),s));for(const c of ['round','oval','emerald','asscher','princess','cushion','pear','marquise','trillion','rose'])cut.add(new Option(c,c));</script><script type="module" src="configurator.geometry.js"></script><script type="module" src="configurator.viewport.js"></script><script type="module" src="private-ateliers.js"></script></body></html>
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>A GROSS DOMESTIC PRODUCT. | Jewelry, Structurally Conceived</title>
+<meta name="description" content="Contemporary sterling silver jewelry conceived through structural design. Singular works produced to order through Atelier by A GROSS DOMESTIC PRODUCT."/>
+<meta name="author" content="A GROSS DOMESTIC PRODUCT."/>
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/>
+<meta name="theme-color" content="#000004"/>
+<link rel="canonical" href="https://www.agrossdomesticproduct.com/"/>
+<link rel="sitemap" type="application/xml" title="Sitemap" href="https://www.agrossdomesticproduct.com/sitemap.xml"/>
+
+<!-- Open Graph -->
+<meta property="og:type" content="website"/>
+<meta property="og:locale" content="en_US"/>
+<meta property="og:site_name" content="A GROSS DOMESTIC PRODUCT."/>
+<meta property="og:title" content="Jewelry, Structurally Conceived | A GROSS DOMESTIC PRODUCT."/>
+<meta property="og:description" content="Contemporary sterling silver jewelry conceived through structural design. Singular works produced to order."/>
+<meta property="og:url" content="https://www.agrossdomesticproduct.com/"/>
+<meta property="og:image" content="https://www.agrossdomesticproduct.com/og-home.jpg"/>
+<meta property="og:image:secure_url" content="https://www.agrossdomesticproduct.com/og-home.jpg"/>
+<meta property="og:image:type" content="image/jpeg"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="A polished sterling silver jewelry object by A GROSS DOMESTIC PRODUCT."/>
+
+<!-- X / Twitter Card -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="Jewelry, Structurally Conceived | A GROSS DOMESTIC PRODUCT."/>
+<meta name="twitter:description" content="Contemporary sterling silver jewelry conceived through structural design. Singular works produced to order."/>
+<meta name="twitter:image" content="https://www.agrossdomesticproduct.com/og-home.jpg"/>
+<meta name="twitter:image:alt" content="A polished sterling silver jewelry object by A GROSS DOMESTIC PRODUCT."/>
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://www.agrossdomesticproduct.com/#organization",
+      "name": "A GROSS DOMESTIC PRODUCT.",
+      "alternateName": "AGDP",
+      "url": "https://www.agrossdomesticproduct.com/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://www.agrossdomesticproduct.com/AGDPLogo.png"
+      },
+      "image": {
+        "@type": "ImageObject",
+        "url": "https://www.agrossdomesticproduct.com/og-home.jpg",
+        "width": 1200,
+        "height": 630
+      },
+      "description": "A contemporary jewelry practice generating singular pieces through structural design and producing them to order in polished sterling silver.",
+      "founder": {
+        "@type": "Person",
+        "name": "Carlos Adolfo Gutiérrez Vidal"
+      },
+      "brand": {
+        "@id": "https://www.agrossdomesticproduct.com/#brand"
+      }
+    },
+    {
+      "@type": "Brand",
+      "@id": "https://www.agrossdomesticproduct.com/#brand",
+      "name": "A GROSS DOMESTIC PRODUCT.",
+      "alternateName": "AGDP",
+      "url": "https://www.agrossdomesticproduct.com/",
+      "logo": "https://www.agrossdomesticproduct.com/AGDPLogo.png",
+      "description": "Generative sterling silver jewelry defined by structural rules, singular production and no repeated configuration."
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://www.agrossdomesticproduct.com/#website",
+      "url": "https://www.agrossdomesticproduct.com/",
+      "name": "A GROSS DOMESTIC PRODUCT.",
+      "alternateName": "AGDP",
+      "description": "Generative sterling silver jewelry created through Atelier and produced to order.",
+      "publisher": {
+        "@id": "https://www.agrossdomesticproduct.com/#organization"
+      },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://www.agrossdomesticproduct.com/#webpage",
+      "url": "https://www.agrossdomesticproduct.com/",
+      "name": "A GROSS DOMESTIC PRODUCT. | Generative Sterling Silver Jewelry",
+      "description": "Generate a singular ring, pendant, bracelet, brooch, earring or cufflink through Atelier, then produce it to order in polished sterling silver.",
+      "isPartOf": {
+        "@id": "https://www.agrossdomesticproduct.com/#website"
+      },
+      "about": {
+        "@id": "https://www.agrossdomesticproduct.com/#brand"
+      },
+      "publisher": {
+        "@id": "https://www.agrossdomesticproduct.com/#organization"
+      },
+      "primaryImageOfPage": {
+        "@type": "ImageObject",
+        "url": "https://www.agrossdomesticproduct.com/og-home.jpg",
+        "width": 1200,
+        "height": 630
+      },
+      "mainEntity": {
+        "@id": "https://www.agrossdomesticproduct.com/#atelier"
+      },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "Service",
+      "@id": "https://www.agrossdomesticproduct.com/#atelier",
+      "name": "Atelier by A GROSS DOMESTIC PRODUCT.",
+      "serviceType": "Generative jewelry design and made-to-order production",
+      "url": "https://www.agrossdomesticproduct.com/#configurator",
+      "description": "An interactive atelier that generates a singular production-ready geometry for a ring, pendant, bracelet, brooch, earring, ear cuff or cufflink.",
+      "provider": {
+        "@id": "https://www.agrossdomesticproduct.com/#organization"
+      },
+      "brand": {
+        "@id": "https://www.agrossdomesticproduct.com/#brand"
+      }
+    }
+  ]
+}
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "manifold-3d": "https://unpkg.com/manifold-3d@3.5.1/manifold.js",
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<link href="agdp-site.css" rel="stylesheet"/>
+</head>
+<body>
+<div id="agdp-header-mount"></div>
+<header class="hero" id="top">
+<div class="hero-bg"></div>
+<div class="hero-inner">
+<h1 class="hero-title"><strong>Jewelry, structurally conceived.</strong><br/><strong><em>Never repeated.</em></strong></h1>
+<div class="hero-rule"></div>
+<p class="hero-sub">Contemporary jewelry generated through <strong>structural design</strong>.<br/>
+    Made to order in polished <em>sterling silver</em>.</p>
+<a class="hero-cta" href="#configurator" title="Open Atelier by A GROSS DOMESTIC PRODUCT." aria-label="Open Atelier by A GROSS DOMESTIC PRODUCT.">
+<span>Enter Atelier</span><span class="arrow">↓</span>
+</a>
+</div>
+</header>
+<div class="hero-strip">
+<div class="col"><strong>One generated form.</strong><br/>One material <em>existence</em>.</div>
+<div class="col"><strong>Rings. Pendants. Bracelets.</strong><br/>Brooches, earrings and <em>cufflinks</em>.</div>
+<div class="col">Made <strong>to order</strong><br/>in polished sterling <em>silver .925</em>.</div>
+<div class="col"><strong>No catalogue.</strong><br/>No edition. No <em>duplicate</em>.</div>
+</div>
+<div class="color-strip"><span></span><span></span><span></span><span></span><span></span></div>
+
+<section class="configurator-section" id="configurator">
+<div class="configurator-inner">
+<div class="configurator-head">
+<div class="configurator-title-block">
+<div class="configurator-eyebrow">Atelier</div>
+<h2>Generate a Singular Piece.</h2>
+</div>
+<p>Select a jewelry <strong>typology</strong> and its scale. Atelier generates a production-ready geometry from structural rules. Each ring, pendant, bracelet, brooch, earring, ear cuff or cufflink is produced once in polished sterling silver. <em>The configuration is never repeated.</em></p>
+</div>
+<div id="agdp-configurator-mount">
+</div>
+</div>
+</section><section aria-labelledby="editorial-title" class="configurator-section editorial-section">
+<div class="configurator-inner">
+<div class="configurator-head">
+<div class="configurator-title-block">
+<div class="configurator-eyebrow">A GROSS DOMESTIC PRODUCT.</div>
+<h2 id="editorial-title">Jewelry as Material Evidence.</h2>
+</div>
+<div class="editorial-copy">
+<p>A GROSS DOMESTIC PRODUCT. is a contemporary jewelry practice working in polished sterling silver. Rings, pendants, bracelets, brooches, earrings, ear cuffs and cufflinks are generated through Atelier: a structural system that produces a new geometry at the moment of execution. There is no fixed catalogue and no inventory of finished designs. A typology establishes the body of the piece; proportion, load, interval and surface determine its final form. The result is audited for production, translated into metal and assigned to a single order. Each piece belongs to a coherent formal language, but no configuration is repeated. Its singularity is not imposed through a numbered edition after manufacture. It is established before the silver exists. The work treats jewelry as architecture for the body and as material evidence of a decision. Computation defines the relationships. Sterling silver gives them weight, resistance and duration.</p>
+<p><strong>NO DECORATION. STRUCTURE.</strong><br/><strong>NO EDITION. ONE OCCURRENCE.</strong></p>
+</div>
+</div>
+</div>
+</section>
+<div id="agdp-footer-mount"></div>
+<script>
+(() => {
+  const loadFragment = async (mountId, url) => {
+    const mount = document.getElementById(mountId);
+    if (!mount) return null;
+
+    try {
+      const response = await fetch(url, { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`Unable to load ${url}: ${response.status} ${response.statusText}`);
+      }
+      mount.innerHTML = await response.text();
+      return mount;
+    } catch (err) {
+      console.warn(`[AGDP] Non-critical component layout warning: ${err.message}`);
+      return null;
+    }
+  };
+
+  const initNavigation = (headerMount) => {
+    if (!headerMount) return;
+
+    const navToggle = headerMount.querySelector('#navToggle');
+    const navLinks = headerMount.querySelector('#navLinks');
+
+    if (!navToggle || !navLinks) return;
+
+    navToggle.addEventListener('click', () => {
+      const isOpen = navLinks.classList.toggle('open');
+      navToggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    headerMount.querySelectorAll('[data-dropdown]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (window.innerWidth > 860) return;
+
+        const item = button.closest('.nav-item');
+        if (!item) return;
+
+        const isOpen = item.classList.toggle('open');
+        button.setAttribute('aria-expanded', String(isOpen));
+      });
+    });
+
+    navLinks.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth > 860) return;
+        navLinks.classList.remove('open');
+        navToggle.setAttribute('aria-expanded', 'false');
+      });
+    });
+  };
+
+  Promise.all([
+    loadFragment('agdp-header-mount', 'agdp-header.html'),
+    loadFragment('agdp-footer-mount', 'agdp-footer.html')
+  ])
+    .then(([headerMount]) => {
+      if (headerMount) initNavigation(headerMount);
+    })
+    .catch((error) => {
+      console.error('[AGDP] External site component loading failed.', error);
+    });
+})();
+</script>
+<script src="configurator.js" type="module"></script>
+</body>
+</html>

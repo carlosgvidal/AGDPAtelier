@@ -111,29 +111,14 @@ function safeDifference(wasm, a, b) {
   return result;
 }
 
-// Builds a customer-facing pair from one validated unit mesh. The two
-// earrings are arranged as a jewellery product composition rather than as
-// two rigidly duplicated orthographic copies: the right unit remains nearly
-// frontal, while the left unit turns into a controlled three-quarter view.
-// This lets the annular body dominate visually and places the French hook
-// behind it in perspective. The underlying printable geometry is unchanged;
-// only each copy's presentation transform and position are modified.
-function identicalFacingPairMesh(unitV, unitF, centerSpacing){
-  const rad=d=>d*Math.PI/180;
-  const rotateX=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0],v[1]*c-v[2]*sn,v[1]*sn+v[2]*c];};
-  const rotateY=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0]*c+v[2]*sn,v[1],-v[0]*sn+v[2]*c];};
-  const rotateZ=(v,a)=>{const c=Math.cos(a),sn=Math.sin(a);return [v[0]*c-v[1]*sn,v[0]*sn+v[1]*c,v[2]];};
-  const pose=(v,rx,ry,rz)=>rotateZ(rotateY(rotateX(v,rad(rx)),rad(ry)),rad(rz));
-
-  const half=centerSpacing*.54;
-  const leftV=unitV.map(v=>{
-    const r=pose(v,-5,-40,-5);
-    return [r[0]-half,r[1]-1.5,r[2]+1.8];
-  });
-  const rightV=unitV.map(v=>{
-    const r=pose(v,2,-10,3);
-    return [r[0]+half,r[1]+1.0,r[2]-0.8];
-  });
+// Builds a pair from one validated unit mesh without changing its native
+// orientation. Each copy receives translation only: no rotation, mirroring,
+// axis exchange, vertical offset or depth offset is baked into the exported
+// vertices. Presentation belongs to the viewport, never to printable V/F.
+function identicalNativePairMesh(unitV, unitF, centerSpacing){
+  const half=centerSpacing*.5;
+  const leftV=unitV.map(v=>[v[0]-half,v[1],v[2]]);
+  const rightV=unitV.map(v=>[v[0]+half,v[1],v[2]]);
   const offset=leftV.length;
   const leftF=unitF.map(f=>[f[0],f[1],f[2]]);
   const rightF=unitF.map(f=>[f[0]+offset,f[1]+offset,f[2]+offset]);
@@ -482,6 +467,45 @@ function annularPrismMesh(origin, ex, ey, ez, innerU, innerV, outerU, outerV, th
   return {V,F};
 }
 
+
+function circularBailTorusMeshX(center, passageRadius, wireRadius, majorSegments, minorSegments) {
+  // True circular pendant bail. The centerline is a circle in the YZ plane
+  // and the wire section is circular around that centerline. The opening axis
+  // is X, matching the lateral chain passage used by the pendant generator.
+  const nu=Math.max(192,Math.round(majorSegments||320));
+  const nv=Math.max(32,Math.round(minorSegments||56));
+  const holeR=Math.max(AGDP_MIN_WALL_MM*.75,passageRadius);
+  const tubeR=Math.max(AGDP_STRUCTURAL_WALL_MM,wireRadius);
+  const majorR=holeR+tubeR;
+  const V=[],F=[];
+  for(let i=0;i<nu;i++){
+    const u=2*Math.PI*i/nu, cu=Math.cos(u), su=Math.sin(u);
+    for(let j=0;j<nv;j++){
+      const v=2*Math.PI*j/nv, cv=Math.cos(v), sv=Math.sin(v);
+      const radial=majorR+tubeR*cv;
+      V.push([
+        center[0]+tubeR*sv,
+        center[1]+radial*su,
+        center[2]+radial*cu
+      ]);
+    }
+  }
+  for(let i=0;i<nu;i++){
+    const ni=(i+1)%nu;
+    for(let j=0;j<nv;j++){
+      const nj=(j+1)%nv;
+      const a=i*nv+j,b=ni*nv+j,c=ni*nv+nj,d=i*nv+nj;
+      // Outward winding for the parameterization above.
+      F.push([a,c,b],[a,d,c]);
+    }
+  }
+  return {V,F,holeRadius:holeR,wireRadius:tubeR,majorRadius:majorR,outerRadius:majorR+tubeR};
+}
+
+function circularBailTorusManifoldX(wasm, center, passageRadius, wireRadius, majorSegments, minorSegments) {
+  const mesh=circularBailTorusMeshX(center,passageRadius,wireRadius,majorSegments,minorSegments);
+  return {manifold:meshToManifold(wasm,mesh.V,mesh.F),metrics:mesh};
+}
 function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cornerSegments) {
   const cs=Math.max(10,Math.round(cornerSegments||18));
   const halfD=Math.max(depth*.5,AGDP_MIN_WALL_MM*.5);
@@ -517,6 +541,67 @@ function roundedRectFrameMesh(origin, outerW, outerH, innerW, innerH, depth, cor
     q(ob[i],inb[i],inb[j],ob[j]);
     q(of[i],ob[i],ob[j],of[j]);
     q(inf[i],inf[j],inb[j],inb[i]);
+  }
+  return {V,F};
+}
+
+
+function smoothRoundedRectTubeMeshYZ(origin, outerW, outerH, innerW, innerH, depth, straightSegments, cornerSegments, radialSegments) {
+  // Closed rounded-rectangle tube in the YZ plane. Unlike an extruded frame,
+  // every visible surface is part of one continuous swept skin, so polished
+  // materials do not expose diagonal splits across broad planar quads.
+  const ss=Math.max(4,Math.round(straightSegments||10));
+  const cs=Math.max(10,Math.round(cornerSegments||18));
+  const rs=Math.max(16,Math.round(radialSegments||24));
+  const wallZ=Math.max((outerW-innerW)*.5,AGDP_MIN_WALL_MM);
+  const wallY=Math.max((outerH-innerH)*.5,AGDP_MIN_WALL_MM);
+  const tubeR=Math.max(AGDP_MIN_WALL_MM*.52,Math.min(wallZ,wallY)*.5);
+  const rx=Math.max(depth*.5,AGDP_MIN_WALL_MM*.55);
+  const hz=Math.max(innerW*.5+tubeR,tubeR*1.8);
+  const hy=Math.max(innerH*.5+tubeR,tubeR*1.8);
+  const cr=Math.min(Math.max(tubeR*1.25,Math.min(hz,hy)*.16),hz-tubeR*.35,hy-tubeR*.35);
+  const path=[];
+  const addLine=(z0,y0,z1,y1,n)=>{
+    for(let i=0;i<n;i++){const t=i/n;path.push([z0+(z1-z0)*t,y0+(y1-y0)*t]);}
+  };
+  const addArc=(cz,cy,a0,a1,n)=>{
+    for(let i=0;i<n;i++){const a=a0+(a1-a0)*(i/n);path.push([cz+cr*Math.cos(a),cy+cr*Math.sin(a)]);}
+  };
+  // Counter-clockwise centerline, with explicit subdivisions along every
+  // straight span to keep triangle size and normal interpolation uniform.
+  addLine(hz-cr,-hy,hz-cr,hy,ss);
+  addArc(hz-cr,hy,0,Math.PI*.5,cs);
+  addLine(hz,hy-cr,-hz,hy-cr,ss);
+  addArc(-hz+cr,hy,Math.PI*.5,Math.PI,cs);
+  addLine(-hz+cr,hy,-hz+cr,-hy,ss);
+  addArc(-hz+cr,-hy,Math.PI,Math.PI*1.5,cs);
+  addLine(-hz,-hy+cr,hz,-hy+cr,ss);
+  addArc(hz-cr,-hy,Math.PI*1.5,Math.PI*2,cs);
+
+  const n=path.length,V=[],F=[];
+  for(let i=0;i<n;i++){
+    const prev=path[(i+n-1)%n], next=path[(i+1)%n];
+    let tz=next[0]-prev[0], ty=next[1]-prev[1];
+    const tl=Math.hypot(tz,ty)||1;tz/=tl;ty/=tl;
+    // For a CCW path, the right-hand normal points outside the frame.
+    const nz=ty, ny=-tz;
+    for(let k=0;k<rs;k++){
+      const a=2*Math.PI*k/rs;
+      const ca=Math.cos(a),sa=Math.sin(a);
+      V.push([
+        origin[0]+rx*ca,
+        origin[1]+path[i][1]+tubeR*sa*ny,
+        origin[2]+path[i][0]+tubeR*sa*nz
+      ]);
+    }
+  }
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    for(let k=0;k<rs;k++){
+      const l=(k+1)%rs;
+      const a=i*rs+k,b=j*rs+k,c=j*rs+l,d=i*rs+l;
+      F.push([a,b,c],[a,c,d]);
+    }
   }
   return {V,F};
 }
@@ -593,7 +678,82 @@ function refinedRectilinearFrameMeshYZ(origin, outerW, outerH, innerW, innerH, d
     q(pfO[i],pbO[i],pbO[j],pfO[j]);
     q(pfI[i],pfI[j],pbI[j],pbI[i]);
   }
+  // The YZ loop construction above is topologically closed but uses the
+  // opposite global winding from the rest of the generator. Reverse every
+  // triangle so outward normals remain consistent through booleans and export.
+  return {V,F:F.map(([a,b,c])=>[a,c,b])};
+}
+
+
+
+// Closed rounded prism with a shallow physical bevel. The bevel prevents
+// renderers that average vertex normals from smearing a 90-degree edge across
+// large planar triangles, while preserving the functional outer envelope.
+function beveledRoundedRectPrismMesh(center,w,h,d,cornerR,bevel,cornerSegments){
+  const cs=Math.max(6,Math.round(cornerSegments||12));
+  const b=Math.max(0,Math.min(bevel||0,d*.24,w*.08,h*.08));
+  const baseR=Math.max(0,Math.min(cornerR||0,w*.5-b,h*.5-b));
+  function loop(lw,lh,r){
+    const pts=[];
+    if(r<=1e-7) return [[lw*.5,lh*.5],[-lw*.5,lh*.5],[-lw*.5,-lh*.5],[lw*.5,-lh*.5]];
+    const cx=lw*.5-r,cy=lh*.5-r;
+    const centers=[[cx,cy],[-cx,cy],[-cx,-cy],[cx,-cy]];
+    const starts=[0,Math.PI*.5,Math.PI,Math.PI*1.5];
+    for(let q=0;q<4;q++)for(let k=0;k<cs;k++){
+      const a=starts[q]+k/cs*Math.PI*.5;
+      pts.push([centers[q][0]+r*Math.cos(a),centers[q][1]+r*Math.sin(a)]);
+    }
+    return pts;
+  }
+  const endW=Math.max(AGDP_MIN_WALL_MM,w-2*b),endH=Math.max(AGDP_MIN_WALL_MM,h-2*b);
+  const endR=Math.max(0,baseR-b);
+  const rings=[
+    {z:-d*.5,pts:loop(endW,endH,endR)},
+    {z:-d*.5+b,pts:loop(w,h,baseR)},
+    {z:d*.5-b,pts:loop(w,h,baseR)},
+    {z:d*.5,pts:loop(endW,endH,endR)}
+  ];
+  const n=rings[0].pts.length,V=[],F=[],idx=[];
+  for(const ring of rings){
+    const row=[];
+    for(const pt of ring.pts){row.push(V.length);V.push([center[0]+pt[0],center[1]+pt[1],center[2]+ring.z]);}
+    idx.push(row);
+  }
+  const q=(a,b,c,d)=>F.push([a,b,c],[a,c,d]);
+  for(let r=0;r<idx.length-1;r++)for(let i=0;i<n;i++){const j=(i+1)%n;q(idx[r][i],idx[r][j],idx[r+1][j],idx[r+1][i]);}
+  const bot=V.length;V.push([center[0],center[1],center[2]-d*.5]);
+  const top=V.length;V.push([center[0],center[1],center[2]+d*.5]);
+  for(let i=0;i<n;i++){const j=(i+1)%n;F.push([bot,idx[0][j],idx[0][i]]);F.push([top,idx[3][i],idx[3][j]]);}
   return {V,F};
+}
+
+function beveledRoundedRectPrismManifold(wasm,center,w,h,d,cornerR,bevel,cornerSegments){
+  const m=beveledRoundedRectPrismMesh(center,w,h,d,cornerR,bevel,cornerSegments);
+  return meshToManifold(wasm,m.V,m.F);
+}
+
+function beveledEllipticalCylinderMesh(center,rx,ry,d,bevel,segments){
+  const n=Math.max(48,Math.round(segments||128));
+  const b=Math.max(0,Math.min(bevel||0,d*.24,rx*.12,ry*.12));
+  const sx=Math.max(.05,(rx-b)/rx),sy=Math.max(.05,(ry-b)/ry);
+  const levels=[[-d*.5,sx,sy],[-d*.5+b,1,1],[d*.5-b,1,1],[d*.5,sx,sy]];
+  const V=[],F=[],rows=[];
+  for(const [z,kx,ky] of levels){
+    const row=[];
+    for(let i=0;i<n;i++){const a=2*Math.PI*i/n;row.push(V.length);V.push([center[0]+rx*kx*Math.cos(a),center[1]+ry*ky*Math.sin(a),center[2]+z]);}
+    rows.push(row);
+  }
+  const q=(a,b,c,d)=>F.push([a,b,c],[a,c,d]);
+  for(let r=0;r<3;r++)for(let i=0;i<n;i++){const j=(i+1)%n;q(rows[r][i],rows[r][j],rows[r+1][j],rows[r+1][i]);}
+  const bot=V.length;V.push([center[0],center[1],center[2]-d*.5]);
+  const top=V.length;V.push([center[0],center[1],center[2]+d*.5]);
+  for(let i=0;i<n;i++){const j=(i+1)%n;F.push([bot,rows[0][j],rows[0][i]]);F.push([top,rows[3][i],rows[3][j]]);}
+  return {V,F};
+}
+
+function beveledEllipticalCylinderManifold(wasm,center,rx,ry,d,bevel,segments){
+  const m=beveledEllipticalCylinderMesh(center,rx,ry,d,bevel,segments);
+  return meshToManifold(wasm,m.V,m.F);
 }
 
 function rectilinearFrameManifoldYZ(wasm, origin, outerW, outerH, innerW, innerH, depth) {
@@ -1395,7 +1555,15 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   const floors={lattice:.24,vessel:.18,cellular:.22};
   const accentRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|transversal-subtractive-v106');
   const voidCutters=[];
-  const applyTransversalCuts = true;
+  // Closed annular typologies were receiving three unconditional transverse
+  // cutters after their positive nodes/ribs had already been planned. A cutter
+  // could therefore remove the supporting band directly beneath a node. If the
+  // subsequent union was numerically weak, the visible result looked exactly
+  // like a missing node with a drilled hole. Preserve positive vocabulary on
+  // circular bodies: transverse voids are allowed only when no surface mass
+  // has been requested for this variant.
+  const hasProtectedSurfaceMass = closed && decorations.length>0;
+  const applyTransversalCuts = !hasProtectedSurfaceMass;
   const phase=(p.compositionSignature?.phaseA||0)+accentRng()*Math.PI*2;
 
   const latticeI=clamp(Math.max(floors.lattice,featureWeights.lattice||0),floors.lattice,1);
@@ -1439,7 +1607,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   // recompone mediante un puente curvo explícito que salta por encima de
   // la cicatriz. Esto es una consecuencia geométrica, no un parámetro más
   // extremo: la pieza conserva la evidencia de la interrupción.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='rupture' && closed) {
+  if (p.mutation && p.mutation.active && p.mutation.mode==='rupture' && closed && !hasProtectedSurfaceMass) {
     const sv=p.mutation.severity;
     const ruptureRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|rupture-scar');
     const rt=ruptureRng()*Math.PI*2;
@@ -1502,7 +1670,7 @@ async function buildBandGeometryManifold(wasm, p, opts) {
   // Erosión literal: varios vacíos reales, mayores y más numerosos que el
   // sistema de vacíos habitual, que consumen estructura en vez de
   // decorarla.
-  if (p.mutation && p.mutation.active && p.mutation.mode==='erosion') {
+  if (p.mutation && p.mutation.active && p.mutation.mode==='erosion' && !hasProtectedSurfaceMass) {
     const sv=p.mutation.severity;
     const eRng=window.SeededVariation.createGenerator(String(p.seed||'AGDP')+'|erosion');
     const erosionCutters=[];
@@ -1603,14 +1771,16 @@ async function buildBandGeometryManifold(wasm, p, opts) {
     const embed=massR*0.4;
     const massCenterR=invSurf+massR-embed;
     decorations.push(organicNodeAt(wasm,[massCenterR*ict,massCenterR*ist,0],massR,12,invT));
-    const voidT=invT+Math.PI*0.5+iRng()*0.3;
-    const vct=Math.cos(voidT), vst=Math.sin(voidT);
-    const voidSurf=localSurfaceRZ(voidT,0);
-    const voidR=Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.7+0.5*sv));
-    try{
-      const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 24);
-      bodyManifold=safeDifference(wasm,bodyManifold, voidCutter);
-    }catch(err){ console.warn('AGDP: inversión omitida por seguridad topológica',err); }
+    if(!hasProtectedSurfaceMass){
+      const voidT=invT+Math.PI*0.5+iRng()*0.3;
+      const vct=Math.cos(voidT), vst=Math.sin(voidT);
+      const voidSurf=localSurfaceRZ(voidT,0);
+      const voidR=Math.max(AGDP_MIN_WALL_MM*1.2, baseWall*(0.7+0.5*sv));
+      try{
+        const voidCutter=sphereAt(wasm,[(voidSurf-voidR*0.2)*vct,(voidSurf-voidR*0.2)*vst,0], voidR, 24);
+        bodyManifold=safeDifference(wasm,bodyManifold, voidCutter);
+      }catch(err){ console.warn('AGDP: inversión omitida por seguridad topológica',err); }
+    }
   }
 
   const allParts = [bodyManifold, ...decorations];
@@ -2076,56 +2246,56 @@ async function makePendantManifold(wasm, p) {
 
   // Suspension grows from the upper arc. Two shoulders and a crown overlap
   // the annular core deeply; the chain tunnel is cut only after union.
-  const passageR=Math.max(.85,p.chainFitRadiusMm!=null?p.chainFitRadiusMm:1.35);
-  const topY=outerR*sy;
-  const tunnelWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.45,annularWall*.30);
-  const crownOuterR=Math.max(passageR+tunnelWall,annularWall*1.28);
+  // Functional opening: honor an explicit chain-fit radius when supplied.
+  // Otherwise scale the clear diameter conservatively with the pendant size:
+  // 2.8 mm on small pieces, up to 4.0 mm on large pieces.
+  const autoPassageD=clamp(2.8+(targetEnvelope-14)*.06,2.8,4.0);
+  const passageR=Math.max(1.4,p.chainFitRadiusMm!=null?p.chainFitRadiusMm:autoPassageD*.5);
+  // Use the generated solid's actual upper bound, not the nominal annulus radius.
+  // Surface fields can move the real attachment surface above or below outerR.
+  const coreMeshForAttachment=manifoldToMesh(core);
+  let topY=-Infinity;
+  for(const v of coreMeshForAttachment.V) if(v[1]>topY) topY=v[1];
 
-  // Rectilinear bail: the frame itself is the structural connection.
-  // Its lower rail overlaps the pendant body directly, so no posts,
-  // shoulders, saddle or auxiliary members are required.
-  // Keep the lateral frame inside the actual depth envelope of the pendant.
-  // This prevents the bail from becoming wider than the central body when
-  // crownOuterR grows on small or highly architectural pieces.
-  const frameOuterW=Math.min(crownOuterR*1.72,bandWidth*.94);
-  const frameOuterH=crownOuterR*2.48;
-  const lateralWall=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.08);
-  const frameInnerW=Math.max(AGDP_MIN_WALL_MM*.8,Math.min(passageR*1.84,frameOuterW-lateralWall*2));
-  const frameInnerH=passageR*2.26;
-  const frameOverlap=Math.max(annularWall*.42,(p.minFeature||.8)*.55);
-  // Lateral frame: its opening axis is X, so the chain passes from side to side.
-  // Only the lower rail overlaps the outer crown of the pendant; no vertical
-  // member enters the annular opening.
-  const crownCenter=[0,topY+frameOuterH*.5-frameOverlap,0];
-  const frameDepth=Math.max(annularWall*.72,(p.minFeature||.8)*1.35);
-  const bailManifold=rectilinearFrameManifoldYZ(
-    wasm,
-    crownCenter,
-    frameOuterW,
-    frameOuterH,
-    frameInnerW,
-    frameInnerH,
-    frameDepth
-  );
-  parts.push(bailManifold);
+  // True circular torus bail: circular silhouette, circular opening and
+  // circular wire section. This avoids the flat inner cylinder and broad
+  // triangulated faces of an extruded washer.
+  const wireR=Math.max(AGDP_STRUCTURAL_WALL_MM,(p.minFeature||.8)*1.5);
+  const attachEmbed=Math.max(wireR*1.05,(p.minFeature||.8)*1.35);
+  const bailOuterR=passageR+wireR*2;
+  const crownCenter=[0,topY+bailOuterR-attachEmbed,0];
+  // 256x48 preserves a sub-0.003 mm faceting error while reducing the bail
+  // from 98,304 to 24,576 triangles, avoiding intermittent memory spikes.
+  const bailBuild=circularBailTorusManifoldX(wasm,crownCenter,passageR,wireR,256,48);
+  parts.push(bailBuild.manifold);
+
+  // Add a compact, hidden volumetric bridge under the torus. This bridge
+  // overlaps both the actual body surface and the lower torus tube, so the
+  // union cannot depend on a near-tangent contact in extreme variants.
+  const torusLowerTubeCenterY=crownCenter[1]-bailBuild.metrics.majorRadius;
+  const bridgeR=Math.max(AGDP_STRUCTURAL_WALL_MM*.85,wireR*.68);
+  const bridgeBottom=[0,topY-Math.max(attachEmbed*.72,bridgeR*.55),0];
+  const bridgeTop=[0,torusLowerTubeCenterY,0];
+  parts.push(cylinderBetween(wasm,bridgeBottom,bridgeTop,bridgeR,48));
+  parts.push(sphereAt(wasm,bridgeBottom,bridgeR,32));
+  parts.push(sphereAt(wasm,bridgeTop,bridgeR,32));
 
   let manifold=unionAll(wasm,parts);
-  let mesh=manifoldToMesh(manifold);
-  let preflight=validate(mesh.V,mesh.F,{type:'pendant-annular-preflight',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
-  if(preflight.components!==1||!preflight.manifoldOK)throw new Error('AGDP annular pendant core failed continuity validation');
-
   // No passage subtraction: the chain opening already exists in the bail mesh.
-
+  // Convert and validate the final union only once to limit peak memory.
   const finalMesh=manifoldToMesh(manifold);
   const finalAudit=validate(finalMesh.V,finalMesh.F,{type:'pendant',minFeature:p.minFeature||.8,printProfile:p.printProfile||'silverPolished'});
+  const preflight=finalAudit;
   if(!finalAudit.ok||finalAudit.components!==1)throw new Error('AGDP annular pendant failed structural validation');
 
   p.pendantBodyEnvelopeMm=targetEnvelope;
   p.pendantBodyWidthMm=finalAudit.bounds.dim[0];
   p.pendantBodyHeightMm=finalAudit.bounds.dim[1];
   p.pendantBodyDepthMm=finalAudit.bounds.dim[2];
-  p.pendantSuspension='integratedLateralRectilinearFrameNoPosts';
+  p.pendantSuspension='integratedCircularTorusBail';
   p.pendantPassageDiameterMm=passageR*2;
+  p.pendantBailWireDiameterMm=wireR*2;
+  p.pendantBailAttachmentEmbedMm=attachEmbed;
   p.pendantTotalHeightMm=finalAudit.bounds.dim[1];
   p.pendantBaseGeometry='ringDerivedClosedAnnularCore';
   p.pendantStructuralMode=mode;
@@ -2213,36 +2383,41 @@ async function makeCufflinksManifold(wasm, p) {
   const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
   const capHalfX=crownHalfX+footprintOverlap;
   const capHalfY=crownHalfY+footprintOverlap;
-  const capFill=Manifold.cylinder(capHeight,1,1,160,true)
-    .scale([capHalfX,capHalfY,1]).translate([0,0,capCenterZ]);
+  const capBevel=Math.min(.34,capHeight*.16,minFeature*.32);
+  const capFill=beveledEllipticalCylinderManifold(
+    wasm,[0,0,capCenterZ],capHalfX,capHalfY,capHeight,capBevel,192
+  );
 
   const structuralParts=[crown,capFill];
 
-  function box(cx,cy,cz,dx,dy,dz){
-    return Manifold.cube([dx,dy,dz],true).translate([cx,cy,cz]);
-  }
   function cylZ(cx,cy,rad,z0,z1){
     return cylinderBetween(wasm,[cx,cy,z0],[cx,cy,z1],rad,48);
   }
 
   /* Closed posterior finding. All joints overlap by at least one structural
      wall, preventing isolated components after boolean evaluation. */
-  const postRadius=Math.max(2.60,minFeature*.9);
+  // Authentic fixed-back cufflink finding. The shank is deliberately slimmer
+  // than the former pseudo-toggle post so the complete rigid finding can pass
+  // through a French-cuff buttonhole without requiring a moving component.
+  // Diameters: 4.0 mm at the front root, tapering to 3.3 mm through the usable
+  // shank. The fixed terminal is an elongated transverse capsule: long
+  // enough to retain the cuff reliably, but fully rounded so it can still be
+  // inserted through the buttonhole by angling the rigid finding.
+  const postRootRadius=Math.max(2.00,minFeature*.82);
+  const postShaftRadius=Math.max(1.65,minFeature*.72);
   const postLength=clamp(
-    Number.isFinite(p.cufflinkPostLengthMm) ? p.cufflinkPostLengthMm : COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.postLengthMm.nominal,
-    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.postLengthMm.min,
-    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.postLengthMm.max
+    Number.isFinite(p.cufflinkPostLengthMm) ? p.cufflinkPostLengthMm : 12.0,
+    10.8,
+    13.2
   );
-  const postCurvatureRadius=34.0;
-  const postTiltRad=4*Math.PI/180;
-  const rootRadius=Math.max(2.15,postRadius*2.25,minFeature*1.7);
-  const rootDepth=Math.max(3.4,minFeature*3.0);
-  const toggleLength=clamp(
-    Number.isFinite(p.cufflinkToggleLengthMm) ? p.cufflinkToggleLengthMm : COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.toggleLengthMm.nominal,
-    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.toggleLengthMm.min,
-    COMMERCIAL_DIMENSION_REFERENCE_LIMITS.cufflinks.toggleLengthMm.max
-  );
-  const toggleWidth=4.2,toggleThickness=3.0;
+  const postCurvatureRadius=50.0;
+  const postTiltRad=3*Math.PI/180;
+  const rootRadius=Math.max(2.35,postRootRadius*1.18,minFeature*1.35);
+  const rootDepth=Math.max(2.8,minFeature*2.35);
+  const terminalHalfLength=Math.max(6.00,minFeature*2.55);
+  const terminalHalfWidth=Math.max(2.15,minFeature*.92);
+  const terminalHalfThickness=Math.max(1.75,minFeature*.78);
+  const terminalAttachmentOffset=Math.min(1.00,terminalHalfLength*.22);
   function cufflinkPostPoint(s){
     const half=postLength*.5;
     const sagitta=postCurvatureRadius-Math.sqrt(Math.max(0,postCurvatureRadius*postCurvatureRadius-half*half));
@@ -2275,14 +2450,34 @@ async function makeCufflinksManifold(wasm, p) {
       const raw=cufflinkPostPoint(i/segments);
       postPathPts.push([raw[0],raw[1],raw[2]-rootDepth*.18]);
     }
-    const postRadii=postPathPts.map(()=>[postRadius,postRadius]);
-    const postMesh=variableEllipticalTubeMesh(postPathPts, postRadii, 24, false);
+    const postRadii=postPathPts.map((_,i)=>{
+      const t=i/(postPathPts.length-1);
+      const eased=t*t*(3-2*t);
+      const rr=postRootRadius+(postShaftRadius-postRootRadius)*eased;
+      return [rr,rr];
+    });
+    const postMesh=variableEllipticalTubeMesh(postPathPts, postRadii, 28, false);
     target.push(meshToManifold(wasm, postMesh.V, postMesh.F));
-    const pivot=postPathPts[postPathPts.length-1];
-    const hingeRadius=Math.max(1.7,postRadius*1.8);
-    target.push(sphereAt(wasm,pivot,hingeRadius,32));
-    target.push(box(pivot[0],pivot[1],pivot[2],toggleLength,toggleWidth,toggleThickness));
-    target.push(box(pivot[0],pivot[1],pivot[2]+toggleThickness*.62,5.4,5.0,3.2));
+
+    // Elongated transverse capsule. The attachment is intentionally offset
+    // by 1 mm from its geometric centre, keeping more material on the outer
+    // retention side while bringing its centre of mass closer to the cuff.
+    // A small tangent-direction overlap embeds the post inside the capsule so
+    // the union remains one closed rigid solid without a narrow neck.
+    const tip=postPathPts[postPathPts.length-1];
+    const prev=postPathPts[postPathPts.length-2];
+    const tx=tip[0]-prev[0],ty=tip[1]-prev[1],tz=tip[2]-prev[2];
+    const tangentLength=Math.hypot(tx,ty,tz)||1;
+    const ux=tx/tangentLength,uy=ty/tangentLength,uz=tz/tangentLength;
+    const terminalCenter=[
+      tip[0]-terminalAttachmentOffset+ux*terminalHalfThickness*.42,
+      tip[1]+uy*terminalHalfThickness*.42,
+      tip[2]+uz*terminalHalfThickness*.42
+    ];
+    const terminal=Manifold.sphere(1,48)
+      .scale([terminalHalfLength,terminalHalfWidth,terminalHalfThickness])
+      .translate(terminalCenter);
+    target.push(terminal);
   }
   addFinding(structuralParts);
 
@@ -2380,7 +2575,11 @@ async function makeCufflinksManifold(wasm, p) {
   p.cufflinkUnitComponents=unitAudit.components;
   p.cufflinkPairComponents=pairAudit.components;
   p.cufflinkPostLengthMm=postLength;
-  p.cufflinkToggleLengthMm=toggleLength;
+  p.cufflinkBackingType='fixedCurvedStudTransverseCapsule';
+  p.cufflinkPostRootDiameterMm=postRootRadius*2;
+  p.cufflinkPostShaftDiameterMm=postShaftRadius*2;
+  p.cufflinkTerminalEnvelopeMm=[terminalHalfLength*2,terminalHalfWidth*2,terminalHalfThickness*2];
+  p.cufflinkTerminalAttachmentOffsetMm=terminalAttachmentOffset;
   p.cufflinkCapFootprintMm=[capHalfX*2,capHalfY*2];
   p.cufflinkCapClosure='fullDeformedFootprint';
   p.cufflinkDnaSurface='+ZFrontOnly';
@@ -2390,6 +2589,63 @@ async function makeCufflinksManifold(wasm, p) {
 function flattenedNodeAt(wasm,center,rx,ry,rz,segments){
   const { Manifold }=wasm;
   return Manifold.sphere(1,segments||18).scale([rx,ry,rz]).translate(center);
+}
+
+function decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature){
+  const { Manifold }=wasm;
+  const domeI=featureIntensity(p,'dome');
+  const vesselI=featureIntensity(p,'vessel');
+  const cageI=featureIntensity(p,'cage');
+  const wrappedI=featureIntensity(p,'wrapped');
+  const interI=featureIntensity(p,'interweave');
+  const effR=Math.max(minFeature*2.4,Math.min(capHalfX,capHalfY));
+  const reliefDepth=clamp(effR*(.16+.18*Math.max(domeI,vesselI,cageI,wrappedI,interI)),1.2,4.2);
+  const overlap=Math.max(.18,minFeature*.24);
+  const parts=[];
+
+  if(domeI>.08){
+    const rr=effR*(.30+.24*domeI);
+    parts.push(sphereAt(wasm,[0,0,capTopZ-overlap],rr,24).scale([1,1,.38+.28*domeI]));
+  }
+  if(vesselI>.08){
+    const polarity=(p.variation?.offset||0)>=0?1:-1;
+    const rr=effR*(.20+.22*vesselI);
+    parts.push(sphereAt(wasm,[polarity*effR*.20,-effR*.09,capTopZ-overlap],rr,24).scale([1.16,.86,.44+.20*vesselI]));
+  }
+  if(cageI>.08){
+    const barR=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.045+.025*cageI));
+    const span=effR*(.48+.20*cageI);
+    parts.push(cylinderBetween(wasm,[-span,0,capTopZ-overlap],[span,0,capTopZ-overlap],barR,24));
+    parts.push(cylinderBetween(wasm,[0,-span,capTopZ-overlap],[0,span,capTopZ-overlap],barR,24));
+  }
+  if(wrappedI>.08){
+    const count=2+Math.round(wrappedI*2);
+    for(let i=0;i<count;i++){
+      const a=(p.variation?.phaseB||0)+i*Math.PI*2/count;
+      const rr=effR*(.58+.07*Math.sin(a*2));
+      const nr=Math.max(AGDP_MIN_WALL_MM*.9,effR*(.05+.035*wrappedI));
+      parts.push(sphereAt(wasm,[Math.cos(a)*rr,Math.sin(a)*rr,capTopZ-overlap],nr,24));
+    }
+  }
+  if(interI>.12){
+    const r=Math.max(AGDP_MIN_WALL_MM*.75,effR*(.038+.026*interI));
+    const span=effR*.66;
+    parts.push(cylinderBetween(wasm,[-span*.72,-span*.38,capTopZ-overlap],[span*.72,span*.38,capTopZ-overlap],r,24));
+    parts.push(cylinderBetween(wasm,[-span*.72,span*.38,capTopZ-overlap],[span*.72,-span*.38,capTopZ-overlap],r,24));
+  }
+
+  if(!parts.length) return capFill;
+
+  // Restrict every added operation to the cap footprint and to the outward
+  // side only. This keeps all new volume away from the rear mechanism.
+  const margin=Math.max(minFeature*.34,AGDP_STRUCTURAL_WALL_MM*.22);
+  const maskHalfX=Math.max(minFeature*1.8,capHalfX-margin);
+  const maskHalfY=Math.max(minFeature*1.8,capHalfY-margin);
+  const mask=Manifold.cylinder(reliefDepth+overlap*2,1,1,160,true)
+    .scale([maskHalfX,maskHalfY,1])
+    .translate([0,0,capTopZ+(reliefDepth-overlap*2)*.5]);
+  const relief=Manifold.intersection(unionAll(wasm,parts),mask);
+  return unionAll(wasm,[capFill,relief]);
 }
 
 // Shared by clip-like typologies (universal clip and related mechanisms, any
@@ -2463,29 +2719,34 @@ async function buildBroochBaseFromPendantOrCufflink(wasm,p,targetW,targetH,faceT
   });
   let base=built.manifold;
 
-  if(source==='cufflink'){
-    const crownMesh=manifoldToMesh(base);
-    const crownAudit=validate(crownMesh.V,crownMesh.F,{
-      type:'brooch-cufflink-crown',minFeature,printProfile:p.printProfile||'silverPolished'
-    });
-    if(!crownAudit.manifoldOK||crownAudit.components!==1||!crownAudit.finite){
-      throw new Error('AGDP brooch cufflink-derived crown is not a closed manifold');
-    }
-    const capDepth=Math.max(2.2,bandWidth*.46,minFeature*2.4);
-    const rearFaceZ=-bandWidth*.5;
-    const posteriorFlattenZ=-Math.max(minFeature*.22,bandWidth*.08);
-    const capTopZ=posteriorFlattenZ;
-    const capBottomZ=rearFaceZ-capDepth*.58;
-    const capHeight=capTopZ-capBottomZ;
-    const capCenterZ=(capTopZ+capBottomZ)*.5;
-    const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
-    const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
-    const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
-    const capFill=Manifold.cylinder(capHeight,1,1,160,true)
-      .scale([crownHalfX+footprintOverlap,crownHalfY+footprintOverlap,1])
-      .translate([0,0,capCenterZ]);
-    base=unionAll(wasm,[base,capFill]);
+  // Every brooch base receives a full posterior cap, including bases derived
+  // from the pendant annulus. Without it, the rear clip remains visible
+  // through the central opening and the piece reads as mechanically exposed.
+  const crownMesh=manifoldToMesh(base);
+  const crownAudit=validate(crownMesh.V,crownMesh.F,{
+    type:'brooch-'+source+'-crown',minFeature,printProfile:p.printProfile||'silverPolished'
+  });
+  if(!crownAudit.manifoldOK||crownAudit.components!==1||!crownAudit.finite){
+    throw new Error('AGDP brooch '+source+'-derived crown is not a closed manifold');
   }
+  const capDepth=Math.max(2.2,bandWidth*.46,minFeature*2.4);
+  const rearFaceZ=-bandWidth*.5;
+  const posteriorFlattenZ=-Math.max(minFeature*.22,bandWidth*.08);
+  const capTopZ=posteriorFlattenZ;
+  const capBottomZ=rearFaceZ-capDepth*.58;
+  const capHeight=capTopZ-capBottomZ;
+  const capCenterZ=(capTopZ+capBottomZ)*.5;
+  const footprintOverlap=Math.max(minFeature*.48,AGDP_STRUCTURAL_WALL_MM*.32);
+  const crownHalfX=Math.max(Math.abs(crownAudit.bounds.min[0]),Math.abs(crownAudit.bounds.max[0]));
+  const crownHalfY=Math.max(Math.abs(crownAudit.bounds.min[1]),Math.abs(crownAudit.bounds.max[1]));
+  const capHalfX=crownHalfX+footprintOverlap;
+  const capHalfY=crownHalfY+footprintOverlap;
+  const capBevel=Math.max(.20,Math.min(.42,minFeature*.34,capHeight*.18));
+  let capFill=beveledEllipticalCylinderManifold(
+    wasm,[0,0,capCenterZ],capHalfX,capHalfY,capHeight,capBevel,192
+  );
+  capFill=decorateBroochCapFront(wasm,p,capFill,capHalfX,capHalfY,capTopZ,minFeature);
+  base=unionAll(wasm,[base,capFill]);
 
   const baseMesh=manifoldToMesh(base);
   const baseBounds=bounds(baseMesh.V);
@@ -2540,8 +2801,11 @@ async function makeBroochClipManifold(wasm,p){
   const backerH=Math.min(faceH*.34,Math.max(flapW+3.2,9.0));
   const backerDepth=backerT+embedDepth;
   const backerZ=faceBackZ+(embedDepth-backerT)/2;
-  const backer=Manifold.cube([backerW,backerH,backerDepth],true)
-    .translate([0,0,backerZ]);
+  const mechanismBevel=Math.min(.28,backerT*.14);
+  let backer=beveledRoundedRectPrismManifold(
+    wasm,[0,0,backerZ],backerW,backerH,backerDepth,
+    Math.min(1.15,backerH*.13),mechanismBevel,14
+  );
 
   // Reject a face/backer pair that does not share real volume. This prevents
   // removeFloatingComponents() from silently discarding the mechanism later.
@@ -2564,8 +2828,10 @@ async function makeBroochClipManifold(wasm,p){
   const rootFrontZ=backerRearZ+overlapIntoBacker;
   const rootZ=rootFrontZ-rootDepth/2;
   const rootX=-flapL/2+rootL/2;
-  const root=Manifold.cube([rootL,flapW,rootDepth],true)
-    .translate([rootX,0,rootZ]);
+  const root=beveledRoundedRectPrismManifold(
+    wasm,[rootX,0,rootZ],rootL,flapW,rootDepth,
+    Math.min(.75,flapW*.12),Math.min(.24,flapT*.12),12
+  );
 
   // The tongue overlaps the root longitudinally. A slight upward rake at the
   // free end provides pressure while preserving an open usable throat.
@@ -2575,17 +2841,21 @@ async function makeBroochClipManifold(wasm,p){
   const tongueCenterX=(tongueStartX+freeX)/2;
   const rise=Math.min(.50,gap*.18);
   const angleDeg=Math.atan2(rise,Math.max(1,tongueL))*180/Math.PI;
-  const tongue=Manifold.cube([tongueL,flapW,flapT],true)
-    .rotate([0,-angleDeg,0])
-    .translate([tongueCenterX,0,flapCenterZ+rise/2]);
+  const tongue=beveledRoundedRectPrismManifold(
+    wasm,[0,0,0],tongueL,flapW,flapT,
+    Math.min(.72,flapW*.12),Math.min(.22,flapT*.11),12
+  ).rotate([0,-angleDeg,0])
+   .translate([tongueCenterX,0,flapCenterZ+rise/2]);
 
   // A modest terminal pressure pad is fused to the same tongue. It does not
   // close against the face and does not imitate a separate catch.
   const padL=Math.max(2.8,flapT*1.55);
   const padW=Math.min(flapW+.8,8.6);
-  const pad=Manifold.cube([padL,padW,flapT],true)
-    .rotate([0,-angleDeg,0])
-    .translate([freeX-padL/2,0,flapCenterZ+rise]);
+  const pad=beveledRoundedRectPrismManifold(
+    wasm,[0,0,0],padL,padW,flapT,
+    Math.min(.78,padW*.13),Math.min(.22,flapT*.11),12
+  ).rotate([0,-angleDeg,0])
+   .translate([freeX-padL/2,0,flapCenterZ+rise]);
 
   const flapAssembly=unionAll(wasm,[root,tongue,pad]);
   const backerFlapOverlap=Manifold.intersection(backer,flapAssembly);
@@ -2639,7 +2909,7 @@ async function makeBroochClipManifold(wasm,p){
   p.broochAssemblyRequired=false;
   p.broochBaseSource=baseBuild.source;
   p.broochBaseGeometry=baseBuild.source==='pendant'?'pendantAnnularBody':'cufflinkClosedCrown';
-  p.broochGeneratorVersion='brooch-v4-pendant-or-cufflink-base-cantilever-flap';
+  p.broochGeneratorVersion='brooch-v8-universal-cap-csg-bail';
   return {manifold,bandW:Math.max(faceW,faceH)};
 }
 
@@ -3024,10 +3294,10 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     const unitDepth=xs.length?Math.max(...xs)-Math.min(...xs):0;
     const minimumClearGapMm=6;
     const pairSpacing=Math.max((p.hoopBodySpanMm||p.mainSize||26)+minimumClearGapMm,unitDepth+minimumClearGapMm);
-    ({V,F}=identicalFacingPairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
+    ({V,F}=identicalNativePairMesh(unitConnectivity.V,unitConnectivity.F,pairSpacing));
     p.hoopPairCenterSpacingMm=pairSpacing;
     p.hoopPairComponents=2;
-    p.hoopPairPresentation='asymmetricJewelleryProductComposition';
+    p.hoopPairPresentation='nativeOrientationTranslationOnly';
   } else {
     ({ V, F } = manifoldToMeshHelper(manifold));
     try{ manifold.delete(); }catch(e){}
@@ -3050,6 +3320,21 @@ async function makeMeshManifoldEntry(wasm, inputParams){
     allowConstructiveOverlap:true, booleanUnion:true, allowedSolids:expectedComponents
   };
   const audit = window.validate(V, F, extra);
+  // Validation must be a gate, not merely a report. Previously an annular
+  // variant with boundary/non-manifold edges could still be returned to the
+  // widget as long as its component count happened to match. Reject it so the
+  // caller can advance to the next seed instead of displaying a perforated
+  // ring or a body with a missing node.
+  if(!audit || !audit.manifoldOK || !audit.finite || audit.components!==expectedComponents){
+    const reasons=[];
+    if(!audit) reasons.push('missing-audit');
+    else {
+      if(!audit.manifoldOK) reasons.push('non-manifold');
+      if(!audit.finite) reasons.push('non-finite');
+      if(audit.components!==expectedComponents) reasons.push('components:'+audit.components);
+    }
+    throw new Error('AGDP_VARIANT_REJECTED topology: '+reasons.join(','));
+  }
   const weightLimits=AGDP_SILVER_HOLLOWING.thresholdsGrams[silverWeightProfileKey(p)]||{rejectAbove:Infinity};
   audit.weightLimitG=weightLimits.rejectAbove;
   audit.weightOK=audit.silverG<=weightLimits.rejectAbove;

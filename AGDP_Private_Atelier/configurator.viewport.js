@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const AGDP_VIEWPORT_BUILD='2026-07-28-native-mesh-reset-v9';
+const AGDP_VIEWPORT_BUILD='2026-07-28-earrings-y90-side-by-side-v13';
 window.AGDP_VIEWPORT_BUILD=AGDP_VIEWPORT_BUILD;
 console.info('AGDP viewport build',AGDP_VIEWPORT_BUILD);
 
@@ -353,8 +353,15 @@ const AGDP_PRESENTATION_VIEWS=Object.freeze({
     // framing factor by 10% so the pair occupies 10% less of the canvas.
     framing:1.32
   }),
+  hoopEarring:Object.freeze({
+    // Presentation-only: rotate the complete native pair 90 degrees around Y
+    // and add 1.4 framing space relative to the canvas.
+    objectEulerDeg:[0,90,0],
+    cameraDirection:[0,0,1],
+    framing:1.4
+  }),
   default:Object.freeze({
-    objectEulerDeg:[0,0,0], cameraDirection:[0.42,0.30,1], framing:1.20
+    objectEulerDeg:[0,0,0], cameraDirection:[0,0,1], framing:1.20
   })
 });
 window.AGDP_PRESENTATION_VIEWS=AGDP_PRESENTATION_VIEWS;
@@ -678,6 +685,67 @@ _resize();
 
 
 
+function _separateEarringPairForY90(geometry){
+  const position=geometry.getAttribute('position');
+  if(!position||position.count<16)return null;
+
+  // The native pair is separated along X. After the 90-degree Y display
+  // rotation that axis becomes camera depth, causing one earring to sit behind
+  // the other. Identify the two native copies by their X gap, then translate
+  // them only along local Z. After Y=90 this becomes horizontal screen space.
+  const samples=[];
+  for(let i=0;i<position.count;i++)samples.push({x:position.getX(i),i});
+  samples.sort((a,b)=>a.x-b.x);
+
+  const minSide=Math.max(8,Math.floor(samples.length*.15));
+  let splitIndex=-1,bestGap=-Infinity;
+  for(let i=minSide;i<=samples.length-minSide;i++){
+    const gap=samples[i].x-samples[i-1].x;
+    if(gap>bestGap){bestGap=gap;splitIndex=i;}
+  }
+  if(splitIndex<minSide||splitIndex>samples.length-minSide)return null;
+
+  const threshold=(samples[splitIndex-1].x+samples[splitIndex].x)*.5;
+  const groups=[[],[]];
+  for(let i=0;i<position.count;i++)groups[position.getX(i)<=threshold?0:1].push(i);
+  if(groups[0].length<8||groups[1].length<8)return null;
+
+  const components=groups.map(vertices=>{
+    let cz=0,minZ=Infinity,maxZ=-Infinity;
+    for(const vi of vertices){
+      const z=position.getZ(vi);
+      cz+=z;
+      if(z<minZ)minZ=z;
+      if(z>maxZ)maxZ=z;
+    }
+    return {vertices,cz:cz/vertices.length,minZ,maxZ,widthZ:Math.max(1e-6,maxZ-minZ)};
+  });
+
+  const gap=Math.max(components[0].widthZ,components[1].widthZ)*.18;
+  const centerDistance=components[0].widthZ*.5+components[1].widthZ*.5+gap;
+  const midpointZ=(components[0].cz+components[1].cz)*.5;
+  const targets=[midpointZ-centerDistance*.5,midpointZ+centerDistance*.5];
+
+  for(let componentIndex=0;componentIndex<2;componentIndex++){
+    const component=components[componentIndex];
+    const shiftZ=targets[componentIndex]-component.cz;
+    for(const vi of component.vertices){
+      position.setXYZ(vi,position.getX(vi),position.getY(vi),position.getZ(vi)+shiftZ);
+    }
+  }
+  position.needsUpdate=true;
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return {
+    splitAxis:'x',
+    translationAxis:'local-z',
+    screenAxisAfterY90:'x',
+    gap,
+    centerDistance,
+    componentWidthsZ:components.map(c=>c.widthZ)
+  };
+}
+
 function _arrangePairedComponents(geometry,presentation){
   const position=geometry.getAttribute('position');
   if(!position||position.count<16)return null;
@@ -735,6 +803,28 @@ function _arrangePairedComponents(geometry,presentation){
   };
 }
 
+function _isStrictNativeEarring(nextMesh){
+  const audit=nextMesh&&nextMesh.audit;
+  const candidates=[
+    audit&&audit.type,
+    audit&&audit.typology,
+    audit&&audit.productType,
+    audit&&audit.category,
+    nextMesh&&nextMesh.type,
+    nextMesh&&nextMesh.typology,
+    nextMesh&&nextMesh.productType,
+    nextMesh&&nextMesh.category
+  ];
+  return candidates.some(value=>{
+    const key=String(value||'').toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+    return key==='earring'||key==='earrings'||key==='hoopearring'||
+      key==='hoopearrings'||key==='hoop'||key==='hoops'||
+      key==='arete'||key==='aretes'||key==='pendientearete'||
+      key==='pendientesaretes';
+  });
+}
+
 function _normalizedPresentationType(nextMesh){
   const raw=nextMesh&&nextMesh.audit&&nextMesh.audit.type;
   const key=String(raw||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -765,7 +855,11 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.setIndex(new THREE.BufferAttribute(indices,1));
 
   const type=_normalizedPresentationType(nextMesh);
-  if(type==='cufflinks'){
+  const strictNativeEarring=_isStrictNativeEarring(nextMesh);
+  let earringPairSeparation=null;
+  if(strictNativeEarring){
+    earringPairSeparation=_separateEarringPairForY90(geometry);
+  }else if(type==='cufflinks'){
     // Preserve the incoming mesh pose and move each complete cufflink only
     // along X, reducing the centre-to-centre separation by exactly 15%.
     _arrangePairedComponents(geometry,{pairSpacingScale:.85});
@@ -787,12 +881,24 @@ window.AGDP_setRenderMesh = function(nextMesh){
   geometry.center();
   _mesh3d = new THREE.Mesh(geometry, _material);
   _mesh3d.castShadow = true;
-  const presentation=_presentationViewFor(nextMesh);
-  const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
-  _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
+  const presentation=strictNativeEarring
+    ? AGDP_PRESENTATION_VIEWS.hoopEarring
+    : _presentationViewFor(nextMesh);
+  if(strictNativeEarring){
+    // Earring geometry remains untouched. Only the Three.js display object is
+    // rotated for presentation; no vertex, face, pair-spacing or scale edit.
+    const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,90,0]);
+    _mesh3d.position.set(0,0,0);
+    _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2],'XYZ');
+    _mesh3d.scale.set(1,1,1);
+    _mesh3d.updateMatrix();
+  }else{
+    const objectEuler=_degToRad3(presentation.objectEulerDeg||[0,0,0]);
+    _mesh3d.rotation.set(objectEuler[0],objectEuler[1],objectEuler[2]);
+  }
   _scene.add(_mesh3d);
 
-  if(type==='pendant'&&presentation.displayChain){
+  if(!strictNativeEarring&&type==='pendant'&&presentation.displayChain){
     _presentationAccessory=_createPendantDisplayChain(geometry,presentation);
     if(_presentationAccessory){
       _presentationAccessory.rotation.copy(_mesh3d.rotation);
@@ -827,12 +933,24 @@ window.AGDP_setRenderMesh = function(nextMesh){
   const fitDistance=(fitRadius/Math.sin(Math.max(0.08,limitingFov/2)))*framing;
   const cameraDirection=presentation.cameraDirection||[0.42,0.30,1];
   const dir=new THREE.Vector3(cameraDirection[0],cameraDirection[1],cameraDirection[2]).normalize();
+  const normalizedCameraDirection=dir.clone();
   _camera.position.copy(dir.multiplyScalar(fitDistance));
   _camera.near=Math.max(0.01, radius*0.015);
   _camera.far=fitDistance+radius*8;
   _camera.updateProjectionMatrix();
   _controls.minDistance=Math.max(radius*0.18, 0.35);
   _controls.maxDistance=fitDistance*5;
+  window.AGDP_LAST_PRESENTATION_AUDIT={
+    rawType:nextMesh&&nextMesh.audit&&nextMesh.audit.type,
+    strictNativeEarring,
+    earringPairSeparation,
+    normalizedType:type,
+    meshRotation:[_mesh3d.rotation.x,_mesh3d.rotation.y,_mesh3d.rotation.z],
+    meshQuaternion:[_mesh3d.quaternion.x,_mesh3d.quaternion.y,_mesh3d.quaternion.z,_mesh3d.quaternion.w],
+    meshScale:[_mesh3d.scale.x,_mesh3d.scale.y,_mesh3d.scale.z],
+    cameraDirection:[normalizedCameraDirection.x,normalizedCameraDirection.y,normalizedCameraDirection.z],
+    controlsTarget:[_controls.target.x,_controls.target.y,_controls.target.z]
+  };
   _controls.update();
 };
 
@@ -847,37 +965,3 @@ function _animate(){
   _renderer.render(_scene,_camera);
 }
 _animate();
-
-/* AGDP PRIVATE ATELIER EXTENSION — additive only; production viewport preserved. */
-let _agdpPrivateStoneGroup=null;
-window.AGDP_setMetal=function(name){
- const metals={silver:{color:0xeeeeee,metalness:1,roughness:.10},platinum:{color:0xe8e5df,metalness:1,roughness:.12},yellowGold:{color:0xd6aa45,metalness:1,roughness:.11},roseGold:{color:0xc88973,metalness:1,roughness:.12},whiteGold:{color:0xe3ded4,metalness:1,roughness:.11}};
- const m=metals[name]||metals.silver; _material.color.setHex(m.color);_material.metalness=m.metalness;_material.roughness=m.roughness;_material.needsUpdate=true;
-};
-function _agdpGemMaterial(spec){
- if(spec.format==='pearl') return new THREE.MeshPhysicalMaterial({color:spec.color,metalness:0,roughness:.18,clearcoat:1,clearcoatRoughness:.08,iridescence:1,iridescenceIOR:1.3});
- if(spec.stone==='opal') return new THREE.MeshPhysicalMaterial({color:spec.color,metalness:0,roughness:.12,transmission:.18,thickness:2,ior:1.45,clearcoat:1,iridescence:1});
- return new THREE.MeshPhysicalMaterial({color:spec.color,metalness:0,roughness:.05,transmission:spec.opacity||.72,thickness:2.5,ior:spec.ior||1.76,clearcoat:1,clearcoatRoughness:.03,transparent:true,opacity:.96});
-}
-function _agdpGemGeometry(spec,size){
- if(spec.format==='pearl') return new THREE.SphereGeometry(size*.5,40,28);
- if(spec.format==='cabochon'){const g=new THREE.SphereGeometry(size*.55,40,24,0,Math.PI*2,0,Math.PI*.62);g.scale(1,.72,1);return g}
- if(spec.format==='slab'){const g=new THREE.CylinderGeometry(size*.55,size*.62,size*.22,7,1,false);g.rotateX(Math.PI/2);return g}
- const sides={round:32,oval:32,emerald:8,asscher:8,princess:4,cushion:12,pear:24,marquise:24,trillion:3,rose:16}[spec.cut]||16;
- const g=new THREE.CylinderGeometry(size*.12,size*.55,size*.38,sides,2,false);g.rotateX(Math.PI/2); if(spec.cut==='oval')g.scale(1.25,.85,1); if(spec.cut==='marquise')g.scale(1.55,.65,1); return g;
-}
-window.AGDP_setGemstones=function(spec){
- if(_agdpPrivateStoneGroup){_scene.remove(_agdpPrivateStoneGroup);_disposeObject3D(_agdpPrivateStoneGroup);_agdpPrivateStoneGroup=null}
- if(!spec||!_mesh3d)return;
- _mesh3d.geometry.computeBoundingBox(); const b=_mesh3d.geometry.boundingBox; const sz=new THREE.Vector3();b.getSize(sz); const group=new THREE.Group();
- const mat=_agdpGemMaterial(spec); const base=Math.max(1.2,Math.min(sz.x,sz.y,sz.z)*(.20+(spec.scale||.5)*.18));
- const count=spec.format==='pave'?Math.max(7,Math.round(10+(spec.density||.5)*22)):(spec.count||1);
- for(let i=0;i<count;i++){
-   const s=spec.format==='pave'?base*.24:base; const mesh=new THREE.Mesh(_agdpGemGeometry(spec,s),mat.clone());
-   if(spec.format==='pave'){const t=count===1?0:i/(count-1);mesh.position.set((t-.5)*sz.x*.62,b.max.y+s*.12,Math.sin(t*Math.PI*2+spec.phase)*sz.z*.10)}
-   else if(count>1){const a=i/count*Math.PI*2+spec.phase;mesh.position.set(Math.cos(a)*base*.72,b.max.y+s*.18,Math.sin(a)*base*.72)}
-   else mesh.position.set(0,b.max.y+s*.18,0);
-   mesh.rotation.z=spec.rotation||0; mesh.castShadow=true; group.add(mesh);
- }
- group.rotation.copy(_mesh3d.rotation); _scene.add(group); _agdpPrivateStoneGroup=group;
-};
