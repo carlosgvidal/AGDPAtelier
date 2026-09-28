@@ -1,17 +1,22 @@
-# A GROSS DOMESTIC PRODUCT. — Private Atelier
+# AGDP Private Atelier — recovered-production derivation
 
-Private high-jewelry generative design study for integration inside the existing AGDP website.
+This package is intentionally based on the recovered AGDP production modules, not on the discarded simplified prototype.
 
-## Intended placement
-Upload this folder inside the website repository, for example as `/atelier-private/`. Do not add it to public navigation.
+## Preserved production files
+- `configurator.geometry.js` — recovered AGDP Manifold production geometry (~154 KB source revision).
+- `configurator.viewport.js` — recovered AGDP Three.js viewport, including the original silver physical material, IBL/light-tent, surface maps, camera and per-typology presentation matrices. The only code appended is the private metal/gemstone accessory API.
+- `agdp-site.css` — recovered site stylesheet.
 
-## Privacy
-`index.html` contains `noindex,nofollow,noarchive`, but that is **not authentication**. A hidden URL can still be opened by anyone who knows it. Protect the route at the hosting/server layer (HTTP Basic Auth, access-control rule, reverse-proxy authentication, or the site's existing authentication system).
+## Added private layer
+- `configurator.runtime.js` supplies the runtime interfaces expected by the recovered geometry when deployed independently.
+- `private-ateliers.js` adds seeded metal/gem decisions without replacing the body generator.
+- `private.css` only lays out the private workbench.
 
-## Generator
-A seed controls the occurrence. The generator can randomize gemstone family, cut/format, scale, count, distribution and setting mode while preserving user-selected constraints. Modes include center stone, cluster, pavé, pearl, slab/laja and cabochon. Traditional cuts include round brilliant, oval, emerald, Asscher, princess, cushion, pear, marquise, trillion and rose cut.
+## Gemstone system
+Stone family, format, cut, scale, count/density, phase and rotation are seed-derived when set to Auto. Formats: traditional faceted, cabochon, slab/laja, pavé, pearl. Metals: .925 silver, platinum, yellow/rose/white gold.
 
-The downloaded JSON is the reproducible design record. Gem-bearing outputs are intentionally labelled DESIGN STUDY: stone dimensions, seats, prongs/beads, tolerances and structural integrity must be reviewed before manufacture.
+## Integration
+Deploy this directory under a server-protected path inside the existing AGDP site (example `/private/atelier/`). `noindex` is included but is not access control. Use the hosting/server authentication mechanism for actual privacy.
 
-## Dependencies
-Three.js and OrbitControls are loaded as ES modules from unpkg, matching the web-native approach of the existing Atelier. If the main site vendors these dependencies locally, replace the import-map URLs accordingly.
+## Important
+Gem meshes are design-study presentation geometry, not stone-seat/cutting geometry. The existing AGDP metal body generator remains responsible for the structural object. A later production pass should boolean/model actual seats, prongs, bezels and tolerances against measured stones.
